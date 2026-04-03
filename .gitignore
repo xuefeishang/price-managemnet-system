@@ -1,0 +1,39 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Backend - Java
+backend/target/
+backend/*.log
+backend/.gradle/
+backend/build/
+
+# Frontend - Vue/Node
+frontend/node_modules/
+frontend/dist/
+frontend/.DS_Store
+frontend/package-lock.json
+frontend/yarn.lock
+frontend/pnpm-lock.yaml
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Maven
+target/

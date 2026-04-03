@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir)",
+      "Bash(powershell -Command \"cd ''E:\\\\ClaudeCodeProject\\\\price-management-system''; Get-ChildItem -Recurse\")",
+      "Bash(powershell -Command \"cd ''E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI''; Get-ChildItem\")",
+      "Bash(powershell -Command \"Copy-Item ''pencil-new.pen'' ''E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI\\\\price-management-ui.pen''\")",
+      "Bash(powershell -Command \"Rename-Item ''E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI\\\\pencil-new.pen'' ''price-management-ui.pen''\")",
+      "Bash(powershell -Command \"cd ''E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI''; Get-ChildItem | Select-Object Name, Length, LastWriteTime\")",
+      "Bash(powershell -Command \"cd ''E:\\\\ClaudeCodeProject\\\\price-management-system''; Get-ChildItem -Filter ''*.md''\")",
+      "Bash(powershell -Command \"Get-Content ''E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI界面设计.md'' -Encoding UTF8\")",
+      "mcp__plugin_figma_figma__whoami",
+      "mcp__plugin_figma_figma__create_new_file",
+      "mcp__plugin_figma_figma__get_metadata",
+      "mcp__plugin_figma_figma__use_figma",
+      "Bash(mvn clean:*)",
+      "Bash(mvn compile:*)",
+      "Bash(grep -rn \"schema\\\\.sql\" /e/ClaudeCodeProject/price-management-system/*.md)",
+      "Bash(grep -rn \"项目启动指南\\\\|部署说明\" /e/ClaudeCodeProject/price-management-system/*.md)",
+      "Bash(ls -la /e/ClaudeCodeProject/price-management-system/*.md)",
+      "Bash(grep -rn \"项目启动指南\\\\|部署说明\\\\.md\" /e/ClaudeCodeProject/price-management-system/*.md)"
+    ]
+  }
+}
