@@ -13,7 +13,7 @@ export const getProduct = async (id: number): Promise<ApiResponse<Product>> => {
 }
 
 // 创建产品
-export const createProduct = async (data: Product): Promise<ApiResponse<Product>> => {
+export const createProduct = async (data: Omit<Product, 'id' | 'createdTime' | 'updatedTime'>): Promise<ApiResponse<Product>> => {
   return await http.post('/api/products', data)
 }
 
@@ -25,6 +25,11 @@ export const updateProduct = async (id: number, data: Partial<Product>): Promise
 // 删除产品
 export const deleteProduct = async (id: number): Promise<ApiResponse<void>> => {
   return await http.delete(`/api/products/${id}`)
+}
+
+// 批量更新产品排序
+export const batchUpdateProductSort = async (items: { id: number; sortOrder: number }[]): Promise<ApiResponse<void>> => {
+  return await http.post('/api/products/batch-sort', items)
 }
 
 // 获取产品的价格历史
@@ -40,6 +45,17 @@ export const getCurrentPrice = async (productId: number): Promise<ApiResponse<Pr
 // 按日期获取所有产品的价格
 export const getPricesByDate = async (date: string): Promise<ApiResponse<Price[]>> => {
   return await http.get('/api/prices/by-date', { params: { date } })
+}
+
+// 按日期获取所有产品的价格（带昨日价格和月均价，批量优化接口）
+export interface PriceWithStats {
+  price: Price
+  yesterdayPrice: Price | null
+  monthlyAveragePrice: number | null
+}
+
+export const getPricesByDateWithStats = async (date: string): Promise<ApiResponse<PriceWithStats[]>> => {
+  return await http.get('/api/prices/by-date-with-stats', { params: { date } })
 }
 
 // 获取某产品在指定日期的价格

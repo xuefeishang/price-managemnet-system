@@ -14,13 +14,9 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpecificationExecutor<Product> {
 
-    Optional<Product> findByCode(String code);
-
-    Page<Product> findByNameContainingOrCodeContaining(String name, String code, Pageable pageable);
+    Page<Product> findByNameContaining(String name, Pageable pageable);
 
     List<Product> findByStatus(Product.ProductStatus status);
-
-    boolean existsByCode(String code);
 
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 

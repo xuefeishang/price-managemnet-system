@@ -398,64 +398,6 @@ const switchTab = (tab: string) => {
   gap: 12px;
 }
 
-.btn-primary-pc {
-  padding: 12px 24px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-primary-pc:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.btn-primary-pc:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary-pc {
-  padding: 12px 24px;
-  background: #FFFFFF;
-  color: #0D6E6E;
-  border: 1px solid #0D6E6E;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-secondary-pc:hover {
-  background: rgba(13, 110, 110, 0.1);
-}
-
-.btn-outline-pc {
-  padding: 12px 24px;
-  background: #FFFFFF;
-  color: #0D6E6E;
-  border: 1px solid #0D6E6E;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-outline-pc:hover:not(:disabled) {
-  background: rgba(13, 110, 110, 0.1);
-}
-
-.btn-outline-pc:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .tips-card-pc {
   background: #FFFFFF;
   border-radius: 12px;

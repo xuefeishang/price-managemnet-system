@@ -83,7 +83,7 @@ export interface Customer {
 export interface Product {
   id: number
   name: string
-  code: string
+  sellingPrice?: number
   categoryId?: number
   category?: ProductCategory
   status: ProductStatus
@@ -93,6 +93,8 @@ export interface Product {
   originIds?: string
   customerIds?: string
   remark?: string
+  unit?: string
+  sortOrder?: number
   createdTime: string
   updatedTime: string
 }

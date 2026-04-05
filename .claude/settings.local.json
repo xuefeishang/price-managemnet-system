@@ -18,7 +18,9 @@
       "Bash(grep -rn \"schema\\\\.sql\" /e/ClaudeCodeProject/price-management-system/*.md)",
       "Bash(grep -rn \"项目启动指南\\\\|部署说明\" /e/ClaudeCodeProject/price-management-system/*.md)",
       "Bash(ls -la /e/ClaudeCodeProject/price-management-system/*.md)",
-      "Bash(grep -rn \"项目启动指南\\\\|部署说明\\\\.md\" /e/ClaudeCodeProject/price-management-system/*.md)"
+      "Bash(grep -rn \"项目启动指南\\\\|部署说明\\\\.md\" /e/ClaudeCodeProject/price-management-system/*.md)",
+      "WebFetch(domain:minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com)",
+      "Bash(rm -f \"C:/Users/Administrator/.claude/plans/misty-crunching-allen.md\")"
     ]
   }
 }

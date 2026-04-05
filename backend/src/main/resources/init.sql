@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS product_category (
 CREATE TABLE IF NOT EXISTS product (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '产品ID',
     name VARCHAR(200) NOT NULL COMMENT '产品名称',
-    code VARCHAR(100) NOT NULL UNIQUE COMMENT '产品编码',
+    selling_price DECIMAL(15, 4) COMMENT '售价',
     category_id BIGINT COMMENT '分类ID',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
     description TEXT COMMENT '产品描述',
@@ -55,13 +55,15 @@ CREATE TABLE IF NOT EXISTS product (
     origin_ids VARCHAR(500) COMMENT '产地ID列表(JSON数组)',
     customer_ids VARCHAR(500) COMMENT '客户ID列表(JSON数组)',
     remark TEXT COMMENT '备注',
+    unit VARCHAR(50) COMMENT '计量单位：元/吨、万元/吨、元/克、元/千克',
+    sort_order INT DEFAULT 0 COMMENT '排序顺序',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     FOREIGN KEY (category_id) REFERENCES product_category(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    INDEX idx_product_code (code),
     INDEX idx_product_category (category_id),
     INDEX idx_product_status (status),
-    INDEX idx_product_name (name)
+    INDEX idx_product_name (name),
+    INDEX idx_product_sort (sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产品表';
 
 -- 1.3.1 产地表
@@ -195,28 +197,28 @@ SELECT CONCAT('分类数据: ', IF(@has_category > 0, '已存在，跳过', '初
 SET @has_product = 0;
 SELECT COUNT(*) INTO @has_product FROM product;
 
-INSERT INTO product (name, code, category_id, status, specs, remark, created_time, updated_time)
+INSERT INTO product (name, category_id, status, specs, remark, created_time, updated_time)
 SELECT * FROM (
-    SELECT '硫精砂' AS name, 'SULFUR_CONCENTRATE' AS code, 4 AS category_id, 'ACTIVE' AS status, '出厂承兑，As < 0.1%' AS specs, '硫精砂产品' AS remark, NOW() AS created_time, NOW() AS updated_time
-    UNION ALL SELECT '硫酸', 'SULFURIC_ACID', 4, 'ACTIVE', '93% 出厂承兑', '硫酸产品', NOW(), NOW()
-    UNION ALL SELECT '钼精矿', 'MOLYBDENUM_CONCENTRATE', 2, 'ACTIVE', '45-50（元/吨度）；50以上（元/吨度）', '钼精矿产品', NOW(), NOW()
-    UNION ALL SELECT '电铜', 'ELECTRIC_COPPER', 2, 'ACTIVE', 'A级（元/吨）', '电铜产品', NOW(), NOW()
-    UNION ALL SELECT '金', 'GOLD', 3, 'ACTIVE', '2#（元/克）', '金产品', NOW(), NOW()
-    UNION ALL SELECT '银', 'SILVER', 3, 'ACTIVE', '3#（元/千克）', '银产品', NOW(), NOW()
-    UNION ALL SELECT '钢坯', 'STEEL_BILLET', 1, 'ACTIVE', '方坯 Q235', '钢坯产品', NOW(), NOW()
-    UNION ALL SELECT '废钢（河北纵横）', 'SCRAP_STEEL', 1, 'ACTIVE', '厚6mm，<18000mm，宽<1200mm；常规重废', '废钢产品', NOW(), NOW()
-    UNION ALL SELECT '五氧化二钒', 'VANADIUM_PENTOXIDE', 2, 'ACTIVE', '98% 片状，承兑（万元/吨）', '五氧化二钒产品', NOW(), NOW()
-    UNION ALL SELECT '镁锭', 'MAGNESIUM_INGOT', 2, 'ACTIVE', '99990（闻喜）元/吨', '镁锭产品', NOW(), NOW()
-    UNION ALL SELECT '铅锭', 'LEAD_INGOT', 2, 'ACTIVE', '1#（元/吨）', '铅锭产品', NOW(), NOW()
-    UNION ALL SELECT '锌锭', 'ZINC_INGOT', 2, 'ACTIVE', '0#（元/吨）', '锌锭产品', NOW(), NOW()
-    UNION ALL SELECT '钯金', 'PALLADIUM', 3, 'ACTIVE', '99.95（元/克）', '钯金产品', NOW(), NOW()
-    UNION ALL SELECT '铂金', 'PLATINUM', 3, 'ACTIVE', '99.95（元/克）', '铂金产品', NOW(), NOW()
-    UNION ALL SELECT '硫酸钴', 'COBALT_SULFATE', 4, 'ACTIVE', '≥20.5% 国产（万元/吨）', '硫酸钴产品', NOW(), NOW()
-    UNION ALL SELECT '碳酸锂', 'LITHIUM_CARBONATE', 4, 'ACTIVE', '电池级 99.5% 国产（万元/吨）', '碳酸锂产品', NOW(), NOW()
-    UNION ALL SELECT '钛精矿', 'TITANIUM_CONCENTRATE', 2, 'ACTIVE', '48% 不含税（元/吨）', '钛精矿产品', NOW(), NOW()
-    UNION ALL SELECT '无烟煤（一级冶金焦）', 'ANTHRACITE', 5, 'ACTIVE', 'C>85%，A<12.5%，S<0.7%，V<1.9%，HGI>50，M25<7%，M10>65%', '无烟煤产品', NOW(), NOW()
-    UNION ALL SELECT '萤石湿粉', 'FLUORITE_POWDER', 4, 'ACTIVE', '97%', '萤石湿粉产品', NOW(), NOW()
-    UNION ALL SELECT '铁精粉', 'IRON_CONCENTRATE', 1, 'ACTIVE', '66%', '铁精粉产品', NOW(), NOW()
+    SELECT '硫精砂' AS name, 4 AS category_id, 'ACTIVE' AS status, '出厂承兑，As < 0.1%' AS specs, '硫精砂产品' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT '硫酸', 4, 'ACTIVE', '93% 出厂承兑', '硫酸产品', NOW(), NOW()
+    UNION ALL SELECT '钼精矿', 2, 'ACTIVE', '45-50（元/吨度）；50以上（元/吨度）', '钼精矿产品', NOW(), NOW()
+    UNION ALL SELECT '电铜', 2, 'ACTIVE', 'A级（元/吨）', '电铜产品', NOW(), NOW()
+    UNION ALL SELECT '金', 3, 'ACTIVE', '2#（元/克）', '金产品', NOW(), NOW()
+    UNION ALL SELECT '银', 3, 'ACTIVE', '3#（元/千克）', '银产品', NOW(), NOW()
+    UNION ALL SELECT '钢坯', 1, 'ACTIVE', '方坯 Q235', '钢坯产品', NOW(), NOW()
+    UNION ALL SELECT '废钢（河北纵横）', 1, 'ACTIVE', '厚6mm，<18000mm，宽<1200mm；常规重废', '废钢产品', NOW(), NOW()
+    UNION ALL SELECT '五氧化二钒', 2, 'ACTIVE', '98% 片状，承兑（万元/吨）', '五氧化二钒产品', NOW(), NOW()
+    UNION ALL SELECT '镁锭', 2, 'ACTIVE', '99990（闻喜）元/吨', '镁锭产品', NOW(), NOW()
+    UNION ALL SELECT '铅锭', 2, 'ACTIVE', '1#（元/吨）', '铅锭产品', NOW(), NOW()
+    UNION ALL SELECT '锌锭', 2, 'ACTIVE', '0#（元/吨）', '锌锭产品', NOW(), NOW()
+    UNION ALL SELECT '钯金', 3, 'ACTIVE', '99.95（元/克）', '钯金产品', NOW(), NOW()
+    UNION ALL SELECT '铂金', 3, 'ACTIVE', '99.95（元/克）', '铂金产品', NOW(), NOW()
+    UNION ALL SELECT '硫酸钴', 4, 'ACTIVE', '≥20.5% 国产（万元/吨）', '硫酸钴产品', NOW(), NOW()
+    UNION ALL SELECT '碳酸锂', 4, 'ACTIVE', '电池级 99.5% 国产（万元/吨）', '碳酸锂产品', NOW(), NOW()
+    UNION ALL SELECT '钛精矿', 2, 'ACTIVE', '48% 不含税（元/吨）', '钛精矿产品', NOW(), NOW()
+    UNION ALL SELECT '无烟煤（一级冶金焦）', 5, 'ACTIVE', 'C>85%，A<12.5%，S<0.7%，V<1.9%，HGI>50，M25<7%，M10>65%', '无烟煤产品', NOW(), NOW()
+    UNION ALL SELECT '萤石湿粉', 4, 'ACTIVE', '97%', '萤石湿粉产品', NOW(), NOW()
+    UNION ALL SELECT '铁精粉', 1, 'ACTIVE', '66%', '铁精粉产品', NOW(), NOW()
 ) AS tmp
 WHERE @has_product = 0;
 

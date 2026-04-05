@@ -47,7 +47,7 @@ const stats = computed(() => {
 const filteredProducts = computed(() => {
   if (!searchQuery.value) return products.value.slice(0, 6)
   return products.value
-    .filter(p => p.name.includes(searchQuery.value) || p.code.includes(searchQuery.value))
+    .filter(p => p.name.includes(searchQuery.value))
     .slice(0, 6)
 })
 
@@ -212,7 +212,7 @@ onMounted(() => {
                   {{ product.status === 'ACTIVE' ? '展示' : '隐藏' }}
                 </span>
               </div>
-              <div class="product-code">{{ product.code }}</div>
+              <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
               <div class="product-price" v-if="getTodayPrice(product.id)">
                 <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
                 <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
@@ -316,7 +316,7 @@ onMounted(() => {
             >
               <div class="product-info">
                 <span class="product-name">{{ product.name }}</span>
-                <span class="product-code">{{ product.code }}</span>
+                <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
               </div>
               <div class="product-price-display" v-if="getTodayPrice(product.id)">
                 <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
@@ -426,26 +426,6 @@ onMounted(() => {
   border-color: #0D6E6E;
 }
 
-.btn-primary-pc {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 150ms;
-}
-
-.btn-primary-pc:hover {
-  background: #0D8A8A;
-}
-
 .overview-section-pc {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -480,22 +460,6 @@ onMounted(() => {
 
 .overview-card-value.danger {
   color: #EF4444;
-}
-
-.overview-card-trend {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.overview-card-trend.up {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
 }
 
 .product-section-pc {
@@ -600,13 +564,6 @@ onMounted(() => {
   color: #EF4444;
 }
 
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
-  margin-bottom: 4px;
-}
-
 .product-specs {
   font-family: 'Inter', sans-serif;
   font-size: 13px;
@@ -708,23 +665,6 @@ onMounted(() => {
 
 .date-tip svg {
   flex-shrink: 0;
-}
-
-.nav-icon-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  color: #888888;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-}
-
-.nav-icon-btn:hover {
-  background: #F5F5F5;
 }
 
 .content {
@@ -904,12 +844,6 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 500;
   color: #1A1A1A;
-}
-
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
 }
 
 .product-status {

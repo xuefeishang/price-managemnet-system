@@ -1,5 +1,6 @@
 package com.pricemanagement.controller;
 
+import com.pricemanagement.dto.MenuSortDTO;
 import com.pricemanagement.dto.MenuItemDTO;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.service.MenuItemService;
@@ -60,6 +61,13 @@ public class MenuController {
     public Result<Void> deleteMenu(@PathVariable Long id) {
         menuItemService.deleteMenu(id);
         return Result.success("删除菜单成功");
+    }
+
+    @PostMapping("/batch-sort")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Void> batchUpdateSort(@RequestBody List<MenuSortDTO> items) {
+        menuItemService.batchUpdateSort(items);
+        return Result.success("批量更新排序成功");
     }
 
     @PostMapping("/init")

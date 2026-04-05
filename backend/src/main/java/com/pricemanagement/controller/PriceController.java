@@ -1,6 +1,7 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.dto.PriceWithStatsDTO;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.Price;
 import com.pricemanagement.entity.PriceHistory;
@@ -54,6 +55,21 @@ public class PriceController {
         }
         List<Price> prices = priceService.getValidPricesByDate(date);
         return Result.success("获取价格列表成功", prices);
+    }
+
+    /**
+     * 按日期获取所有产品的价格（带昨日价格和月均价，用于价格维护优化）
+     * @param date 日期，默认为当天
+     */
+    @GetMapping("/prices/by-date-with-stats")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<List<PriceWithStatsDTO>> getPricesByDateWithStats(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        if (date == null) {
+            date = LocalDate.now();
+        }
+        List<PriceWithStatsDTO> result = priceService.getValidPricesWithStatsByDate(date);
+        return Result.success("获取价格列表成功", result);
     }
 
     /**

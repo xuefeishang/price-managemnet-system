@@ -1,24 +1,23 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
-import { getProduct, createProduct, updateProduct, getCurrentPrice, addProductPrice } from '@/api/products'
+import { getProduct, createProduct, updateProduct } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { getOrigins } from '@/api/origins'
 import { getCustomers } from '@/api/customers'
-import { usePermission, Permission } from '@/composables/usePermission'
-import type { ProductCategory, Price, Origin, Customer } from '@/types'
+import { UNIT_OPTIONS } from '@/constants/units'
+import { eventBus } from '@/utils/eventBus'
+import type { ProductCategory, Origin, Customer, ProductStatus } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
-const { hasPermission } = usePermission()
 
 const productId = route.params.id as string
 const isEdit = !!productId
 
 const loading = ref(false)
 const saving = ref(false)
-const currentPriceId = ref<number | null>(null)
 
 // 判断是否为PC布局
 const isPCLayout = computed(() => {
@@ -31,16 +30,16 @@ const isPCLayout = computed(() => {
 // 表单数据
 const form = reactive({
   name: '',
-  code: '',
   categoryId: '',
-  status: 'ACTIVE',
+  status: 'ACTIVE' as ProductStatus,
   specs: '',
   description: '',
   remark: '',
-  originalPrice: undefined as number | undefined,
-  price: undefined as number | undefined,
-  costPrice: undefined as number | undefined
+  unit: ''
 })
+
+// 计量单位选项（从共享常量引入，与后端/数据库保持一致）
+const unitOptions = UNIT_OPTIONS
 
 // 分类数据
 const categories = ref<ProductCategory[]>([])
@@ -49,9 +48,62 @@ const categories = ref<ProductCategory[]>([])
 const origins = ref<Origin[]>([])
 const customers = ref<Customer[]>([])
 
-// 选中的产地和客户（多选）
-const selectedOriginIds = ref<number[]>([])
+// 选中的产地（单选）和客户（多选）
+const selectedOriginId = ref<number | null>(null)
 const selectedCustomerIds = ref<number[]>([])
+const showCustomerDropdown = ref(false)
+const customerDropdownRef = ref<HTMLElement | null>(null)
+const formAreaRef = ref<HTMLElement | null>(null)
+const activeSection = ref('basic')
+
+// 表单分组导航
+const formSections = [
+  {
+    id: 'basic',
+    label: '基本信息',
+    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>'
+  },
+  {
+    id: 'relation',
+    label: '关联信息',
+    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+  },
+  {
+    id: 'extra',
+    label: '其他信息',
+    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+  }
+]
+
+// 辅助函数
+const getCustomerName = (id: number) => {
+  const customer = customers.value.find(c => c.id === id)
+  return customer?.name || ''
+}
+
+const removeCustomer = (id: number) => {
+  selectedCustomerIds.value = selectedCustomerIds.value.filter(cid => cid !== id)
+}
+
+// 滚动到指定分区
+const scrollToSection = (sectionId: string) => {
+  activeSection.value = sectionId
+  const el = document.getElementById(`section-${sectionId}`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+const toggleCustomerDropdown = () => {
+  showCustomerDropdown.value = !showCustomerDropdown.value
+}
+
+// 点击外部关闭下拉
+const handleClickOutside = (event: MouseEvent) => {
+  if (customerDropdownRef.value && !customerDropdownRef.value.contains(event.target as Node)) {
+    showCustomerDropdown.value = false
+  }
+}
 
 // 加载产品
 const loadProduct = async () => {
@@ -63,20 +115,21 @@ const loadProduct = async () => {
     const product = response.data
     Object.assign(form, {
       name: product.name,
-      code: product.code,
       categoryId: product.category?.id?.toString() || '',
       status: product.status,
       specs: product.specs || '',
       description: product.description || '',
-      remark: product.remark || ''
+      remark: product.remark || '',
+      unit: product.unit || ''
     })
 
-    // 解析产地和客户
+    // 解析产地（单选）和客户（多选）
     if (product.originIds) {
       try {
-        selectedOriginIds.value = JSON.parse(product.originIds)
+        const ids = JSON.parse(product.originIds)
+        selectedOriginId.value = ids.length > 0 ? ids[0] : null
       } catch (e) {
-        selectedOriginIds.value = []
+        selectedOriginId.value = null
       }
     }
     if (product.customerIds) {
@@ -85,16 +138,6 @@ const loadProduct = async () => {
       } catch (e) {
         selectedCustomerIds.value = []
       }
-    }
-
-    // 获取当前价格
-    const priceResponse = await getCurrentPrice(parseInt(productId))
-    if (priceResponse.data) {
-      const price = priceResponse.data as Price
-      currentPriceId.value = price.id
-      form.originalPrice = price.originalPrice
-      form.price = price.currentPrice
-      form.costPrice = price.costPrice
     }
   } catch (error) {
     console.error('Failed to load product:', error)
@@ -127,14 +170,41 @@ const loadOriginsAndCustomers = async () => {
   }
 }
 
+// 浮动按钮 & 侧边导航：滚动检测
+const showFloatingBar = ref(false)
+let scrollTimer: ReturnType<typeof setTimeout> | null = null
+
+const handleScroll = () => {
+  // 浮动按钮：距底部判断
+  const scrollTop = window.scrollY || document.documentElement.scrollTop
+  const scrollHeight = document.documentElement.scrollHeight
+  const clientHeight = window.innerHeight
+  const distanceToBottom = scrollHeight - scrollTop - clientHeight
+  showFloatingBar.value = distanceToBottom > 80
+
+  // 侧边导航：自动选中当前可见分区（节流）
+  if (!scrollTimer) {
+    scrollTimer = setTimeout(() => {
+      scrollTimer = null
+      const sectionIds = formSections.map(s => s.id)
+      for (let i = sectionIds.length - 1; i >= 0; i--) {
+        const el = document.getElementById(`section-${sectionIds[i]}`)
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          if (rect.top <= 120) {
+            activeSection.value = sectionIds[i]
+            break
+          }
+        }
+      }
+    }, 80)
+  }
+}
+
 // 保存
 const handleSave = async () => {
   if (!form.name.trim()) {
     showToast('请输入产品名称')
-    return
-  }
-  if (!form.code.trim()) {
-    showToast('请输入产品编码')
     return
   }
 
@@ -142,38 +212,25 @@ const handleSave = async () => {
   try {
     const productData = {
       name: form.name,
-      code: form.code,
-      categoryId: form.categoryId ? parseInt(form.categoryId) : null,
-      status: form.status,
+      categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
+      status: form.status as ProductStatus,
       specs: form.specs,
       description: form.description,
       remark: form.remark,
-      originIds: JSON.stringify(selectedOriginIds.value),
-      customerIds: JSON.stringify(selectedCustomerIds.value)
+      unit: form.unit || undefined,
+      originIds: selectedOriginId.value ? JSON.stringify([selectedOriginId.value]) : undefined,
+      customerIds: selectedCustomerIds.value.length > 0 ? JSON.stringify(selectedCustomerIds.value) : undefined
     }
-
-    let savedProductId: number
 
     if (isEdit) {
-      const response = await updateProduct(parseInt(productId), productData)
-      savedProductId = parseInt(productId)
+      await updateProduct(parseInt(productId), productData)
     } else {
-      const response = await createProduct(productData)
-      savedProductId = response.data.id
-    }
-
-    // 如果填写了价格信息，保存价格
-    if (form.price !== undefined && form.price !== null) {
-      const priceData: Partial<Price> = {
-        currentPrice: form.price,
-        originalPrice: form.originalPrice,
-        costPrice: form.costPrice
-      }
-      await addProductPrice(savedProductId, priceData as Price)
+      await createProduct(productData)
     }
 
     showToast(isEdit ? '产品更新成功' : '产品创建成功')
-    router.push('/products')
+    eventBus.emit('product-updated', productId ? parseInt(productId) : null)
+    await router.push('/products')
   } catch (error: any) {
     console.error('Failed to save product:', error)
     showToast(error?.message || '保存失败')
@@ -191,13 +248,22 @@ onMounted(() => {
   loadCategories()
   loadOriginsAndCustomers()
   loadProduct()
+  document.addEventListener('click', handleClickOutside)
+  window.addEventListener('scroll', handleScroll, { passive: true })
+  nextTick(() => handleScroll())
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleScroll)
+  if (scrollTimer) clearTimeout(scrollTimer)
 })
 </script>
 
 <template>
   <div class="product-edit-page">
     <!-- ==================== PC布局 ==================== -->
-    <template v-if="isPCLayout">
+    <div v-if="isPCLayout">
       <div class="pc-edit">
         <!-- 页面标题区 -->
         <div class="pc-header">
@@ -209,244 +275,236 @@ onMounted(() => {
             </button>
             <div class="header-text">
               <h1 class="page-title-pc">{{ isEdit ? '编辑产品' : '新建产品' }}</h1>
-              <p class="page-subtitle">{{ isEdit ? '修改产品信息与价格' : '创建新产品并设置初始价格' }}</p>
+              <p class="page-subtitle">{{ isEdit ? '修改产品信息' : '创建新产品' }}</p>
             </div>
           </div>
         </div>
 
-        <!-- 表单内容 -->
-        <div class="pc-content" v-if="!loading">
-          <!-- 基本信息卡片 -->
-          <div class="form-card">
-            <div class="card-header">
-              <div class="card-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                </svg>
-              </div>
-              <span class="card-title">基本信息</span>
-            </div>
+        <!-- 主体：左侧导航 + 右侧表单 -->
+        <div class="pc-body" v-if="!loading">
+          <!-- 左侧导航栏 -->
+          <aside class="pc-sidebar">
+            <nav class="sidebar-nav">
+              <a
+                v-for="section in formSections"
+                :key="section.id"
+                class="nav-item"
+                :class="{ active: activeSection === section.id }"
+                href="javascript:void(0)"
+                @click="scrollToSection(section.id)"
+              >
+                <div class="nav-icon" v-html="section.icon"></div>
+                <span class="nav-label">{{ section.label }}</span>
+              </a>
+            </nav>
+          </aside>
 
-            <div class="form-grid">
-              <div class="form-group">
-                <label class="form-label">
-                  产品名称
-                  <span class="required">*</span>
-                </label>
-                <input
-                  v-model="form.name"
-                  type="text"
-                  class="form-input"
-                  placeholder="请输入产品名称"
-                />
-              </div>
+          <!-- 右侧表单区域 -->
+          <div class="pc-form-area" ref="formAreaRef">
+            <!-- 基本信息 -->
+            <div class="form-section" id="section-basic">
+              <div class="form-card">
+                <div class="card-header">
+                  <div class="card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    </svg>
+                  </div>
+                  <span class="card-title">基本信息</span>
+                </div>
 
-              <div class="form-group">
-                <label class="form-label">
-                  产品编码
-                  <span class="required">*</span>
-                </label>
-                <input
-                  v-model="form.code"
-                  type="text"
-                  class="form-input"
-                  placeholder="请输入产品编码"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">产品分类</label>
-                <select v-model="form.categoryId" class="form-select">
-                  <option value="">请选择分类</option>
-                  <option v-for="category in categories" :key="category.id" :value="category.id">
-                    {{ category.name }}
-                  </option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">产品规格</label>
-                <input
-                  v-model="form.specs"
-                  type="text"
-                  class="form-input"
-                  placeholder="如：500g/袋"
-                />
-              </div>
-            </div>
-
-            <!-- 产地多选 -->
-            <div class="form-row-full" v-if="origins.length > 0">
-              <div class="form-group">
-                <label class="form-label">产地</label>
-                <div class="checkbox-group">
-                  <label
-                    v-for="origin in origins"
-                    :key="origin.id"
-                    class="checkbox-label"
-                  >
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label class="form-label">
+                      产品名称
+                      <span class="required">*</span>
+                    </label>
                     <input
-                      type="checkbox"
-                      :value="origin.id"
-                      v-model="selectedOriginIds"
-                    />
-                    <span class="checkbox-text">{{ origin.name }}</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <!-- 客户多选 -->
-            <div class="form-row-full" v-if="customers.length > 0">
-              <div class="form-group">
-                <label class="form-label">客户</label>
-                <div class="checkbox-group">
-                  <label
-                    v-for="customer in customers"
-                    :key="customer.id"
-                    class="checkbox-label"
-                  >
-                    <input
-                      type="checkbox"
-                      :value="customer.id"
-                      v-model="selectedCustomerIds"
-                    />
-                    <span class="checkbox-text">{{ customer.name }}</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-row-full">
-              <div class="form-group">
-                <label class="form-label">产品描述</label>
-                <textarea
-                  v-model="form.description"
-                  class="form-textarea"
-                  placeholder="请输入产品描述"
-                  rows="2"
-                ></textarea>
-              </div>
-            </div>
-
-            <div class="form-row-full">
-              <div class="form-group">
-                <label class="form-label">显示状态</label>
-                <div class="status-toggle">
-                  <button
-                    class="status-btn"
-                    :class="{ active: form.status === 'ACTIVE' }"
-                    @click="form.status = 'ACTIVE'"
-                  >
-                    <span class="status-dot active"></span>
-                    启用
-                  </button>
-                  <button
-                    class="status-btn"
-                    :class="{ active: form.status === 'INACTIVE' }"
-                    @click="form.status = 'INACTIVE'"
-                  >
-                    <span class="status-dot inactive"></span>
-                    停用
-                  </button>
-                </div>
-                <span class="status-hint">控制产品是否在首页价格列表中显示</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 价格设置卡片 -->
-          <div class="form-card">
-            <div class="card-header">
-              <div class="card-icon price-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="1" x2="12" y2="23"/>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                </svg>
-              </div>
-              <span class="card-title">价格设置</span>
-            </div>
-
-            <div class="price-grid">
-              <div class="price-main">
-                <label class="form-label">当前售价</label>
-                <div class="price-input-large">
-                  <span class="price-unit">¥</span>
-                  <input
-                    v-model.number="form.price"
-                    type="number"
-                    class="price-input"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div class="price-secondary">
-                <div class="form-group">
-                  <label class="form-label">原价（划线价）</label>
-                  <div class="price-input-wrapper">
-                    <span class="price-unit">¥</span>
-                    <input
-                      v-model.number="form.originalPrice"
-                      type="number"
+                      v-model="form.name"
+                      type="text"
                       class="form-input"
-                      placeholder="0.00"
+                      placeholder="请输入产品名称"
                     />
                   </div>
-                </div>
 
-                <div class="form-group">
-                  <label class="form-label">成本价</label>
-                  <div class="price-input-wrapper">
-                    <span class="price-unit">¥</span>
+                  <div class="form-group">
+                    <label class="form-label">产品分类</label>
+                    <select v-model="form.categoryId" class="form-select">
+                      <option value="">请选择分类</option>
+                      <option v-for="category in categories" :key="category.id" :value="category.id">
+                        {{ category.name }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">产品规格</label>
                     <input
-                      v-model.number="form.costPrice"
-                      type="number"
+                      v-model="form.specs"
+                      type="text"
                       class="form-input"
-                      placeholder="0.00"
+                      placeholder="如：500g/袋"
                     />
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">计量单位</label>
+                    <select v-model="form.unit" class="form-select">
+                      <option value="">请选择计量单位</option>
+                      <option v-for="opt in unitOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">显示状态</label>
+                    <div class="status-toggle inline">
+                      <button
+                        class="status-btn"
+                        :class="{ active: form.status === 'ACTIVE' }"
+                        @click="form.status = 'ACTIVE'"
+                      >
+                        <span class="status-dot active"></span>
+                        启用
+                      </button>
+                      <button
+                        class="status-btn"
+                        :class="{ active: form.status === 'INACTIVE' }"
+                        @click="form.status = 'INACTIVE'"
+                      >
+                        <span class="status-dot inactive"></span>
+                        停用
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="price-hint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
-              </svg>
-              <span>价格信息为可选填写项，可在创建产品后单独添加</span>
-            </div>
-          </div>
+            <!-- 关联信息 -->
+            <div class="form-section" id="section-relation">
+              <div class="form-card">
+                <div class="card-header">
+                  <div class="card-icon relation-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                  </div>
+                  <span class="card-title">关联信息</span>
+                </div>
 
-          <!-- 备注卡片 -->
-          <div class="form-card">
-            <div class="card-header">
-              <div class="card-icon remark-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
+                <div class="form-grid two-col">
+                  <div class="form-group">
+                    <label class="form-label">产地</label>
+                    <select v-model="selectedOriginId" class="form-select">
+                      <option :value="null">请选择产地</option>
+                      <option v-for="origin in origins" :key="origin.id" :value="origin.id">
+                        {{ origin.name }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-group" v-if="customers.length > 0">
+                    <label class="form-label">客户信息</label>
+                    <div class="multi-select-dropdown pc" ref="customerDropdownRef">
+                      <div class="multi-select-trigger" @click="toggleCustomerDropdown">
+                        <span class="multi-select-placeholder" v-if="selectedCustomerIds.length === 0">请选择客户（可多选）</span>
+                        <span class="multi-select-tags" v-else>
+                          <span
+                            v-for="id in selectedCustomerIds"
+                            :key="id"
+                            class="multi-select-tag"
+                          >
+                            {{ getCustomerName(id) }}
+                            <span class="tag-remove" @click.stop="removeCustomer(id)">×</span>
+                          </span>
+                        </span>
+                        <svg class="dropdown-arrow" :class="{ open: showCustomerDropdown }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+                      <div class="multi-select-panel" v-if="showCustomerDropdown">
+                        <label
+                          v-for="customer in customers"
+                          :key="customer.id"
+                          class="multi-select-option"
+                          :class="{ selected: selectedCustomerIds.includes(customer.id) }"
+                        >
+                          <input
+                            type="checkbox"
+                            :value="customer.id"
+                            v-model="selectedCustomerIds"
+                            @click.stop
+                          />
+                          <span>{{ customer.name }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                  <label class="form-label">产品描述</label>
+                  <textarea
+                    v-model="form.description"
+                    class="form-textarea"
+                    placeholder="请输入产品描述"
+                    rows="4"
+                  ></textarea>
+                </div>
               </div>
-              <span class="card-title">备注说明</span>
             </div>
 
-            <div class="form-group">
-              <textarea
-                v-model="form.remark"
-                class="form-textarea"
-                placeholder="请输入备注信息（可选）"
-                rows="3"
-              ></textarea>
+            <!-- 其他信息 -->
+            <div class="form-section" id="section-extra">
+              <div class="form-card">
+                <div class="card-header">
+                  <div class="card-icon extra-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </div>
+                  <span class="card-title">其他信息</span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">备注说明</label>
+                    <textarea
+                      v-model="form.remark"
+                      class="form-textarea"
+                      placeholder="请输入备注信息（可选）"
+                      rows="4"
+                    ></textarea>
+                  </div>
+
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- 操作按钮 -->
-          <div class="form-actions">
-            <button class="btn-cancel" @click="goBack">
-              取消
-            </button>
+        <!-- 底部操作栏（原始位置） -->
+        <div class="pc-actions-bar" v-if="!loading">
+          <button class="btn-cancel" @click="goBack">取消</button>
+          <button class="btn-save" @click="handleSave" :disabled="saving">
+            <svg v-if="!saving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            <span v-if="saving" class="btn-spinner"></span>
+            {{ saving ? '保存中...' : '保存产品' }}
+          </button>
+        </div>
+
+        <!-- 浮动操作栏（未滑到底部时显示） -->
+        <transition name="float-fade">
+          <div class="pc-float-bar" v-if="!loading && showFloatingBar">
+            <button class="btn-cancel" @click="goBack">取消</button>
             <button class="btn-save" @click="handleSave" :disabled="saving">
               <svg v-if="!saving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -457,17 +515,17 @@ onMounted(() => {
               {{ saving ? '保存中...' : '保存产品' }}
             </button>
           </div>
-        </div>
+        </transition>
 
-        <div class="loading-state" v-else>
+        <div class="loading-state" v-if="loading">
           <div class="loading-spinner"></div>
           <span>加载中...</span>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- ==================== 移动端布局 ==================== -->
-    <template v-else>
+    <div v-else>
       <!-- 顶部导航栏 -->
       <header class="navbar">
         <div class="navbar-left">
@@ -485,7 +543,7 @@ onMounted(() => {
 
       <!-- 主内容区 -->
       <main class="content" v-if="!loading">
-        <!-- 产品信息卡片 -->
+        <!-- 基本信息卡片 -->
         <div class="form-card">
           <div class="card-header">
             <div class="card-icon">
@@ -510,19 +568,6 @@ onMounted(() => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">
-              产品编码
-              <span class="required">*</span>
-            </label>
-            <input
-              v-model="form.code"
-              type="text"
-              class="form-input"
-              placeholder="请输入产品编码"
-            />
-          </div>
-
-          <div class="form-group">
             <label class="form-label">产品分类</label>
             <select v-model="form.categoryId" class="form-select">
               <option value="">请选择分类</option>
@@ -542,52 +587,14 @@ onMounted(() => {
             />
           </div>
 
-          <!-- 产地多选 -->
-          <div class="form-group" v-if="origins.length > 0">
-            <label class="form-label">产地</label>
-            <div class="checkbox-group">
-              <label
-                v-for="origin in origins"
-                :key="origin.id"
-                class="checkbox-label"
-              >
-                <input
-                  type="checkbox"
-                  :value="origin.id"
-                  v-model="selectedOriginIds"
-                />
-                <span class="checkbox-text">{{ origin.name }}</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- 客户多选 -->
-          <div class="form-group" v-if="customers.length > 0">
-            <label class="form-label">客户</label>
-            <div class="checkbox-group">
-              <label
-                v-for="customer in customers"
-                :key="customer.id"
-                class="checkbox-label"
-              >
-                <input
-                  type="checkbox"
-                  :value="customer.id"
-                  v-model="selectedCustomerIds"
-                />
-                <span class="checkbox-text">{{ customer.name }}</span>
-              </label>
-            </div>
-          </div>
-
           <div class="form-group">
-            <label class="form-label">产品描述</label>
-            <textarea
-              v-model="form.description"
-              class="form-textarea"
-              placeholder="请输入产品描述"
-              rows="3"
-            ></textarea>
+            <label class="form-label">计量单位</label>
+            <select v-model="form.unit" class="form-select">
+              <option value="">请选择计量单位</option>
+              <option v-for="opt in unitOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -613,78 +620,101 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 价格信息卡片 -->
+        <!-- 关联信息卡片 -->
         <div class="form-card">
           <div class="card-header">
-            <div class="card-icon price-icon">
+            <div class="card-icon relation-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="1" x2="12" y2="23"/>
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
             </div>
-            <span class="card-title">价格设置</span>
+            <span class="card-title">关联信息</span>
           </div>
 
+          <!-- 产地单选 -->
+          <div class="form-group" v-if="origins.length > 0">
+            <label class="form-label">产地</label>
+            <select v-model="selectedOriginId" class="form-select">
+              <option :value="null">请选择产地</option>
+              <option v-for="origin in origins" :key="origin.id" :value="origin.id">
+                {{ origin.name }}
+              </option>
+            </select>
+          </div>
+
+          <!-- 客户多选下拉 -->
+          <div class="form-group" v-if="customers.length > 0">
+            <label class="form-label">客户信息</label>
+            <div class="multi-select-dropdown mobile" ref="customerDropdownRef">
+              <div class="multi-select-trigger" @click="toggleCustomerDropdown">
+                <span class="multi-select-placeholder" v-if="selectedCustomerIds.length === 0">请选择客户</span>
+                <span class="multi-select-tags" v-else>
+                  <span
+                    v-for="id in selectedCustomerIds"
+                    :key="id"
+                    class="multi-select-tag"
+                  >
+                    {{ getCustomerName(id) }}
+                    <span class="tag-remove" @click.stop="removeCustomer(id)">×</span>
+                  </span>
+                </span>
+                <svg class="dropdown-arrow" :class="{ open: showCustomerDropdown }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+              <div class="multi-select-panel" v-if="showCustomerDropdown">
+                <label
+                  v-for="customer in customers"
+                  :key="customer.id"
+                  class="multi-select-option"
+                  :class="{ selected: selectedCustomerIds.includes(customer.id) }"
+                >
+                  <input
+                    type="checkbox"
+                    :value="customer.id"
+                    v-model="selectedCustomerIds"
+                    @click.stop
+                  />
+                  <span>{{ customer.name }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 产品描述 -->
           <div class="form-group">
-            <label class="form-label">当前售价</label>
-            <div class="price-input-wrapper">
-              <span class="price-unit">¥</span>
-              <input
-                v-model.number="form.price"
-                type="number"
-                class="price-input"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">原价</label>
-              <div class="price-input-wrapper small">
-                <span class="price-unit">¥</span>
-                <input
-                  v-model.number="form.originalPrice"
-                  type="number"
-                  class="form-input"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">成本价</label>
-              <div class="price-input-wrapper small">
-                <span class="price-unit">¥</span>
-                <input
-                  v-model.number="form.costPrice"
-                  type="number"
-                  class="form-input"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
+            <label class="form-label">产品描述</label>
+            <textarea
+              v-model="form.description"
+              class="form-textarea"
+              placeholder="请输入产品描述"
+              rows="3"
+            ></textarea>
           </div>
         </div>
 
-        <!-- 备注卡片 -->
+        <!-- 其他信息卡片 -->
         <div class="form-card">
           <div class="card-header">
-            <div class="card-icon remark-icon">
+            <div class="card-icon extra-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </div>
-            <span class="card-title">备注说明</span>
+            <span class="card-title">其他信息</span>
           </div>
 
           <div class="form-group">
+            <label class="form-label">备注说明</label>
             <textarea
               v-model="form.remark"
               class="form-textarea"
               placeholder="请输入备注信息（可选）"
-              rows="4"
+              rows="3"
             ></textarea>
           </div>
         </div>
@@ -695,7 +725,7 @@ onMounted(() => {
         <div class="loading-spinner"></div>
         <span>加载中...</span>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -703,19 +733,20 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .product-edit-page {
-  min-height: 100vh;
   background-color: #F5F5F5;
 }
 
 /* ==================== PC布局 ==================== */
 .pc-edit {
-  padding: 32px;
-  max-width: 900px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 100%;
 }
 
 .pc-header {
-  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #E5E5E5;
 }
 
 .header-content {
@@ -751,7 +782,7 @@ onMounted(() => {
 
 .page-title-pc {
   font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -764,17 +795,92 @@ onMounted(() => {
   margin: 0;
 }
 
-.pc-content {
+/* 主体分栏布局 */
+.pc-body {
+  flex: 1;
+  display: flex;
+  gap: 24px;
+}
+
+/* 左侧导航栏 */
+.pc-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 24px;
+  align-self: flex-start;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: #666666;
+  cursor: pointer;
+  transition: all 150ms;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.nav-item:hover {
+  background: rgba(13, 110, 110, 0.06);
+  color: #374151;
+}
+
+.nav-item.active {
+  background: rgba(13, 110, 110, 0.08);
+  color: #0D6E6E;
+  border-color: rgba(13, 110, 110, 0.15);
+  font-weight: 500;
+}
+
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-icon :deep(svg) {
+  width: 16px;
+  height: 16px;
+}
+
+.nav-label {
+  white-space: nowrap;
+}
+
+/* 右侧表单区域 */
+.pc-form-area {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
+}
+
+/* 分区滚动定位：避免被 Layout 的 sub-navbar(48px) 遮挡 */
+.form-section {
+  scroll-margin-top: 64px;
 }
 
 /* 卡片样式 */
 .form-card {
   background: #FFFFFF;
   border-radius: 12px;
-  padding: 24px;
+  padding: 28px 32px;
   border: 1px solid #E5E5E5;
 }
 
@@ -782,7 +888,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   padding-bottom: 16px;
   border-bottom: 1px solid #F3F4F6;
 }
@@ -798,16 +904,6 @@ onMounted(() => {
   justify-content: center;
 }
 
-.card-icon.price-icon {
-  background: rgba(245, 158, 11, 0.1);
-  color: #F59E0B;
-}
-
-.card-icon.remark-icon {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6B7280;
-}
-
 .card-title {
   font-family: 'Inter', sans-serif;
   font-size: 15px;
@@ -818,17 +914,13 @@ onMounted(() => {
 /* 表单网格 */
 .form-grid {
   display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.form-grid.two-col {
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.form-row-full {
-  margin-bottom: 16px;
-}
-
-.form-row-full:last-child {
-  margin-bottom: 0;
 }
 
 .form-group {
@@ -838,10 +930,10 @@ onMounted(() => {
 .form-label {
   display: block;
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #374151;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .required {
@@ -895,7 +987,10 @@ onMounted(() => {
 .status-toggle {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+}
+
+.status-toggle.inline {
+  margin-bottom: 0;
 }
 
 .status-btn {
@@ -938,152 +1033,167 @@ onMounted(() => {
   background: #EF4444;
 }
 
-/* 多选框组 */
-.checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+/* 移动端多选下拉 */
+.multi-select-dropdown {
+  position: relative;
+  width: 100%;
 }
 
-.checkbox-label {
+.multi-select-dropdown.pc .multi-select-trigger {
+  min-height: 40px;
+}
+
+.multi-select-dropdown.pc .multi-select-panel {
+  max-height: 240px;
+}
+
+.multi-select-trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  background: #FFFFFF;
   cursor: pointer;
+  min-height: 42px;
+  gap: 8px;
 }
 
-.checkbox-label input[type="checkbox"] {
+.multi-select-trigger:hover {
+  border-color: #D1D5DB;
+}
+
+.multi-select-placeholder {
+  color: #9CA3AF;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+.multi-select-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.multi-select-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(13, 110, 110, 0.1);
+  color: #0D6E6E;
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+.tag-remove {
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #0D6E6E;
+}
+
+.tag-remove:hover {
+  color: #EF4444;
+}
+
+.dropdown-arrow {
+  color: #6B7280;
+  transition: transform 200ms;
+  flex-shrink: 0;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.multi-select-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: #1A1A1A;
+}
+
+.multi-select-option:hover {
+  background: #F5F5F5;
+}
+
+.multi-select-option.selected {
+  background: rgba(13, 110, 110, 0.05);
+  color: #0D6E6E;
+}
+
+.multi-select-option input[type="checkbox"] {
   width: 16px;
   height: 16px;
   cursor: pointer;
   accent-color: #0D6E6E;
 }
 
-.checkbox-text {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  color: #1A1A1A;
+/* 移动端多选下拉 */
+.multi-select-dropdown.mobile .multi-select-panel {
+  max-height: 250px;
 }
 
-.status-hint {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: #9CA3AF;
-}
-
-/* 价格网格 */
-.price-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 16px;
-}
-
-.price-main {
-  padding: 20px;
-  background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
-  border-radius: 10px;
-}
-
-.price-main .form-label {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
-}
-
-.price-input-large {
+/* 底部操作栏（原始位置） */
+.pc-actions-bar {
+  margin-top: auto;
   display: flex;
-  align-items: center;
-  background: #FFFFFF;
-  border-radius: 8px;
-  overflow: hidden;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 0 4px;
 }
 
-.price-unit {
-  padding: 12px 0 12px 14px;
-  color: #0D6E6E;
-  font-weight: 600;
-  font-size: 18px;
-}
-
-.price-input {
-  flex: 1;
-  padding: 12px 14px 12px 4px;
-  border: none;
-  background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 28px;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.price-input:focus {
-  outline: none;
-}
-
-.price-input::placeholder {
-  color: #D1D5DB;
-  font-weight: 400;
-}
-
-.price-secondary {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.price-secondary .form-group {
-  margin-bottom: 0;
-}
-
-.price-input-wrapper {
-  display: flex;
-  align-items: center;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.price-input-wrapper .price-unit {
-  padding: 10px 0 10px 12px;
-  color: #6B7280;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.price-input-wrapper .form-input {
-  padding: 10px 12px 10px 4px;
-  border: none;
-  background: transparent;
-  font-size: 15px;
-}
-
-.price-input-wrapper .form-input:focus {
-  box-shadow: none;
-}
-
-.price-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  background: #F9FAFB;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: #6B7280;
-}
-
-/* 操作按钮 */
-.form-actions {
+/* 浮动操作栏（未滑到底部时显示） */
+.pc-float-bar {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
-  padding-top: 8px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 10px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.float-fade-enter-active,
+.float-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.float-fade-enter-from,
+.float-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
 }
 
 .btn-save {
-  padding: 12px 24px;
+  padding: 12px 32px;
+  min-width: 120px;
   background: #0D6E6E;
   color: #FFFFFF;
   border: none;
@@ -1241,11 +1351,10 @@ onMounted(() => {
 
 .content {
   flex: 1;
-  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 100px;
+  padding: 16px 16px 100px;
 }
 
 .form-card {
@@ -1275,16 +1384,6 @@ onMounted(() => {
   justify-content: center;
 }
 
-.card-icon.price-icon {
-  background: rgba(245, 158, 11, 0.1);
-  color: #F59E0B;
-}
-
-.card-icon.remark-icon {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6B7280;
-}
-
 .card-title {
   font-family: 'Inter', sans-serif;
   font-size: 14px;
@@ -1303,10 +1402,10 @@ onMounted(() => {
 .form-label {
   display: block;
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #374151;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .required {
@@ -1356,12 +1455,6 @@ onMounted(() => {
   min-height: 80px;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 /* 状态切换 */
 .status-toggle {
   display: flex;
@@ -1405,47 +1498,6 @@ onMounted(() => {
   background: #EF4444;
 }
 
-/* 价格输入 */
-.price-input-wrapper {
-  display: flex;
-  align-items: center;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.price-input-wrapper.small {
-  width: 100%;
-}
-
-.price-unit {
-  padding: 10px 0 10px 12px;
-  color: #6B7280;
-  font-weight: 500;
-  font-size: 14px;
-}
-
-.price-input {
-  flex: 1;
-  padding: 10px 12px;
-  border: none;
-  background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.price-input:focus {
-  outline: none;
-}
-
-.price-input::placeholder {
-  color: #D1D5DB;
-  font-weight: 400;
-}
-
 @media (max-width: 480px) {
   .content {
     padding: 12px;
@@ -1456,9 +1508,9 @@ onMounted(() => {
     border-radius: 10px;
   }
 
-  .form-row {
-    grid-template-columns: 1fr;
-    gap: 14px;
+  .form-label {
+    font-size: 13px;
+    margin-bottom: 6px;
   }
 }
 </style>

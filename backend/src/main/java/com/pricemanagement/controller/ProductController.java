@@ -13,6 +13,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -54,15 +56,15 @@ public class ProductController {
             Product savedProduct = productService.createProduct(product, userId);
             if ("PENDING_APPROVAL".equals(savedProduct.getRemark())) {
                 operationLogHelper.logSuccess("产品管理", OperationLog.OperationType.CREATE,
-                        "创建产品待审批", "产品编码：" + product.getCode());
+                        "创建产品待审批", "产品名称：" + product.getName());
                 return Result.success("产品已提交，等待审批", savedProduct);
             }
             operationLogHelper.logSuccess("产品管理", OperationLog.OperationType.CREATE,
-                    "创建产品：" + savedProduct.getName(), "产品编码：" + savedProduct.getCode());
+                    "创建产品：" + savedProduct.getName(), "产品名称：" + savedProduct.getName());
             return Result.success("创建产品成功", savedProduct);
         } catch (IllegalArgumentException e) {
             operationLogHelper.logError("产品管理", OperationLog.OperationType.CREATE,
-                    "创建产品失败", product.getCode(), e.getMessage());
+                    "创建产品失败", product.getName(), e.getMessage());
             return Result.error(400, e.getMessage());
         }
     }
@@ -99,6 +101,21 @@ public class ProductController {
             operationLogHelper.logError("产品管理", OperationLog.OperationType.DELETE,
                     "删除产品失败", "产品ID：" + id, e.getMessage());
             return Result.error(404, e.getMessage());
+        }
+    }
+
+    @PostMapping("/batch-sort")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public Result<Void> batchUpdateSort(@RequestBody List<Map<String, Object>> items) {
+        try {
+            productService.batchUpdateSort(items);
+            operationLogHelper.logSuccess("产品管理", OperationLog.OperationType.UPDATE,
+                    "批量更新产品排序", "数量：" + items.size());
+            return Result.success("批量更新排序成功");
+        } catch (Exception e) {
+            operationLogHelper.logError("产品管理", OperationLog.OperationType.UPDATE,
+                    "批量更新排序失败", "", e.getMessage());
+            return Result.error(500, "批量更新排序失败: " + e.getMessage());
         }
     }
 }

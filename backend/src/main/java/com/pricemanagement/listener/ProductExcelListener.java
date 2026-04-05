@@ -59,7 +59,6 @@ public class ProductExcelListener implements ReadListener<ProductExcelData> {
 
                 // 创建产品
                 Product product = new Product();
-                product.setCode(excelData.getCode());
                 product.setName(excelData.getName());
                 product.setCategory(category);
                 product.setSpecs(excelData.getSpecs());

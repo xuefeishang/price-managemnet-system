@@ -308,43 +308,6 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.btn-save-pc {
-  padding: 12px 24px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-save-pc:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.btn-save-pc:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-cancel-pc {
-  padding: 12px 24px;
-  background: #FFFFFF;
-  color: #666666;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-cancel-pc:hover {
-  background: #F5F5F5;
-}
-
 /* ==================== 移动端布局 ==================== */
 .category-edit-page {
   display: flex;

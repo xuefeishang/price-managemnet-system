@@ -13,7 +13,7 @@ export const getOrigin = async (id: number): Promise<ApiResponse<Origin>> => {
 }
 
 // 创建产地
-export const createOrigin = async (data: Origin): Promise<ApiResponse<Origin>> => {
+export const createOrigin = async (data: Omit<Origin, 'id' | 'createdTime' | 'updatedTime'>): Promise<ApiResponse<Origin>> => {
   return await http.post('/api/origins', data)
 }
 

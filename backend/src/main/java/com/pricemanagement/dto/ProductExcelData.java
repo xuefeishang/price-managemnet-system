@@ -11,9 +11,6 @@ import java.math.BigDecimal;
 @ColumnWidth(20)
 public class ProductExcelData {
 
-    @ExcelProperty("产品编码")
-    private String code;
-
     @ExcelProperty("产品名称")
     private String name;
 

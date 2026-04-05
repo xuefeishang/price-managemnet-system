@@ -44,7 +44,7 @@ public class ProductService {
 
         // 优先按关键字搜索
         if (keyword != null && !keyword.isBlank()) {
-            Page<Product> products = productRepository.findByNameContainingOrCodeContaining(keyword, keyword, pageable);
+            Page<Product> products = productRepository.findByNameContaining(keyword, pageable);
             log.debug("Found {} products matching keyword: {}", products.getTotalElements(), keyword);
             return products;
         }
@@ -68,10 +68,6 @@ public class ProductService {
         return productRepository.findById(id);
     }
 
-    public Optional<Product> getProductByCode(String code) {
-        return productRepository.findByCode(code);
-    }
-
     public List<Product> getActiveProducts() {
         return productRepository.findByStatus(Product.ProductStatus.ACTIVE);
     }
@@ -85,9 +81,6 @@ public class ProductService {
 
     @Transactional
     public Product createProduct(Product product, Long applicantId) {
-        if (productRepository.existsByCode(product.getCode())) {
-            throw new IllegalArgumentException("产品编码已存在: " + product.getCode());
-        }
         // 处理分类ID转换
         if (product.getCategoryId() != null) {
             ProductCategory category = categoryRepository.findById(product.getCategoryId())
@@ -107,7 +100,6 @@ public class ProductService {
 
             // 序列化变更数据
             Map<String, Object> changeData = new HashMap<>();
-            changeData.put("code", product.getCode());
             changeData.put("name", product.getName());
             changeData.put("categoryId", product.getCategoryId());
             changeData.put("status", product.getStatus() != null ? product.getStatus().name() : "ACTIVE");
@@ -155,11 +147,8 @@ public class ProductService {
         if (product.getName() != null) {
             existingProduct.setName(product.getName());
         }
-        if (product.getCode() != null && !product.getCode().equals(existingProduct.getCode())) {
-            if (productRepository.existsByCode(product.getCode())) {
-                throw new IllegalArgumentException("产品编码已存在: " + product.getCode());
-            }
-            existingProduct.setCode(product.getCode());
+        if (product.getSellingPrice() != null) {
+            existingProduct.setSellingPrice(product.getSellingPrice());
         }
         // 优先使用categoryId转换，其次使用category对象
         if (product.getCategoryId() != null) {
@@ -190,6 +179,9 @@ public class ProductService {
         if (product.getRemark() != null) {
             existingProduct.setRemark(product.getRemark());
         }
+        if (product.getUnit() != null) {
+            existingProduct.setUnit(product.getUnit());
+        }
 
         Product savedProduct = productRepository.save(existingProduct);
         log.info("Updated product: {}", savedProduct.getName());
@@ -205,8 +197,17 @@ public class ProductService {
         log.info("Deleted product with id: {}", id);
     }
 
-    public boolean existsByCode(String code) {
-        return productRepository.existsByCode(code);
+    @Transactional
+    public void batchUpdateSort(List<java.util.Map<String, Object>> items) {
+        for (java.util.Map<String, Object> item : items) {
+            Long id = ((Number) item.get("id")).longValue();
+            Integer sortOrder = ((Number) item.get("sortOrder")).intValue();
+            productRepository.findById(id).ifPresent(product -> {
+                product.setSortOrder(sortOrder);
+                productRepository.save(product);
+            });
+        }
+        log.info("Batch updated sort order for {} products", items.size());
     }
 }
 

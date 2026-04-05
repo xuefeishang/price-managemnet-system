@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pricemanagement.dto.MenuSortDTO;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,8 +27,12 @@ public class MenuItemService {
     private final ObjectMapper objectMapper;
 
     public List<MenuItemDTO> getAllMenus() {
-        List<MenuItem> menus = menuItemRepository.findAll();
-        return menus.stream().map(this::toDTO).collect(Collectors.toList());
+        List<MenuItem> allMenus = menuItemRepository.findAll();
+        List<MenuItem> rootMenus = allMenus.stream()
+                .filter(m -> m.getParentId() == null)
+                .sorted((a, b) -> a.getSortOrder().compareTo(b.getSortOrder()))
+                .collect(Collectors.toList());
+        return rootMenus.stream().map(menu -> buildTreeDTO(menu, allMenus)).collect(Collectors.toList());
     }
 
     public List<MenuItemDTO> getMenuTree() {
@@ -225,6 +231,18 @@ public class MenuItemService {
 
             log.info("Default menu items initialized");
         }
+    }
+
+    @Transactional
+    public void batchUpdateSort(List<MenuSortDTO> items) {
+        for (MenuSortDTO item : items) {
+            menuItemRepository.findById(item.getId()).ifPresent(menu -> {
+                menu.setParentId(item.getParentId());
+                menu.setSortOrder(item.getSortOrder() != null ? item.getSortOrder() : 0);
+                menuItemRepository.save(menu);
+            });
+        }
+        log.info("Batch updated sort for {} menu items", items.size());
     }
 
     private MenuItem createMenuItem(MenuItem parent, String name, String path, String icon, int sortOrder, boolean visible, String roles) {

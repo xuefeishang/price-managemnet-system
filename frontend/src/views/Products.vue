@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useUserStore } from '@/store/useUserStore'
+import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
 import EmptyState from '@/components/EmptyState.vue'
+import { eventBus } from '@/utils/eventBus'
 import type { Product, ProductCategory } from '@/types'
 
-const userStore = useUserStore()
 const router = useRouter()
 const { hasPermission } = usePermission()
 
@@ -137,6 +136,12 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
   loadCategories()
   loadProducts()
+  eventBus.on('prices-updated', loadProducts)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  eventBus.off('prices-updated', loadProducts)
 })
 </script>
 
@@ -148,7 +153,7 @@ onMounted(() => {
         <!-- 页面标题 -->
         <div class="page-header-pc">
           <h1 class="page-title-pc">产品列表</h1>
-          <button class="btn-primary-pc" @click="addProduct" v-if="hasPermission(Permission.PRODUCT_CREATE)">
+          <button class="btn-primary" @click="addProduct" v-if="hasPermission(Permission.PRODUCT_CREATE)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -167,7 +172,7 @@ onMounted(() => {
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="搜索产品名称或编码..."
+              placeholder="搜索产品名称..."
               class="search-input-pc"
               @keyup.enter="handleSearch"
             />
@@ -178,7 +183,7 @@ onMounted(() => {
               </svg>
             </button>
           </div>
-          <button class="btn-search-pc" @click="handleSearch">
+          <button class="btn-search" @click="handleSearch">
             搜索
           </button>
         </div>
@@ -202,7 +207,7 @@ onMounted(() => {
             <select v-model="sortBy" class="filter-select-pc" @change="handleSortChange">
               <option value="id">按ID排序</option>
               <option value="name">按名称排序</option>
-              <option value="code">按编码排序</option>
+              <option value="sortOrder">按排序号排序</option>
               <option value="createdTime">按创建时间排序</option>
             </select>
 
@@ -228,20 +233,26 @@ onMounted(() => {
         <!-- 产品表格 -->
         <div class="product-table-pc" v-if="!loading">
           <div class="table-header">
+            <div class="table-cell seq">序号</div>
             <div class="table-cell name">产品名称</div>
-            <div class="table-cell code">产品编码</div>
+            <div class="table-cell unit">计量单位</div>
+            <div class="table-cell specs">产品规格</div>
+            <div class="table-cell description">产品描述</div>
             <div class="table-cell category">分类</div>
             <div class="table-cell status">状态</div>
             <div class="table-cell actions">操作</div>
           </div>
           <div
-            v-for="product in products"
+            v-for="(product, index) in products"
             :key="product.id"
             class="table-row"
             @click="viewProduct(product)"
           >
+            <div class="table-cell seq">{{ index + 1 }}</div>
             <div class="table-cell name">{{ product.name }}</div>
-            <div class="table-cell code">{{ product.code }}</div>
+            <div class="table-cell unit">{{ product.unit || '-' }}</div>
+            <div class="table-cell specs"><span class="scroll-text">{{ product.specs || '-' }}</span></div>
+            <div class="table-cell description"><span class="scroll-text">{{ product.description || '-' }}</span></div>
             <div class="table-cell category">{{ product.category?.name || '-' }}</div>
             <div class="table-cell status">
               <span class="status-badge" :class="product.status?.toLowerCase()">
@@ -288,7 +299,7 @@ onMounted(() => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="搜索产品名称或编码..."
+            placeholder="搜索产品名称..."
             class="search-input"
             @keyup.enter="handleSearch"
           />
@@ -303,22 +314,29 @@ onMounted(() => {
         <!-- 产品列表 -->
         <div class="product-list" v-if="!loading">
           <div
-            v-for="product in products"
+            v-for="(product, index) in products"
             :key="product.id"
             class="product-item"
             @click="viewProduct(product)"
           >
             <div class="product-main">
               <div class="product-info">
-                <span class="product-name">{{ product.name }}</span>
-                <span class="product-code">{{ product.code }}</span>
+                <span class="product-name">{{ index + 1 }}. {{ product.name }}</span>
+                <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
               </div>
               <div class="product-status" :class="product.status?.toLowerCase()">
                 {{ product.status === 'ACTIVE' ? '启用' : '停用' }}
               </div>
             </div>
-            <div class="product-meta" v-if="product.specs">
-              <span class="product-specs">{{ product.specs }}</span>
+            <div class="product-meta" v-if="product.unit || product.description">
+              <div class="meta-row" v-if="product.unit">
+                <span class="meta-label">单位</span>
+                <span class="meta-value">{{ product.unit }}</span>
+              </div>
+              <div class="meta-row" v-if="product.description">
+                <span class="meta-label">描述</span>
+                <span class="meta-value">{{ product.description }}</span>
+              </div>
             </div>
             <div class="product-actions" v-if="hasPermission(Permission.PRODUCT_EDIT)">
               <button class="action-btn edit" @click.stop="editProduct(product)">
@@ -377,71 +395,74 @@ onMounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
-
 .products-page {
-  min-height: 100vh;
-  background-color: #FAFAFA;
+  background-color: var(--gray-100);
 }
 
 /* ==================== PC布局 ==================== */
 .pc-products {
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
 .page-header-pc {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--font-heading),serif;
   font-size: 24px;
   font-weight: 500;
-  color: #1A1A1A;
+  color: var(--text-primary);
   margin: 0;
 }
 
-.btn-primary-pc {
+.btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
   padding: 10px 20px;
-  background: #0D6E6E;
+  background: var(--primary-color);
   color: #FFFFFF;
   border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
+  border-radius: var(--radius);
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--transition-fast);
 }
 
-.btn-primary-pc:hover {
-  background: #0D8A8A;
+.btn-primary:hover {
+  background: var(--primary-light);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .search-section-pc {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--spacing-md);
 }
 
 .search-box-pc {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
+  gap: var(--spacing-sm);
+  padding: 10px var(--spacing-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
 }
 
 .search-box-pc svg {
-  color: #888888;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -449,14 +470,14 @@ onMounted(() => {
   flex: 1;
   border: none;
   background: transparent;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--text-primary);
   outline: none;
 }
 
 .search-input-pc::placeholder {
-  color: #888888;
+  color: var(--gray-400);
 }
 
 .search-clear {
@@ -464,7 +485,7 @@ onMounted(() => {
   height: 24px;
   border: none;
   background: transparent;
-  color: #888888;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -472,23 +493,24 @@ onMounted(() => {
 }
 
 .search-clear:hover {
-  color: #1A1A1A;
+  color: var(--text-primary);
 }
 
-.btn-search-pc {
-  padding: 10px 24px;
-  background: #0D6E6E;
+.btn-search {
+  padding: 10px 20px;
+  background: var(--primary-color);
   color: #FFFFFF;
   border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
+  border-radius: var(--radius);
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--transition-fast);
 }
 
-.btn-search-pc:hover {
-  background: #0D8A8A;
+.btn-search:hover {
+  background: var(--primary-light);
 }
 
 /* 筛选工具栏 */
@@ -496,32 +518,32 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--spacing-sm);
 }
 
 .filter-group-pc {
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-sm);
   flex-wrap: wrap;
 }
 
 .filter-select-pc {
   height: 36px;
-  padding: 0 12px;
-  border: 1px solid #E5E5E5;
-  border-radius: 6px;
-  background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  font-family: var(--font-body), sans-serif;
   font-size: 13px;
-  color: #1A1A1A;
+  color: var(--text-primary);
   cursor: pointer;
   outline: none;
+  transition: border-color var(--transition-fast);
 }
 
 .filter-select-pc:focus {
-  border-color: #0D6E6E;
+  border-color: var(--primary-color);
 }
 
 .btn-clear-filters-pc {
@@ -529,47 +551,52 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   height: 36px;
-  padding: 0 12px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
+  padding: 0 var(--spacing-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  font-family: var(--font-body), sans-serif;
   font-size: 13px;
-  color: #888888;
+  color: var(--text-muted);
   cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .btn-clear-filters-pc:hover {
-  color: #E07B54;
-  border-color: #E07B54;
+  color: var(--error-color);
+  border-color: var(--error-color);
 }
 
 .result-count-pc {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 13px;
-  color: #888888;
+  color: var(--text-muted);
 }
 
 .product-table-pc {
-  background: #FFFFFF;
-  border-radius: 12px;
-  border: 1px solid #E5E5E5;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
   overflow: hidden;
 }
 
 .table-header {
   display: flex;
-  background: #FAFAFA;
-  padding: 12px 16px;
-  border-bottom: 1px solid #E5E5E5;
+  background: var(--gray-50);
+  padding: 12px var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .table-row {
   display: flex;
-  padding: 16px;
-  border-bottom: 1px solid #F5F5F5;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--gray-100);
   cursor: pointer;
-  transition: background-color 150ms;
+  transition: background-color var(--transition-fast);
 }
 
 .table-row:last-child {
@@ -577,47 +604,113 @@ onMounted(() => {
 }
 
 .table-row:hover {
-  background: #FAFAFA;
+  background: var(--gray-50);
 }
 
 .table-cell {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.table-header .table-cell {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 13px;
+  justify-content: center;
+  text-align: center;
+}
+
+.table-cell.seq {
+  flex: 0 0 50px;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .table-cell.name {
   flex: 2;
   font-weight: 500;
+  min-width: 120px;
 }
 
-.table-cell.code {
-  flex: 1;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
+.table-cell.unit {
+  flex: 0 0 80px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.table-cell.specs {
+  flex: 2;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  justify-content: flex-start;
+  padding-left: 8px;
+}
+
+.table-header .table-cell.specs {
+  justify-content: center;
+  padding-left: 0;
+}
+
+.table-cell.specs:hover .scroll-text {
+  animation: marquee-scroll 4s ease-in-out infinite alternate;
+}
+
+.table-cell.description {
+  flex: 2.5;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  justify-content: flex-start;
+  padding-left: 8px;
+}
+
+.table-cell.description:hover .scroll-text {
+  animation: marquee-scroll 4s ease-in-out infinite alternate;
+}
+
+.scroll-text {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100%)); }
 }
 
 .table-cell.category {
-  flex: 1;
-  color: #666666;
+  flex: 0 0 80px;
+  color: var(--text-secondary);
 }
 
 .table-cell.status {
-  flex: 0.5;
+  flex: 0 0 60px;
+  justify-content: center;
+}
+
+.table-header .table-cell.actions {
+  justify-content: center;
 }
 
 .table-cell.actions {
-  flex: 0.8;
-  justify-content: flex-end;
-  gap: 8px;
+  flex: 0 0 120px;
+  justify-content: center;
+  gap: var(--spacing-sm);
 }
 
 .status-badge {
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body), sans-serif;
   font-size: 12px;
   font-weight: 500;
 }
@@ -633,50 +726,50 @@ onMounted(() => {
 }
 
 .action-btn {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border: none;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: #F5F5F5;
-  color: #666666;
+  background: var(--gray-100);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
 }
 
 .action-btn:hover {
-  background: #E5E5E5;
+  background: var(--gray-200);
 }
 
 .action-btn.edit {
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
+  background: var(--primary-bg);
+  color: var(--primary-color);
 }
 
 .action-btn.edit:hover {
   background: rgba(13, 110, 110, 0.15);
 }
 
-.empty-state-pc,
 .loading-state-pc {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px;
-  color: #888888;
-  font-family: 'Inter', sans-serif;
+  padding: var(--spacing-2xl);
+  color: var(--text-muted);
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #E5E5E5;
-  border-top-color: #0D6E6E;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--primary-color);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-md);
 }
 
 @keyframes spin {
@@ -686,46 +779,46 @@ onMounted(() => {
 /* ==================== 移动端布局 ==================== */
 .navbar {
   height: 56px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 var(--spacing-md);
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--font-heading), serif;
   font-size: 20px;
   font-weight: 500;
-  color: #1A1A1A;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .content {
   flex: 1;
-  padding: 24px;
+  padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
   padding-bottom: 100px;
 }
 
 .search-bar {
   height: 44px;
-  background: #F0F0F0;
-  border-radius: 8px;
+  background: var(--gray-100);
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0 var(--spacing-sm);
+  gap: var(--spacing-sm);
 }
 
 .search-bar svg {
-  color: #888888;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -733,56 +826,40 @@ onMounted(() => {
   flex: 1;
   border: none;
   background: transparent;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--text-primary);
   outline: none;
 }
 
 .search-input::placeholder {
-  color: #888888;
-}
-
-.search-clear {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: #888888;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.search-clear:hover {
-  background: #E5E5E5;
-  border-radius: 4px;
+  color: var(--gray-400);
 }
 
 .product-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--spacing-sm);
 }
 
 .product-item {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid #E5E5E5;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
   cursor: pointer;
+  transition: border-color var(--transition-fast);
 }
 
 .product-item:hover {
-  border-color: #0D6E6E;
+  border-color: var(--primary-color);
 }
 
 .product-main {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-sm);
 }
 
 .product-info {
@@ -790,27 +867,34 @@ onMounted(() => {
   flex-direction: column;
   gap: 4px;
   flex: 1;
+  min-width: 0;
 }
 
 .product-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1A1A1A;
+  font-family: var(--font-body), sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
 }
 
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
+.product-specs {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .product-status {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-family: 'Inter', sans-serif;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body), sans-serif;
   font-size: 12px;
   font-weight: 500;
+  flex-shrink: 0;
+  margin-left: var(--spacing-sm);
 }
 
 .product-status.active {
@@ -824,31 +908,61 @@ onMounted(() => {
 }
 
 .product-meta {
-  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  margin-bottom: var(--spacing-sm);
+  border-top: 1px solid var(--gray-100);
+  border-bottom: 1px solid var(--gray-100);
 }
 
-.product-specs {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
-  color: #666666;
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-body), sans-serif;
+  font-size: 14px;
+}
+
+.meta-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.meta-value {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+  text-align: right;
+}
+
+.meta-value.price {
+  color: var(--primary-color);
+  font-weight: 600;
+  font-family: var(--font-mono), monospace;
+  font-size: 15px;
 }
 
 .product-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm);
   justify-content: flex-end;
 }
 
 .action-btn.edit {
-  padding: 6px 12px;
+  padding: 8px 16px;
   border: none;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
+  background: var(--primary-bg);
+  color: var(--primary-color);
+  transition: all var(--transition-fast);
 }
 
 .action-btn.edit:hover {
@@ -861,47 +975,25 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
-  color: #888888;
-  gap: 12px;
+  padding: var(--spacing-2xl) var(--spacing-md);
+  color: var(--text-muted);
+  gap: var(--spacing-sm);
 }
 
 .empty-state svg {
-  color: #D1D5DB;
+  color: var(--gray-300);
 }
 
 .empty-state p {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 14px;
   margin: 0;
 }
 
-.add-product-btn {
-  padding: 10px 20px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  margin-top: 8px;
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #E5E5E5;
-  border-top-color: #0D6E6E;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
 .tab-bar {
   height: 64px;
-  background: #FFFFFF;
-  border-top: 1px solid #E5E5E5;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: space-around;
   align-items: center;
@@ -922,17 +1014,18 @@ onMounted(() => {
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 8px 16px;
-  border-radius: 8px;
-  color: #AAAAAA;
+  padding: 8px var(--spacing-md);
+  border-radius: var(--radius);
+  color: var(--gray-400);
+  transition: color var(--transition-fast);
 }
 
 .tab-item.active {
-  color: #0D6E6E;
+  color: var(--primary-color);
 }
 
 .tab-label {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), sans-serif;
   font-size: 10px;
   font-weight: 500;
 }

@@ -16,6 +16,7 @@
     "pinia": "^2.1.7",
     "vant": "^4.8.0",
     "vue": "^3.4.0",
+    "vue-draggable-plus": "^0.6.1",
     "vue-echarts": "^8.0.1",
     "vue-router": "^4.2.5",
     "xlsx": "^0.18.5"

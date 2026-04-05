@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -7,8 +7,11 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { getProduct, getProductPriceHistory, getCurrentPrice } from '@/api/products'
+import { getOrigins } from '@/api/origins'
+import { getCustomers } from '@/api/customers'
 import { usePermission, Permission } from '@/composables/usePermission'
-import type { Product, PriceHistory, Price } from '@/types'
+import { eventBus } from '@/utils/eventBus'
+import type { Product, PriceHistory, Price, Origin, Customer } from '@/types'
 
 // 注册 ECharts 组件
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -21,6 +24,33 @@ const product = ref<Product | null>(null)
 const currentPrice = ref<Price | null>(null)
 const priceHistory = ref<PriceHistory[]>([])
 const loading = ref(false)
+
+// 产地和客户数据
+const origins = ref<Origin[]>([])
+const customers = ref<Customer[]>([])
+
+// 解析产地和客户名称
+const originName = computed(() => {
+  if (!product.value?.originIds) return '-'
+  try {
+    const ids = JSON.parse(product.value.originIds)
+    if (ids.length === 0) return '-'
+    const origin = origins.value.find(o => o.id === ids[0])
+    return origin?.name || '-'
+  } catch {
+    return '-'
+  }
+})
+
+const customerNames = computed(() => {
+  if (!product.value?.customerIds) return []
+  try {
+    const ids = JSON.parse(product.value.customerIds)
+    return ids.map((id: number) => customers.value.find(c => c.id === id)?.name).filter(Boolean) as string[]
+  } catch {
+    return []
+  }
+})
 
 // 判断是否为PC布局
 const isPCLayout = computed(() => {
@@ -112,6 +142,19 @@ const chartOptions = computed(() => {
   }
 })
 
+const loadOriginsAndCustomers = async () => {
+  try {
+    const [originsRes, customersRes] = await Promise.all([
+      getOrigins('ACTIVE'),
+      getCustomers('ACTIVE')
+    ])
+    origins.value = originsRes.data || []
+    customers.value = customersRes.data || []
+  } catch (error) {
+    console.error('Failed to load origins and customers:', error)
+  }
+}
+
 const loadProduct = async () => {
   const id = route.params.id as string
   if (!id) {
@@ -168,8 +211,20 @@ const switchTab = (tab: string) => {
 }
 
 onMounted(() => {
+  loadOriginsAndCustomers()
   loadProduct()
+  eventBus.on('product-updated', handleProductUpdated)
 })
+
+onUnmounted(() => {
+  eventBus.off('product-updated', handleProductUpdated)
+})
+
+const handleProductUpdated = (updatedId: number | null) => {
+  if (!updatedId || updatedId === parseInt(route.params.id as string)) {
+    loadProduct()
+  }
+}
 </script>
 
 <template>
@@ -197,43 +252,58 @@ onMounted(() => {
         <div class="detail-grid-pc">
           <!-- 左侧产品信息 -->
           <div class="detail-main-pc">
-            <div class="product-card-pc">
-              <h2 class="product-name-pc">{{ product.name }}</h2>
-              <span class="product-code-pc">{{ product.code }}</span>
-              <div class="product-status-pc" :class="product.status?.toLowerCase()">
-                {{ product.status === 'ACTIVE' ? '展示' : '隐藏' }}
-              </div>
-            </div>
-
+            <!-- 基本信息 -->
             <div class="info-card-pc">
-              <div class="info-label-pc">价格信息</div>
-              <div class="price-row-pc" v-if="currentPrice?.originalPrice">
-                <span>原价</span>
-                <span class="price-original">¥{{ currentPrice.originalPrice }}</span>
-              </div>
-              <div class="price-row-pc" v-if="currentPrice?.currentPrice">
-                <span>现价</span>
-                <span class="price-current">¥{{ currentPrice.currentPrice }}</span>
-              </div>
-              <div class="price-row-pc" v-if="currentPrice?.costPrice">
-                <span>成本价</span>
-                <span>¥{{ currentPrice.costPrice }}</span>
-              </div>
-            </div>
-
-            <div class="info-card-pc">
-              <div class="info-label-pc">产品信息</div>
+              <div class="info-label-pc">基本信息</div>
               <div class="info-row-pc">
-                <span class="info-key">分类</span>
+                <span class="info-key">产品名称</span>
+                <span class="info-value">{{ product.name }}</span>
+              </div>
+              <div class="info-row-pc">
+                <span class="info-key">产品分类</span>
                 <span class="info-value">{{ product.category?.name || '未分类' }}</span>
               </div>
               <div class="info-row-pc">
-                <span class="info-key">规格</span>
+                <span class="info-key">产品规格</span>
                 <span class="info-value">{{ product.specs || '-' }}</span>
               </div>
               <div class="info-row-pc">
-                <span class="info-key">描述</span>
-                <span class="info-value">{{ product.description || '-' }}</span>
+                <span class="info-key">计量单位</span>
+                <span class="info-value">{{ product.unit || '-' }}</span>
+              </div>
+              <div class="info-row-pc">
+                <span class="info-key">显示状态</span>
+                <span class="info-value">
+                  <span class="status-badge" :class="product.status?.toLowerCase()">
+                    {{ product.status === 'ACTIVE' ? '启用' : '停用' }}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <!-- 关联信息 -->
+            <div class="info-card-pc">
+              <div class="info-label-pc">关联信息</div>
+              <div class="info-row-pc">
+                <span class="info-key">产地</span>
+                <span class="info-value">{{ originName }}</span>
+              </div>
+              <div class="info-row-pc">
+                <span class="info-key">客户信息</span>
+                <span class="info-value">{{ customerNames.length > 0 ? customerNames.join('、') : '-' }}</span>
+              </div>
+              <div class="info-row-pc" v-if="product.description">
+                <span class="info-key">产品描述</span>
+                <span class="info-value desc">{{ product.description }}</span>
+              </div>
+            </div>
+
+            <!-- 其他信息 -->
+            <div class="info-card-pc" v-if="product.remark">
+              <div class="info-label-pc">其他信息</div>
+              <div class="info-row-pc">
+                <span class="info-key">备注说明</span>
+                <span class="info-value desc">{{ product.remark }}</span>
               </div>
             </div>
           </div>
@@ -294,48 +364,58 @@ onMounted(() => {
 
       <!-- 主内容区 -->
       <main class="content" v-if="!loading && product">
-        <!-- 产品卡片 -->
-        <div class="product-card">
-          <div class="product-header">
-            <div class="product-basic">
-              <h2 class="product-name">{{ product.name }}</h2>
-              <span class="product-code">{{ product.code }}</span>
-            </div>
-            <div class="product-status" :class="product.status?.toLowerCase()">
-              {{ product.status === 'ACTIVE' ? '展示' : '隐藏' }}
-            </div>
-          </div>
-
-          <div class="price-section" v-if="currentPrice?.originalPrice || currentPrice?.currentPrice">
-            <div class="price-row" v-if="currentPrice?.originalPrice">
-              <span class="price-label">原价</span>
-              <span class="price-value original">¥{{ currentPrice.originalPrice }}</span>
-            </div>
-            <div class="price-row" v-if="currentPrice?.currentPrice">
-              <span class="price-label">现价</span>
-              <span class="price-value current">¥{{ currentPrice.currentPrice }}</span>
-            </div>
-            <div class="price-row" v-if="currentPrice?.costPrice">
-              <span class="price-label">成本价</span>
-              <span class="price-value cost">¥{{ currentPrice.costPrice }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 产品信息 -->
+        <!-- 基本信息 -->
         <div class="info-card">
-          <div class="card-label">产品信息</div>
+          <div class="card-label">基本信息</div>
           <div class="info-row">
-            <span class="info-label">分类</span>
+            <span class="info-label">产品名称</span>
+            <span class="info-value">{{ product.name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">产品分类</span>
             <span class="info-value">{{ product.category?.name || '未分类' }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">规格</span>
+            <span class="info-label">产品规格</span>
             <span class="info-value">{{ product.specs || '-' }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">描述</span>
-            <span class="info-value">{{ product.description || '-' }}</span>
+            <span class="info-label">计量单位</span>
+            <span class="info-value">{{ product.unit || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">显示状态</span>
+            <span class="info-value">
+              <span class="status-badge" :class="product.status?.toLowerCase()">
+                {{ product.status === 'ACTIVE' ? '启用' : '停用' }}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <!-- 关联信息 -->
+        <div class="info-card">
+          <div class="card-label">关联信息</div>
+          <div class="info-row">
+            <span class="info-label">产地</span>
+            <span class="info-value">{{ originName }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">客户信息</span>
+            <span class="info-value">{{ customerNames.length > 0 ? customerNames.join('、') : '-' }}</span>
+          </div>
+          <div class="info-row" v-if="product.description">
+            <span class="info-label">产品描述</span>
+            <span class="info-value desc">{{ product.description }}</span>
+          </div>
+        </div>
+
+        <!-- 其他信息 -->
+        <div class="info-card" v-if="product.remark">
+          <div class="card-label">其他信息</div>
+          <div class="info-row">
+            <span class="info-label">备注说明</span>
+            <span class="info-value desc">{{ product.remark }}</span>
           </div>
         </div>
 
@@ -488,25 +568,6 @@ onMounted(() => {
   margin: 0;
 }
 
-.btn-edit-pc {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-edit-pc:hover {
-  background: #0D8A8A;
-}
-
 .detail-grid-pc {
   display: grid;
   grid-template-columns: 1fr 360px;
@@ -517,48 +578,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.product-card-pc {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #E5E5E5;
-}
-
-.product-name-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 24px;
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0 0 8px 0;
-}
-
-.product-code-pc {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
-  color: #888888;
-  display: block;
-  margin-bottom: 16px;
-}
-
-.product-status-pc {
-  display: inline-block;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.product-status-pc.active {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
-}
-
-.product-status-pc.inactive {
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
 }
 
 .info-card-pc {
@@ -576,32 +595,6 @@ onMounted(() => {
   letter-spacing: 2px;
   text-transform: uppercase;
   margin-bottom: 16px;
-}
-
-.price-row-pc {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #F5F5F5;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  color: #666666;
-}
-
-.price-row-pc:last-child {
-  border-bottom: none;
-}
-
-.price-original {
-  text-decoration: line-through;
-  color: #888888;
-}
-
-.price-current {
-  font-size: 24px;
-  font-weight: 600;
-  color: #0D6E6E;
 }
 
 .info-row-pc {
@@ -628,6 +621,14 @@ onMounted(() => {
   color: #1A1A1A;
   max-width: 60%;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-value.desc {
+  white-space: normal;
+  word-break: break-all;
 }
 
 .detail-sidebar-pc {
@@ -791,90 +792,6 @@ onMounted(() => {
   padding-bottom: 100px;
 }
 
-.product-card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #E5E5E5;
-}
-
-.product-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.product-basic {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.product-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0;
-}
-
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
-}
-
-.product-status {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.product-status.active {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
-}
-
-.product-status.inactive {
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
-}
-
-.price-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.price-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.price-label {
-  font-size: 14px;
-  color: #666666;
-}
-
-.price-value {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.price-value.original {
-  color: #888888;
-  text-decoration: line-through;
-}
-
-.price-value.current {
-  color: #0D6E6E;
-  font-size: 18px;
-  font-weight: 600;
-}
-
 .info-card,
 .history-card {
   background: #FFFFFF;
@@ -918,6 +835,29 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.info-value.desc {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+
+.status-badge.inactive {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
 }
 
 .history-list {

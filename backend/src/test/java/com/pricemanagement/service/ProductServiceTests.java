@@ -37,7 +37,6 @@ class ProductServiceTests {
     void setup() {
         testProduct = new Product();
         testProduct.setId(1L);
-        testProduct.setCode("P001");
         testProduct.setName("测试产品");
         testProduct.setStatus(Product.ProductStatus.ACTIVE);
     }
@@ -49,7 +48,7 @@ class ProductServiceTests {
         Optional<Product> result = productService.getProductById(1L);
 
         assertTrue(result.isPresent());
-        assertEquals("P001", result.get().getCode());
+        assertEquals("测试产品", result.get().getName());
     }
 
     @Test
@@ -68,7 +67,7 @@ class ProductServiceTests {
         Page<Product> page = new PageImpl<>(products);
         Pageable pageable = PageRequest.of(0, 10);
 
-        when(productRepository.findByNameContainingOrCodeContaining(anyString(), anyString(), any(Pageable.class)))
+        when(productRepository.findByNameContaining(anyString(), any(Pageable.class)))
                 .thenReturn(page);
 
         Page<Product> result = productService.getProducts(0, 10, "测试", null, null, null, null);
@@ -80,35 +79,21 @@ class ProductServiceTests {
 
     @Test
     void testCreateProductSuccess() {
-        when(productRepository.existsByCode(anyString())).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
         Product created = productService.createProduct(testProduct, null);
 
         assertNotNull(created);
-        assertEquals("P001", created.getCode());
-    }
-
-    @Test
-    void testCreateProductDuplicateCode() {
-        when(productRepository.existsByCode(anyString())).thenReturn(true);
-
-        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
-            productService.createProduct(testProduct, null);
-        });
-
-        assertTrue(exception.getMessage().contains("产品编码已存在"));
+        assertEquals("测试产品", created.getName());
     }
 
     @Test
     void testUpdateProductSuccess() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
-        when(productRepository.existsByCode(anyString())).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
         Product updatedProduct = new Product();
         updatedProduct.setName("更新后的产品");
-        updatedProduct.setCode("P001");
 
         Product result = productService.updateProduct(1L, updatedProduct);
 

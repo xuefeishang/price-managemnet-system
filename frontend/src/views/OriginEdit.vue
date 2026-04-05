@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getOrigin, createOrigin, updateOrigin } from '@/api/origins'
+import type { OriginStatus } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +20,7 @@ const isPCLayout = computed(() => {
   return false
 })
 
-const form = reactive({
+const form = reactive<{ name: string; code: string; status: OriginStatus; sortOrder: number; remark: string }>({
   name: '',
   code: '',
   status: 'ACTIVE',
@@ -55,18 +56,13 @@ const handleSave = async () => {
 
   saving.value = true
   try {
-    const originData = {
-      ...form,
-      sortOrder: parseInt(form.sortOrder as any) || 0
-    }
-
     if (isEdit) {
-      await updateOrigin(parseInt(originId), originData)
+      await updateOrigin(parseInt(originId), form)
     } else {
-      await createOrigin(originData)
+      await createOrigin(form)
     }
 
-    router.push('/origins')
+    await router.push('/origins')
   } catch (error) {
     console.error('Failed to save origin:', error)
   } finally {
@@ -300,43 +296,6 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-}
-
-.btn-save-pc {
-  padding: 12px 24px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-save-pc:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.btn-save-pc:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-cancel-pc {
-  padding: 12px 24px;
-  background: #FFFFFF;
-  color: #666666;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-cancel-pc:hover {
-  background: #F5F5F5;
 }
 
 .origin-edit-page {

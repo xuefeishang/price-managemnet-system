@@ -129,7 +129,7 @@ onUnmounted(() => {
         <!-- 页面标题 -->
         <div class="page-header-pc">
           <h1 class="page-title-pc">分类管理</h1>
-          <button class="btn-primary-pc" @click="handleCreate" v-if="hasPermission(Permission.CATEGORY_CREATE)">
+          <button class="btn-primary" @click="handleCreate" v-if="hasPermission(Permission.CATEGORY_CREATE)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -389,23 +389,23 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.btn-primary-pc {
+.btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 12px 24px;
   background: #0D6E6E;
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;
 }
 
-.btn-primary-pc:hover {
+.btn-primary:hover {
   background: #0D8A8A;
 }
 
@@ -445,8 +445,7 @@ onUnmounted(() => {
   background: #FDFCFB;
 }
 
-.table-row.inactive .category-name,
-.table-row.inactive .category-code {
+.table-row.inactive .category-name {
   color: #9CA3AF;
 }
 

@@ -419,6 +419,12 @@ public class ApprovalService {
                 history.setRemark("审批通过 - 创建价格");
                 priceHistoryRepository.save(history);
 
+                // 同步更新产品售价
+                if (savedPrice.getCurrentPrice() != null) {
+                    product.setSellingPrice(savedPrice.getCurrentPrice());
+                    productRepository.save(product);
+                }
+
                 log.info("Price created via approval: priceId={}, productId={}", savedPrice.getId(), productId);
 
             } else if ("UPDATE".equals(action)) {
@@ -475,6 +481,12 @@ public class ApprovalService {
                 history.setChangeType(PriceHistory.ChangeType.UPDATE);
                 history.setRemark("审批通过 - 更新价格");
                 priceHistoryRepository.save(history);
+
+                // 同步更新产品售价
+                if (updatedPrice.getCurrentPrice() != null) {
+                    product.setSellingPrice(updatedPrice.getCurrentPrice());
+                    productRepository.save(product);
+                }
 
                 log.info("Price updated via approval: priceId={}, productId={}", updatedPrice.getId(), productId);
             }

@@ -36,6 +36,11 @@ export const deleteMenu = async (id: number): Promise<ApiResponse<void>> => {
   return await http.delete(`/api/menus/${id}`)
 }
 
+// 批量更新菜单排序
+export const batchUpdateMenuSort = async (items: { id: number; parentId: number | null; sortOrder: number }[]): Promise<ApiResponse<void>> => {
+  return await http.post('/api/menus/batch-sort', items)
+}
+
 // 初始化默认菜单
 export const initDefaultMenus = async (): Promise<ApiResponse<void>> => {
   return await http.post('/api/menus/init')

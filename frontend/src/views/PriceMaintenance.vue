@@ -2,13 +2,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
+import { VueDraggable } from 'vue-draggable-plus'
 import { getProducts } from '@/api/products'
-import { getPricesByDate, getYesterdayPrice, getMonthlyAveragePrice, addProductPrice, updatePrice } from '@/api/products'
-import { usePermission, Permission } from '@/composables/usePermission'
+import { addProductPrice, updatePrice, getPricesByDateWithStats, batchUpdateProductSort } from '@/api/products'
 import type { Product, Price } from '@/types'
+import { eventBus } from '@/utils/eventBus'
 
 const router = useRouter()
-const { hasPermission } = usePermission()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -16,6 +16,7 @@ const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024
 
 // 响应式布局
 const isPCLayout = computed(() => windowWidth.value >= 1024)
+defineExpose({ isPCLayout })
 
 // 格式化日期显示
 const formatDateDisplay = (dateStr: string) => {
@@ -68,11 +69,36 @@ const getPriceChange = (productId: number) => {
 // 加载产品列表
 const loadProducts = async () => {
   try {
-    const response = await getProducts({ page: 0, size: 1000 })
-    products.value = response.data.content || []
+    const response = await getProducts({ page: 0, size: 1000, status: 'ACTIVE' })
+    const list = response.data.content || []
+    // 按 sortOrder 排序，无排序值的排到最后
+    list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    products.value = list
   } catch (error) {
     console.error('Failed to load products:', error)
     showToast('加载产品列表失败')
+  }
+}
+
+// 拖拽排序后自动保存
+const savingSort = ref(false)
+const handleDragEnd = async () => {
+  savingSort.value = true
+  try {
+    const items = products.value.map((product, index) => ({
+      id: product.id,
+      sortOrder: index + 1
+    }))
+    await batchUpdateProductSort(items)
+    products.value.forEach((p, i) => { p.sortOrder = i + 1 })
+    showToast('排序已保存')
+  } catch (error) {
+    console.error('Failed to save sort order:', error)
+    showToast('排序保存失败，请重试')
+    // 恢复原始顺序
+    loadProducts()
+  } finally {
+    savingSort.value = false
   }
 }
 
@@ -80,41 +106,23 @@ const loadProducts = async () => {
 const loadPrices = async () => {
   loading.value = true
   try {
-    const response = await getPricesByDate(selectedDate.value)
-    const prices = response.data || []
+    const response = await getPricesByDateWithStats(selectedDate.value)
+    const items = response.data || []
     priceMap.value.clear()
     yesterdayPriceMap.value.clear()
     monthlyAverageMap.value.clear()
     editingPrices.value.clear()
 
-    // 获取昨日日期
-    const yesterday = new Date(selectedDate.value)
-    yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayStr = yesterday.toISOString().split('T')[0]
-
-    for (const price of prices) {
-      if (price.product) {
-        priceMap.value.set(price.product.id, price)
-        editingPrices.value.set(price.product.id, String(price.currentPrice || ''))
-
-        // 获取昨日价格
-        try {
-          const yesterdayRes = await getYesterdayPrice(price.product.id)
-          if (yesterdayRes.data) {
-            yesterdayPriceMap.value.set(price.product.id, yesterdayRes.data)
-          }
-        } catch (e) {
-          console.error('Failed to load yesterday price for product', price.product.id)
+    for (const item of items) {
+      if (item.price && item.price.product) {
+        const productId = item.price.product.id
+        priceMap.value.set(productId, item.price)
+        editingPrices.value.set(productId, String(item.price.currentPrice || ''))
+        if (item.yesterdayPrice) {
+          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
         }
-
-        // 获取月均价
-        try {
-          const monthlyRes = await getMonthlyAveragePrice(price.product.id)
-          if (monthlyRes.data) {
-            monthlyAverageMap.value.set(price.product.id, monthlyRes.data)
-          }
-        } catch (e) {
-          console.error('Failed to load monthly average price for product', price.product.id)
+        if (item.monthlyAveragePrice != null) {
+          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
         }
       }
     }
@@ -186,8 +194,10 @@ const handleSave = async () => {
   let failCount = 0
 
   try {
+    // 收集所有需要保存的变更
+    const saveTasks: Promise<void>[] = []
     for (const [productId, priceStr] of editingPrices.value) {
-      const currentPrice = priceStr ? parseFloat(priceStr) : null
+      const currentPrice = priceStr ? parseFloat(priceStr) : undefined
 
       // 如果没有填写价格，跳过
       if (!priceStr) {
@@ -196,32 +206,38 @@ const handleSave = async () => {
 
       const existingPrice = priceMap.value.get(productId)
 
-      try {
-        if (existingPrice) {
-          // 更新现有价格
-          await updatePrice(existingPrice.id, {
+      if (existingPrice) {
+        saveTasks.push(
+          updatePrice(existingPrice.id, {
             currentPrice,
             effectiveDate: selectedDate.value
+          }).then(() => { successCount++ }).catch((error) => {
+            console.error(`Failed to save price for product ${productId}:`, error)
+            failCount++
           })
-        } else {
-          // 新增价格
-          await addProductPrice(productId, {
+        )
+      } else {
+        saveTasks.push(
+          addProductPrice(productId, {
             currentPrice,
             effectiveDate: selectedDate.value
-          } as Price)
-        }
-        successCount++
-      } catch (error) {
-        console.error(`Failed to save price for product ${productId}:`, error)
-        failCount++
+          } as Price).then(() => { successCount++ }).catch((error) => {
+            console.error(`Failed to save price for product ${productId}:`, error)
+            failCount++
+          })
+        )
       }
     }
+
+    await Promise.allSettled(saveTasks)
 
     if (failCount === 0) {
       showToast(`保存成功，共 ${successCount} 条价格记录`)
       loadPrices()
+      eventBus.emit('prices-updated')
     } else {
       showToast(`部分保存成功，成功 ${successCount} 条，失败 ${failCount} 条`)
+      eventBus.emit('prices-updated')
     }
   } catch (error) {
     console.error('Failed to save prices:', error)
@@ -319,6 +335,7 @@ onUnmounted(() => {
         <!-- 价格表格 -->
         <div class="price-table" v-if="!loading">
           <div class="table-header">
+            <div class="table-cell seq-col">序号</div>
             <div class="table-cell product">产品信息</div>
             <div class="table-cell price-col">当日售价</div>
             <div class="table-cell price-col">昨日售价</div>
@@ -326,48 +343,70 @@ onUnmounted(() => {
             <div class="table-cell price-col">月均价</div>
             <div class="table-cell unit">单位</div>
           </div>
-          <div
-            v-for="product in products"
-            :key="product.id"
-            class="table-row"
+          <VueDraggable
+            v-model="products"
+            tag="div"
+            class="table-body"
+            :animation="150"
+            handle=".drag-handle"
+            ghost-class="drag-ghost"
+            @end="handleDragEnd"
           >
-            <div class="table-cell product">
-              <div class="product-info">
-                <span class="product-name">{{ product.name }}</span>
-                <span class="product-code">{{ product.code }}</span>
+            <div
+              v-for="(product, index) in products"
+              :key="product.id"
+              class="table-row"
+            >
+              <div class="table-cell seq-col">
+                <span class="drag-handle" title="拖拽排序">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="5.5" cy="3" r="1.2"/>
+                    <circle cx="10.5" cy="3" r="1.2"/>
+                    <circle cx="5.5" cy="8" r="1.2"/>
+                    <circle cx="10.5" cy="8" r="1.2"/>
+                    <circle cx="5.5" cy="13" r="1.2"/>
+                    <circle cx="10.5" cy="13" r="1.2"/>
+                  </svg>
+                </span>
+                <span class="seq-number">{{ index + 1 }}</span>
+              </div>
+              <div class="table-cell product">
+                <div class="product-info">
+                  <span class="product-name">{{ product.name }}</span>
+                </div>
+              </div>
+              <div class="table-cell price-col">
+                <div class="price-input-wrapper">
+                  <span class="price-unit">¥</span>
+                  <input
+                    type="number"
+                    :value="getEditData(product.id)"
+                    @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
+                    class="price-input"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div class="table-cell price-col">
+                <span class="price-value">
+                  {{ formatPrice(yesterdayPriceMap.get(product.id)?.currentPrice) }}
+                </span>
+              </div>
+              <div class="table-cell price-col">
+                <span class="price-change" :class="getPriceChangeClass(getPriceChange(product.id))">
+                  {{ formatPriceChange(getPriceChange(product.id)) }}
+                </span>
+              </div>
+              <div class="table-cell price-col">
+                <span class="price-value">
+                  {{ formatPrice(monthlyAverageMap.get(product.id)) }}
+                </span>
+              </div>
+              <div class="table-cell unit">
+                <span class="unit-text">{{ priceMap.get(product.id)?.unit || '-' }}</span>
               </div>
             </div>
-            <div class="table-cell price-col">
-              <div class="price-input-wrapper">
-                <span class="price-unit">¥</span>
-                <input
-                  type="number"
-                  :value="getEditData(product.id)"
-                  @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
-                  class="price-input"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <div class="table-cell price-col">
-              <span class="price-value">
-                {{ formatPrice(yesterdayPriceMap.get(product.id)?.currentPrice) }}
-              </span>
-            </div>
-            <div class="table-cell price-col">
-              <span class="price-change" :class="getPriceChangeClass(getPriceChange(product.id))">
-                {{ formatPriceChange(getPriceChange(product.id)) }}
-              </span>
-            </div>
-            <div class="table-cell price-col">
-              <span class="price-value">
-                {{ formatPrice(monthlyAverageMap.get(product.id)) }}
-              </span>
-            </div>
-            <div class="table-cell unit">
-              <span class="unit-text">{{ priceMap.get(product.id)?.unit || '-' }}</span>
-            </div>
-          </div>
+          </VueDraggable>
 
           <div v-if="products.length === 0" class="empty-state">
             暂无产品数据
@@ -415,17 +454,36 @@ onUnmounted(() => {
       <!-- 产品价格列表 -->
       <main class="content" v-if="!loading">
         <div class="price-list">
-          <div
-            v-for="product in products"
-            :key="product.id"
-            class="price-card"
+          <VueDraggable
+            v-model="products"
+            tag="div"
+            class="price-list"
+            :animation="150"
+            handle=".drag-handle"
+            ghost-class="drag-ghost-mobile"
+            @end="handleDragEnd"
           >
-            <div class="card-header">
-              <div class="product-info">
-                <span class="product-name">{{ product.name }}</span>
-                <span class="product-code">{{ product.code }}</span>
+            <div
+              v-for="(product, index) in products"
+              :key="product.id"
+              class="price-card"
+            >
+              <div class="card-header">
+                <span class="drag-handle" title="拖拽排序">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="5.5" cy="3" r="1.2"/>
+                    <circle cx="10.5" cy="3" r="1.2"/>
+                    <circle cx="5.5" cy="8" r="1.2"/>
+                    <circle cx="10.5" cy="8" r="1.2"/>
+                    <circle cx="5.5" cy="13" r="1.2"/>
+                    <circle cx="10.5" cy="13" r="1.2"/>
+                  </svg>
+                </span>
+                <span class="card-seq">{{ index + 1 }}</span>
+                <div class="product-info">
+                  <span class="product-name">{{ product.name }}</span>
+                </div>
               </div>
-            </div>
 
             <!-- 主要价格信息 -->
             <div class="main-price-section">
@@ -467,6 +525,7 @@ onUnmounted(() => {
               <span class="unit-value">{{ priceMap.get(product.id)?.unit || '-' }}</span>
             </div>
           </div>
+          </VueDraggable>
 
           <div v-if="products.length === 0" class="empty-state">
             暂无产品数据
@@ -486,22 +545,20 @@ onUnmounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .price-maintenance-page {
-  min-height: 100vh;
   background-color: #F5F5F5;
 }
 
 /* ==================== PC布局 ==================== */
 .pc-maintenance {
-  padding: 32px;
-  max-width: 1200px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .pc-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
   padding: 20px 24px;
   background: #FFFFFF;
   border-radius: 12px;
@@ -675,6 +732,58 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.table-cell.seq-col {
+  flex: 0.7;
+  min-width: 70px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #888888;
+  font-size: 13px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #C0C4CC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 150ms, background 150ms;
+  flex-shrink: 0;
+}
+
+.drag-handle:hover {
+  color: #0D6E6E;
+  background: #F0F0F0;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.seq-number {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: #888888;
+  font-weight: 500;
+}
+
+.table-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.drag-ghost {
+  opacity: 0.4;
+  background: #E8F5F5;
+}
+
+.drag-ghost .drag-handle {
+  color: #0D6E6E;
+}
+
 .product-info {
   display: flex;
   flex-direction: column;
@@ -684,12 +793,6 @@ onUnmounted(() => {
 .product-name {
   font-weight: 500;
   color: #1A1A1A;
-}
-
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
 }
 
 .price-input-wrapper {
@@ -923,6 +1026,32 @@ onUnmounted(() => {
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid #F3F4F6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-header .drag-handle {
+  color: #C0C4CC;
+}
+
+.card-header .drag-handle:hover {
+  color: #0D6E6E;
+  background: #F5F5F5;
+}
+
+.card-seq {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0D6E6E;
+  min-width: 20px;
+}
+
+.drag-ghost-mobile {
+  opacity: 0.4;
+  background: #E8F5F5;
+  border-color: #0D6E6E;
 }
 
 .product-info {
@@ -936,12 +1065,6 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: #1A1A1A;
-}
-
-.product-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #888888;
 }
 
 .main-price-section {

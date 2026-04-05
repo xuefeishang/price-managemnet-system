@@ -57,7 +57,6 @@ public class ImportExportService {
     private List<ProductExcelData> convertToExcelData(List<Product> products) {
         return products.stream().map(product -> {
             ProductExcelData excelData = new ProductExcelData();
-            excelData.setCode(product.getCode());
             excelData.setName(product.getName());
             if (product.getCategory() != null) {
                 excelData.setCategoryCode(product.getCategory().getCode());

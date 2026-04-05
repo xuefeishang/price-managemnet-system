@@ -365,26 +365,6 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.btn-primary-pc {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 150ms;
-}
-
-.btn-primary-pc:hover {
-  background: #0D8A8A;
-}
-
 .origin-table-pc {
   background: #FFFFFF;
   border-radius: 12px;
@@ -420,8 +400,7 @@ onUnmounted(() => {
   background: #FDFCFB;
 }
 
-.table-row.inactive .origin-name,
-.table-row.inactive .origin-code {
+.table-row.inactive .origin-name {
   color: #9CA3AF;
 }
 

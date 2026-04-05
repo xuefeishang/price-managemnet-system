@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
+import { useMenuStore } from '@/store/useMenuStore'
 import { useRouter, useRoute } from 'vue-router'
-import { getVisibleMenus } from '@/api/menu'
 import type { MenuItem } from '@/types'
 
 const userStore = useUserStore()
+const menuStore = useMenuStore()
 const router = useRouter()
 const route = useRoute()
 
 const isMobileMenuOpen = ref(false)
-const menus = ref<MenuItem[]>([])
 const selectedParentMenu = ref<MenuItem | null>(null)
+const expandedSidebarMenuId = ref<number | null>(null)
 const expandedMobileGroups = ref<Set<number>>(new Set())
+
+// 使用 menuStore 的菜单数据
+const menus = computed(() => menuStore.visibleMenus)
 
 // 响应式布局
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
@@ -54,19 +58,15 @@ const updateSelectedMenuByRoute = () => {
   const matchedMenu = findParentMenu(parentMenus.value)
   if (matchedMenu) {
     selectedParentMenu.value = matchedMenu
+    expandedSidebarMenuId.value = matchedMenu.id
   }
 }
 
 // 加载动态菜单
 const loadMenus = async () => {
-  try {
-    const response = await getVisibleMenus(userStore.user?.role || 'VIEWER')
-    menus.value = response.data || []
-    // 菜单加载完成后，根据当前路由更新选中状态
-    updateSelectedMenuByRoute()
-  } catch (error) {
-    console.error('Failed to load menus:', error)
-  }
+  await menuStore.loadVisibleMenus()
+  // 菜单加载完成后，根据当前路由更新选中状态
+  updateSelectedMenuByRoute()
 }
 
 // 监听路由变化，更新选中的一级菜单
@@ -100,13 +100,8 @@ const childMenus = computed(() => {
 
 // 判断一级菜单是否有子菜单
 const hasChildren = (menu: MenuItem) => {
-  const result = (menu.children && menu.children.length > 0) ||
+  return (menu.children && menu.children.length > 0) ||
          menus.value.some(m => m.parentId === menu.id)
-  console.log('hasChildren called for:', menu.name, 'id:', menu.id)
-  console.log('  menu.children:', menu.children, 'length:', menu.children?.length)
-  console.log('  fallback check (parentId match):', menus.value.some(m => m.parentId === menu.id))
-  console.log('  hasChildren returns:', result)
-  return result
 }
 
 // sub-navbar 展示的菜单项：展开了二级容器则显示三级子菜单，否则显示二级子菜单
@@ -153,25 +148,24 @@ const expandedChildMenu = ref<MenuItem | null>(null)
 
 // 选中一级菜单
 const selectParentMenu = (menu: MenuItem) => {
-  console.log('=== selectParentMenu START ===')
-  console.log('menu:', menu.name, 'id:', menu.id, 'path:', menu.path)
-  console.log('menu.children:', menu.children)
   // 判断是否有子菜单（支持嵌套结构和扁平结构）
   const hasSubMenus = hasChildren(menu)
-  console.log('hasSubMenus result:', hasSubMenus)
   expandedChildMenu.value = null
+
+  // 始终设置 selectedParentMenu（控制顶部导航栏）
+  selectedParentMenu.value = menu
+
   if (hasSubMenus) {
-    console.log('Setting selectedParentMenu to:', menu.name)
-    selectedParentMenu.value = menu
+    // 仅切换侧边栏展开状态
+    if (expandedSidebarMenuId.value === menu.id) {
+      expandedSidebarMenuId.value = null
+    } else {
+      expandedSidebarMenuId.value = menu.id
+    }
   } else if (menu.path) {
-    console.log('No submenus, has path:', menu.path, '- calling navigateTo')
-    selectedParentMenu.value = menu
+    expandedSidebarMenuId.value = null
     navigateTo(menu.path)
-  } else {
-    console.log('selectParentMenu: no children, no path - doing nothing')
   }
-  console.log('selectedParentMenu is now:', selectedParentMenu.value?.name)
-  console.log('=== selectParentMenu END ===')
 }
 
 // 获取三级子菜单
@@ -186,34 +180,19 @@ const grandChildMenus = (child: MenuItem) => {
 
 // 二级菜单点击处理
 const handleChildClick = (child: MenuItem) => {
-  console.log('=== handleChildClick START ===')
-  console.log('child:', child.name, 'id:', child.id, 'path:', child.path)
-  console.log('child.children:', child.children)
-  console.log('child.parentId:', child.parentId)
-  console.log('selectedParentMenu BEFORE:', selectedParentMenu.value?.name, 'id:', selectedParentMenu.value?.id)
-  console.log('hasChildren(child):', hasChildren(child))
-  console.log('child.children check:', child.children && child.children.length > 0)
-  console.log('fallback check:', menus.value.some(m => m.parentId === child.id))
   if (child.path) {
-    console.log('calling navigateTo:', child.path)
     navigateTo(child.path)
   } else if (hasChildren(child)) {
-    console.log('toggling expandedChildMenu for:', child.name)
     if (expandedChildMenu.value?.id === child.id) {
       expandedChildMenu.value = null
     } else {
       expandedChildMenu.value = child
     }
-  } else {
-    console.log('handleChildClick: doing nothing - no path, no children')
   }
-  console.log('selectedParentMenu AFTER:', selectedParentMenu.value?.name)
-  console.log('=== handleChildClick END ===')
 }
 
 // 导航
 const navigateTo = (path: string) => {
-  console.log('navigateTo called with path:', path)
   router.push(path)
   isMobileMenuOpen.value = false
 }
@@ -251,6 +230,11 @@ watch(() => userStore.isAuthenticated, (isAuth) => {
 watch(() => userStore.user?.role, () => {
   loadMenus()
 })
+
+// 监听菜单数据变更（MenuConfig 修改后触发），更新路由选中状态
+watch(() => menuStore.version, () => {
+  updateSelectedMenuByRoute()
+})
 </script>
 
 <template>
@@ -286,7 +270,7 @@ watch(() => userStore.user?.role, () => {
               class="nav-item parent"
               :class="{
                 active: isActive(menu) || selectedParentMenu?.id === menu.id,
-                expanded: selectedParentMenu?.id === menu.id,
+                expanded: expandedSidebarMenuId === menu.id,
                 'has-children': hasChildren(menu)
               }"
               @click="selectParentMenu(menu)"
@@ -340,7 +324,7 @@ watch(() => userStore.user?.role, () => {
               </span>
             </div>
             <!-- 二级菜单（展开显示） -->
-            <div v-if="hasChildren(menu) && selectedParentMenu?.id === menu.id" class="nav-children">
+            <div v-if="hasChildren(menu) && expandedSidebarMenuId === menu.id" class="nav-children">
               <template v-for="child in childMenus" :key="child.id">
                 <div
                   class="nav-item child"
@@ -630,10 +614,6 @@ watch(() => userStore.user?.role, () => {
   color: #0D6E6E;
 }
 
-.nav-item.clickable {
-  cursor: pointer;
-}
-
 .nav-icon {
   width: 24px;
   height: 24px;
@@ -831,25 +811,11 @@ watch(() => userStore.user?.role, () => {
   color: #0D6E6E;
 }
 
-/* 三级菜单组 */
-.sub-nav-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.sub-nav-group-label {
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #999999;
-  white-space: nowrap;
-}
-
 /* 主内容区域 */
 .pc-main {
   flex: 1;
-  padding: 32px;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 /* ==================== 移动端布局 ==================== */

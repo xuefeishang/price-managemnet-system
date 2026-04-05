@@ -25,6 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+import com.pricemanagement.dto.PriceWithStatsDTO;
 
 @Slf4j
 @Service
@@ -72,6 +75,61 @@ public class PriceService {
     public Optional<Price> getYesterdayPriceByProductId(Long productId) {
         LocalDate yesterday = LocalDate.now().minusDays(1);
         return priceRepository.findValidPriceByProductIdAndDate(productId, yesterday);
+    }
+
+    /**
+     * 获取指定日期有效的所有价格（带昨日价格和月均价）
+     */
+    public List<PriceWithStatsDTO> getValidPricesWithStatsByDate(LocalDate date) {
+        List<Price> prices = priceRepository.findValidPricesByDate(date);
+
+        if (prices.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> productIds = prices.stream()
+                .map(p -> p.getProduct().getId())
+                .distinct()
+                .collect(Collectors.toList());
+
+        LocalDate yesterday = date.minusDays(1);
+
+        // 批量查询昨日价格
+        List<Price> yesterdayPrices = priceRepository.findValidPricesByProductIdsAndDate(productIds, yesterday);
+        Map<Long, Price> yesterdayPriceMap = new HashMap<>();
+        for (Price p : yesterdayPrices) {
+            yesterdayPriceMap.put(p.getProduct().getId(), p);
+        }
+
+        // 批量查询月均价
+        LocalDate monthStart = date.withDayOfMonth(1);
+        List<Object[]> avgResults = priceRepository.findAveragePricesByProductIdsAndMonth(productIds, monthStart, date);
+        Map<Long, BigDecimal> monthlyAvgMap = new HashMap<>();
+        for (Object[] row : avgResults) {
+            Long productId = (Long) row[0];
+            Object avgObj = row[1];
+            BigDecimal avg;
+            if (avgObj instanceof BigDecimal) {
+                avg = (BigDecimal) avgObj;
+            } else if (avgObj instanceof Double) {
+                avg = BigDecimal.valueOf((Double) avgObj);
+            } else if (avgObj instanceof Number) {
+                avg = new BigDecimal(avgObj.toString());
+            } else {
+                avg = null;
+            }
+            monthlyAvgMap.put(productId, avg);
+        }
+
+        // 组装结果
+        return prices.stream()
+                .map(price -> {
+                    Long productId = price.getProduct().getId();
+                    Price yp = yesterdayPriceMap.get(productId);
+                    BigDecimal avg = monthlyAvgMap.get(productId);
+                    return new PriceWithStatsDTO(price, yp, avg);
+                })
+                .collect(Collectors.toList());
     }
 
     /**
@@ -202,6 +260,12 @@ public class PriceService {
         history.setRemark(oldPrice == null ? "创建产品价格" : "更新产品价格");
         priceHistoryRepository.save(history);
 
+        // 同步更新产品售价
+        if (savedPrice.getCurrentPrice() != null) {
+            product.setSellingPrice(savedPrice.getCurrentPrice());
+            productRepository.save(product);
+        }
+
         return savedPrice;
     }
 
@@ -289,6 +353,12 @@ public class PriceService {
             history.setRemark("更新产品价格");
             priceHistoryRepository.save(history);
             log.debug("Created price history for price change");
+        }
+
+        // 同步更新产品售价
+        if (updatedPrice.getCurrentPrice() != null) {
+            existingPrice.getProduct().setSellingPrice(updatedPrice.getCurrentPrice());
+            productRepository.save(existingPrice.getProduct());
         }
 
         return updatedPrice;

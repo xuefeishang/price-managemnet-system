@@ -14,7 +14,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "price", indexes = {
     @Index(name = "idx_price_product", columnList = "product_id"),
-    @Index(name = "idx_price_effective", columnList = "effective_date, expiry_date")
+    @Index(name = "idx_price_effective", columnList = "effective_date, expiry_date"),
+    @Index(name = "idx_price_product_effective", columnList = "product_id, effective_date")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Price {

@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
-import { getAllMenus, createMenu, updateMenu, deleteMenu } from '@/api/menu'
+import { VueDraggable } from 'vue-draggable-plus'
+import { getAllMenus, createMenu, updateMenu, deleteMenu, batchUpdateMenuSort } from '@/api/menu'
+import { useMenuStore } from '@/store/useMenuStore'
 import type { MenuItem, Role } from '@/types'
+
+const menuStore = useMenuStore()
 
 // 响应式布局
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
@@ -13,9 +17,37 @@ const isPCLayout = computed(() => windowWidth.value >= 768)
 
 const loading = ref(false)
 const menus = ref<MenuItem[]>([])
+const expandedMenus = ref<Set<number>>(new Set())
 const editingMenu = ref<MenuItem | null>(null)
 const isEditing = ref(false)
 const showEditDialog = ref(false)
+
+// 切换菜单展开/折叠
+const toggleExpand = (menuId: number) => {
+  if (expandedMenus.value.has(menuId)) {
+    expandedMenus.value.delete(menuId)
+  } else {
+    expandedMenus.value.add(menuId)
+  }
+}
+
+// 判断菜单是否展开
+const isExpanded = (menuId: number) => {
+  return expandedMenus.value.has(menuId)
+}
+
+// 初始化展开所有有子菜单的项
+const initExpanded = () => {
+  const expandAll = (items: MenuItem[]) => {
+    items.forEach(item => {
+      if (item.children?.length) {
+        expandedMenus.value.add(item.id)
+        expandAll(item.children)
+      }
+    })
+  }
+  expandAll(menus.value)
+}
 
 // 表单数据
 const formData = ref({
@@ -60,12 +92,79 @@ const flatMenus = computed(() => {
   return result
 })
 
+// ====== 拖拽与撤销 ======
+const previousMenus = ref<MenuItem[] | null>(null)
+const canUndo = ref(false)
+
+const deepCloneMenus = (items: MenuItem[]): MenuItem[] => {
+  return items.map(item => ({
+    ...item,
+    children: item.children ? deepCloneMenus(item.children) : undefined
+  }))
+}
+
+const collectSortItems = (items: MenuItem[], parentId: number | null = null): { id: number; parentId: number | null; sortOrder: number }[] => {
+  const result: { id: number; parentId: number | null; sortOrder: number }[] = []
+  items.forEach((item, index) => {
+    result.push({ id: item.id, parentId, sortOrder: index + 1 })
+    if (item.children?.length) {
+      result.push(...collectSortItems(item.children, item.id))
+    }
+  })
+  return result
+}
+
+const onDragStart = () => {
+  previousMenus.value = deepCloneMenus(menus.value)
+  // 自动展开所有菜单，确保所有放置区域可见
+  initExpanded()
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+const onDragEnd = () => {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    await nextTick()
+    const sortItems = collectSortItems(menus.value)
+    try {
+      await batchUpdateMenuSort(sortItems)
+      canUndo.value = true
+      showToast('排序已保存')
+      menuStore.notifyMenuChanged()
+    } catch (error) {
+      console.error('Failed to save sort:', error)
+      showToast('保存排序失败')
+      if (previousMenus.value) {
+        menus.value = deepCloneMenus(previousMenus.value)
+      }
+    }
+  }, 200)
+}
+
+const handleUndo = async () => {
+  if (!previousMenus.value) return
+  menus.value = deepCloneMenus(previousMenus.value)
+  const sortItems = collectSortItems(menus.value)
+  try {
+    await batchUpdateMenuSort(sortItems)
+    showToast('已撤销')
+    menuStore.notifyMenuChanged()
+  } catch (error) {
+    console.error('Failed to undo:', error)
+    showToast('撤销失败')
+  }
+  previousMenus.value = null
+  canUndo.value = false
+}
+
 // 加载菜单
 const loadMenus = async () => {
   loading.value = true
   try {
     const response = await getAllMenus()
     menus.value = response.data || []
+    initExpanded()
   } catch (error) {
     console.error('Failed to load menus:', error)
     showToast('加载菜单失败')
@@ -123,6 +222,7 @@ const handleSave = async () => {
     }
     showEditDialog.value = false
     loadMenus()
+    menuStore.notifyMenuChanged()
   } catch (error) {
     console.error('Failed to save menu:', error)
     showToast('保存失败')
@@ -144,6 +244,7 @@ const handleDelete = async (menu: MenuItem) => {
     await deleteMenu(menu.id)
     showToast('删除成功')
     loadMenus()
+    menuStore.notifyMenuChanged()
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('Failed to delete menu:', error)
@@ -157,15 +258,11 @@ const toggleVisible = async (menu: MenuItem) => {
   try {
     await updateMenu(menu.id, { ...menu, visible: !menu.visible })
     loadMenus()
+    menuStore.notifyMenuChanged()
   } catch (error) {
     console.error('Failed to toggle visibility:', error)
     showToast('操作失败')
   }
-}
-
-// 获取级别名称
-const getLevelName = (level: number) => {
-  return level === 0 ? '一级菜单' : '二级菜单'
 }
 
 onMounted(() => {
@@ -194,18 +291,28 @@ onUnmounted(() => {
             <p class="page-subtitle">管理系统菜单，可添加、编辑、删除和排序</p>
           </div>
         </div>
-        <button class="btn-primary" @click="openAddDialog(null)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          新增菜单
-        </button>
+        <div class="header-actions">
+          <button v-if="canUndo" class="btn-undo" @click="handleUndo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+            撤销
+          </button>
+          <button class="btn-primary" @click="openAddDialog(null)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            新增菜单
+          </button>
+        </div>
       </div>
 
-      <!-- 菜单树表格 -->
+      <!-- 菜单树表格（含拖拽） -->
       <div class="menu-table" v-if="!loading">
         <div class="table-header">
+          <div class="th drag-col"></div>
           <div class="th name">菜单名称</div>
           <div class="th path">路径</div>
           <div class="th icon">图标</div>
@@ -215,67 +322,69 @@ onUnmounted(() => {
           <div class="th actions">操作</div>
         </div>
 
-        <template v-for="menu in menus" :key="menu.id">
-          <!-- 一级菜单 -->
-          <div class="table-row parent">
-            <div class="td name">
-              <span class="menu-name">{{ menu.name }}</span>
-            </div>
-            <div class="td path">{{ menu.path || '-' }}</div>
-            <div class="td icon">{{ menu.icon || '-' }}</div>
-            <div class="td order">{{ menu.sortOrder }}</div>
-            <div class="td visible">
-              <switch :checked="menu.visible" @change="toggleVisible(menu)" />
-            </div>
-            <div class="td roles">
-              <span v-for="role in menu.roles" :key="role" class="role-tag">{{ role }}</span>
-            </div>
-            <div class="td actions">
-              <button class="btn-icon" title="添加子菜单" @click="openAddDialog(menu.id)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
-              <button class="btn-icon" title="编辑" @click="openEditDialog(menu)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button class="btn-icon danger" title="删除" @click="handleDelete(menu)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- 二级菜单 -->
-          <template v-if="menu.children?.length" v-for="child in menu.children" :key="child.id">
-            <div class="table-row child">
-              <div class="td name">
-                <span class="child-indicator"></span>
-                <span class="menu-name">{{ child.name }}</span>
+        <!-- 一级菜单拖拽列表 -->
+        <VueDraggable
+          v-model="menus"
+          group="top-level"
+          handle=".drag-handle"
+          :animation="200"
+          @start="onDragStart"
+          @end="onDragEnd"
+          tag="div"
+          class="menu-tree-content"
+        >
+          <div v-for="menu in menus" :key="menu.id" class="menu-group">
+            <!-- 一级菜单行 -->
+            <div class="table-row parent">
+              <div class="td drag-col">
+                <span class="drag-handle" title="拖拽排序">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="8" cy="5" r="2"/>
+                    <circle cx="16" cy="5" r="2"/>
+                    <circle cx="8" cy="12" r="2"/>
+                    <circle cx="16" cy="12" r="2"/>
+                    <circle cx="8" cy="19" r="2"/>
+                    <circle cx="16" cy="19" r="2"/>
+                  </svg>
+                </span>
               </div>
-              <div class="td path">{{ child.path || '-' }}</div>
-              <div class="td icon">{{ child.icon || '-' }}</div>
-              <div class="td order">{{ child.sortOrder }}</div>
+              <div class="td name">
+                <span class="menu-name-text">{{ menu.name }}</span>
+                <span class="level-badge">一级</span>
+                <button
+                  v-if="menu.children?.length"
+                  class="expand-btn"
+                  :class="{ expanded: isExpanded(menu.id) }"
+                  @click="toggleExpand(menu.id)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="td path">{{ menu.path || '-' }}</div>
+              <div class="td icon">{{ menu.icon || '-' }}</div>
+              <div class="td order">{{ menu.sortOrder }}</div>
               <div class="td visible">
-                <switch :checked="child.visible" @change="toggleVisible(child)" />
+                <switch :checked="menu.visible" @change="toggleVisible(menu)" />
               </div>
               <div class="td roles">
-                <span v-for="role in child.roles" :key="role" class="role-tag">{{ role }}</span>
+                <span v-for="role in menu.roles" :key="role" class="role-tag">{{ role }}</span>
               </div>
               <div class="td actions">
-                <button class="btn-icon" title="编辑" @click="openEditDialog(child)">
+                <button class="btn-icon" title="添加子菜单" @click="openAddDialog(menu.id)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </button>
+                <button class="btn-icon" title="编辑" @click="openEditDialog(menu)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
                 </button>
-                <button class="btn-icon danger" title="删除" @click="handleDelete(child)">
+                <button class="btn-icon danger" title="删除" @click="handleDelete(menu)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -283,8 +392,137 @@ onUnmounted(() => {
                 </button>
               </div>
             </div>
-          </template>
-        </template>
+
+            <!-- 二级菜单列表（可折叠+可拖拽） -->
+            <VueDraggable
+              v-if="menu.children?.length && isExpanded(menu.id)"
+              v-model="menu.children"
+              group="sub-level"
+              handle=".drag-handle"
+              :animation="200"
+              @start="onDragStart"
+              @end="onDragEnd"
+              tag="div"
+              class="children-section"
+            >
+              <div v-for="child in menu.children" :key="child.id" class="child-group">
+                <!-- 二级菜单行 -->
+                <div class="table-row child level-2">
+                  <div class="td drag-col">
+                    <span class="drag-handle" title="拖拽排序">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="8" cy="5" r="2"/>
+                        <circle cx="16" cy="5" r="2"/>
+                        <circle cx="8" cy="12" r="2"/>
+                        <circle cx="16" cy="12" r="2"/>
+                        <circle cx="8" cy="19" r="2"/>
+                        <circle cx="16" cy="19" r="2"/>
+                      </svg>
+                    </span>
+                  </div>
+                  <div class="td name">
+                    <span class="menu-name-text">{{ child.name }}</span>
+                    <span class="level-badge secondary">二级</span>
+                    <button
+                      v-if="child.children?.length"
+                      class="expand-btn child-expand-btn"
+                      :class="{ expanded: isExpanded(child.id) }"
+                      @click="toggleExpand(child.id)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="td path">{{ child.path || '-' }}</div>
+                  <div class="td icon">{{ child.icon || '-' }}</div>
+                  <div class="td order">{{ child.sortOrder }}</div>
+                  <div class="td visible">
+                    <switch :checked="child.visible" @change="toggleVisible(child)" />
+                  </div>
+                  <div class="td roles">
+                    <span v-for="role in child.roles" :key="role" class="role-tag">{{ role }}</span>
+                  </div>
+                  <div class="td actions">
+                    <button class="btn-icon" title="添加子菜单" @click="openAddDialog(child.id)">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                    </button>
+                    <button class="btn-icon" title="编辑" @click="openEditDialog(child)">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="btn-icon danger" title="删除" @click="handleDelete(child)">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 三级菜单列表（如果有，受二级展开控制） -->
+                <VueDraggable
+                  v-if="child.children?.length && isExpanded(child.id)"
+                  v-model="child.children"
+                  :group="'leaf-level'"
+                  handle=".drag-handle"
+                  :animation="200"
+                  @start="onDragStart"
+                  @end="onDragEnd"
+                  tag="div"
+                  class="grandchildren-section"
+                >
+                  <div v-for="grandchild in child.children" :key="grandchild.id" class="table-row child level-3">
+                    <div class="td drag-col">
+                      <span class="drag-handle" title="拖拽排序">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="8" cy="5" r="2"/>
+                          <circle cx="16" cy="5" r="2"/>
+                          <circle cx="8" cy="12" r="2"/>
+                          <circle cx="16" cy="12" r="2"/>
+                          <circle cx="8" cy="19" r="2"/>
+                          <circle cx="16" cy="19" r="2"/>
+                        </svg>
+                      </span>
+                    </div>
+                    <div class="td name">
+                      <span class="menu-name-text">{{ grandchild.name }}</span>
+                      <span class="level-badge tertiary">三级</span>
+                    </div>
+                    <div class="td path">{{ grandchild.path || '-' }}</div>
+                    <div class="td icon">{{ grandchild.icon || '-' }}</div>
+                    <div class="td order">{{ grandchild.sortOrder }}</div>
+                    <div class="td visible">
+                      <switch :checked="grandchild.visible" @change="toggleVisible(grandchild)" />
+                    </div>
+                    <div class="td roles">
+                      <span v-for="role in grandchild.roles" :key="role" class="role-tag">{{ role }}</span>
+                    </div>
+                    <div class="td actions">
+                      <button class="btn-icon" title="编辑" @click="openEditDialog(grandchild)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      <button class="btn-icon danger" title="删除" @click="handleDelete(grandchild)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </VueDraggable>
+              </div>
+            </VueDraggable>
+          </div>
+        </VueDraggable>
 
         <div v-if="menus.length === 0" class="empty-state">
           暂无菜单数据
@@ -297,7 +535,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 移动端布局 -->
+    <!-- 移动端布局（不支持拖拽，通过sortOrder字段排序） -->
     <template v-else>
       <header class="navbar">
         <div class="navbar-left">
@@ -314,8 +552,19 @@ onUnmounted(() => {
       <main class="content" v-if="!loading">
         <div class="menu-list">
           <div v-for="menu in menus" :key="menu.id" class="menu-card">
-            <div class="card-header">
-              <span class="menu-name">{{ menu.name }}</span>
+            <div class="card-header" @click="menu.children?.length && toggleExpand(menu.id)">
+              <div class="card-header-left">
+                <span class="menu-name">{{ menu.name }}</span>
+                <button
+                  v-if="menu.children?.length"
+                  class="mobile-expand-btn"
+                  :class="{ expanded: isExpanded(menu.id) }"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              </div>
               <switch :checked="menu.visible" @change="toggleVisible(menu)" />
             </div>
             <div class="card-info">
@@ -329,10 +578,21 @@ onUnmounted(() => {
             </div>
 
             <!-- 子菜单 -->
-            <div v-if="menu.children?.length" class="sub-menu-list">
+            <div v-if="menu.children?.length && isExpanded(menu.id)" class="sub-menu-list">
               <div v-for="child in menu.children" :key="child.id" class="sub-menu-card">
-                <div class="card-header">
-                  <span class="menu-name">{{ child.name }}</span>
+                <div class="card-header" @click="child.children?.length && toggleExpand(child.id)">
+                  <div class="card-header-left">
+                    <span class="menu-name">{{ child.name }}</span>
+                    <button
+                      v-if="child.children?.length"
+                      class="mobile-expand-btn"
+                      :class="{ expanded: isExpanded(child.id) }"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                  </div>
                   <switch :checked="child.visible" @change="toggleVisible(child)" />
                 </div>
                 <div class="card-info">
@@ -341,6 +601,20 @@ onUnmounted(() => {
                 <div class="card-actions">
                   <button class="btn-small" @click="openEditDialog(child)">编辑</button>
                   <button class="btn-small danger" @click="handleDelete(child)">删除</button>
+                </div>
+
+                <!-- 三级菜单 -->
+                <div v-if="child.children?.length && isExpanded(child.id)" class="sub-menu-list">
+                  <div v-for="grandchild in child.children" :key="grandchild.id" class="sub-menu-card sub-sub">
+                    <div class="card-header">
+                      <span class="menu-name">{{ grandchild.name }}</span>
+                      <switch :checked="grandchild.visible" @change="toggleVisible(grandchild)" />
+                    </div>
+                    <div class="card-actions">
+                      <button class="btn-small" @click="openEditDialog(grandchild)">编辑</button>
+                      <button class="btn-small danger" @click="handleDelete(grandchild)">删除</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -458,6 +732,12 @@ onUnmounted(() => {
   gap: 16px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .back-button {
   width: 40px;
   height: 40px;
@@ -518,7 +798,27 @@ onUnmounted(() => {
   background: #0D8A8A;
 }
 
-/* 菜单表格 */
+.btn-undo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #FFFFFF;
+  color: #0D6E6E;
+  border: 1px solid #0D6E6E;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.btn-undo:hover {
+  background: rgba(13, 110, 110, 0.06);
+}
+
+/* 菜单表格容器 */
 .menu-table {
   background: #FFFFFF;
   border-radius: 12px;
@@ -540,6 +840,17 @@ onUnmounted(() => {
 
 .th, .td {
   padding: 14px 8px;
+}
+
+.th.drag-col,
+.td.drag-col {
+  flex: 0 0 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding: 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .th.name, .td.name {
@@ -583,38 +894,181 @@ onUnmounted(() => {
   text-align: center;
 }
 
+/* 拖拽手柄 */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #CBD5E1;
+  cursor: grab;
+  border-radius: 4px;
+  transition: all 150ms;
+  opacity: 0.4;
+}
+
+.table-row:hover .drag-handle {
+  opacity: 1;
+  color: #94A3B8;
+}
+
+.drag-handle:hover {
+  background: #F1F5F9;
+  color: #64748B;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* 菜单树形结构 */
+.menu-tree-content {
+  /* Tree content wrapper */
+}
+
+.menu-group {
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.menu-group:last-child {
+  border-bottom: none;
+}
+
 .table-row {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  border-bottom: 1px solid #F3F4F6;
   transition: background-color 150ms;
-}
-
-.table-row:last-child {
-  border-bottom: none;
 }
 
 .table-row:hover {
   background: #FAFAFA;
 }
 
-.table-row.child {
-  background: #FAFAFA;
+.table-row.parent {
+  background: #FFFFFF;
 }
 
-.menu-name {
+.table-row.child {
+  background: #F8FAFC;
+}
+
+/* 树形层级结构 */
+.children-section {
+  border-top: 1px solid #E5E5E5;
+}
+
+.child-group {
+  position: relative;
+  margin-left: 30px;
+  padding-left: 20px;
+  border-left: 2px solid #CBD5E1;
+}
+
+.child-group:last-child {
+  border-left-color: transparent;
+}
+
+.child-group > .table-row.child.level-2 {
+  position: relative;
+}
+
+.child-group > .table-row.child.level-2::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  background: #CBD5E1;
+}
+
+/* 三级菜单 */
+.grandchildren-section {
+  margin-left: 30px;
+  padding-left: 20px;
+  border-left: 2px solid #CBD5E1;
+  border-top: 1px solid #E2E8F0;
+  position: relative;
+}
+
+.grandchildren-section .table-row.child.level-3 {
+  position: relative;
+}
+
+.grandchildren-section .table-row.child.level-3::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  background: #CBD5E1;
+}
+
+.grandchildren-section .table-row.child.level-3:last-child {
+  border-left-color: transparent;
+}
+
+.grandchildren-section > .table-row:last-child {
+  /* 不需要最后一个底部竖线 */
+}
+
+.menu-name-text {
   font-weight: 500;
   color: #1A1A1A;
 }
 
-.child-indicator {
-  display: inline-block;
-  width: 20px;
-  height: 1px;
-  background: #D1D5DB;
+.expand-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-right: 8px;
-  vertical-align: middle;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+
+.expand-btn:hover {
+  background: #E5E5E5;
+  color: #1A1A1A;
+}
+
+.expand-btn svg {
+  transition: transform 200ms;
+}
+
+.expand-btn.expanded svg {
+  transform: rotate(90deg);
+}
+
+.level-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(13, 110, 110, 0.1);
+  color: #0D6E6E;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.level-badge.secondary {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6B7280;
+}
+
+.level-badge.tertiary {
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748B;
 }
 
 .role-tag {
@@ -650,6 +1104,41 @@ onUnmounted(() => {
 .btn-icon.danger:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #EF4444;
+}
+
+/* 拖拽状态样式 */
+:deep(.sortable-ghost) {
+  opacity: 0.4;
+  background: rgba(13, 110, 110, 0.06) !important;
+}
+
+:deep(.sortable-chosen) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+:deep(.sortable-drag) {
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+
+/* 跨父级拖拽放置指示器 */
+:deep(.children-section) > .sortable-ghost,
+:deep(.grandchildren-section) > .sortable-ghost {
+  border-left: 3px solid #0D6E6E;
+  background: rgba(13, 110, 110, 0.08) !important;
+}
+
+/* 一级菜单拖拽放置指示器 */
+.menu-tree-content > .sortable-ghost > .table-row.parent {
+  border-bottom: 2px solid #0D6E6E;
+}
+
+/* 子级拖拽放置高亮区域 */
+.children-section.sortable-drag-over,
+.grandchildren-section.sortable-drag-over {
+  background: rgba(13, 110, 110, 0.04);
 }
 
 /* 加载/空状态 */
@@ -770,6 +1259,40 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-expand-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #F1F5F9;
+  color: #64748B;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms;
+  flex-shrink: 0;
+}
+
+.mobile-expand-btn svg {
+  transition: transform 200ms;
+}
+
+.mobile-expand-btn.expanded {
+  background: rgba(13, 110, 110, 0.1);
+  color: #0D6E6E;
+}
+
+.mobile-expand-btn.expanded svg {
+  transform: rotate(90deg);
+}
+
 .menu-name {
   font-weight: 600;
   color: #1A1A1A;
@@ -827,6 +1350,40 @@ onUnmounted(() => {
 
 .sub-menu-card:last-child {
   margin-bottom: 0;
+}
+
+.child-expand-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #94A3B8;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+
+.child-expand-btn:hover {
+  background: #E5E5E5;
+  color: #1A1A1A;
+}
+
+.child-expand-btn svg {
+  transition: transform 200ms;
+}
+
+.child-expand-btn.expanded svg {
+  transform: rotate(90deg);
+}
+
+.sub-sub {
+  background: #F1F5F9;
+  margin-left: 12px;
 }
 
 /* 编辑对话框 */

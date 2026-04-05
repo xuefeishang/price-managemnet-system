@@ -7,13 +7,14 @@ import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
 @Entity
 @Table(name = "product", indexes = {
-    @Index(name = "idx_product_code", columnList = "code"),
-    @Index(name = "idx_product_category", columnList = "category_id")
+    @Index(name = "idx_product_category", columnList = "category_id"),
+    @Index(name = "idx_product_sort", columnList = "sort_order")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Product {
@@ -25,8 +26,8 @@ public class Product {
     @Column(nullable = false, length = 200)
     private String name;
 
-    @Column(unique = true, nullable = false, length = 100)
-    private String code;
+    @Column(name = "selling_price", precision = 15, scale = 4)
+    private BigDecimal sellingPrice;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
@@ -61,6 +62,12 @@ public class Product {
 
     @Column(columnDefinition = "TEXT")
     private String remark;
+
+    @Column(name = "unit", length = 50)
+    private String unit;  // 计量单位：元/吨、万元/吨、元/克、元/千克 等
+
+    @Column(name = "sort_order")
+    private Integer sortOrder = 0;  // 排序顺序
 
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)
