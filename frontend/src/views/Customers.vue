@@ -3,11 +3,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getCustomers, updateCustomer, deleteCustomer } from '@/api/customers'
-import { usePermission, Permission } from '@/composables/usePermission'
+//import { usePermission } from '@/composables/usePermission'
 import type { Customer } from '@/types'
 
 const router = useRouter()
-const { hasPermission } = usePermission()
+// const { hasPermission } = usePermission()
 
 const customers = ref<Customer[]>([])
 const loading = ref(false)

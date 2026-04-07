@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCustomer, createCustomer, updateCustomer } from '@/api/customers'
+import type { CustomerStatus } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +20,16 @@ const isPCLayout = computed(() => {
   return false
 })
 
-const form = reactive({
+const form = reactive<{
+  name: string
+  code: string
+  contact: string
+  phone: string
+  address: string
+  status: CustomerStatus
+  sortOrder: number
+  remark: string
+}>({
   name: '',
   code: '',
   contact: '',

@@ -20,9 +20,9 @@ const importResult = ref<{
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 const isPCLayout = computed(() => windowWidth.value >= 1024)
 
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
+// const handleResize = () => {
+//   windowWidth.value = window.innerWidth
+// }
 
 const handleDownloadTemplate = async () => {
   try {

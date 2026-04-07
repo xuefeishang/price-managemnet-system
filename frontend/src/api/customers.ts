@@ -13,7 +13,7 @@ export const getCustomer = async (id: number): Promise<ApiResponse<Customer>> =>
 }
 
 // 创建客户
-export const createCustomer = async (data: Customer): Promise<ApiResponse<Customer>> => {
+export const createCustomer = async (data: Partial<Customer>): Promise<ApiResponse<Customer>> => {
   return await http.post('/api/customers', data)
 }
 

@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
-import { updateProfile, changePassword, getProfile } from '@/api/auth'
+import { updateProfile, changePassword } from '@/api/auth'
 import type { UpdateProfileRequest, ChangePasswordRequest } from '@/api/auth'
 
 const userStore = useUserStore()

@@ -3,11 +3,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getOrigins, updateOrigin, deleteOrigin } from '@/api/origins'
-import { usePermission, Permission } from '@/composables/usePermission'
+//import { usePermission } from '@/composables/usePermission'
 import type { Origin } from '@/types'
 
 const router = useRouter()
-const { hasPermission } = usePermission()
+// const { hasPermission } = usePermission()
 
 const origins = ref<Origin[]>([])
 const loading = ref(false)

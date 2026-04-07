@@ -3,10 +3,11 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
+import { getCustomers } from '@/api/customers'
 import { usePermission, Permission } from '@/composables/usePermission'
 import EmptyState from '@/components/EmptyState.vue'
 import { eventBus } from '@/utils/eventBus'
-import type { Product, ProductCategory } from '@/types'
+import type { Product, ProductCategory, Customer } from '@/types'
 
 const router = useRouter()
 const { hasPermission } = usePermission()
@@ -15,6 +16,7 @@ const products = ref<Product[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const categories = ref<ProductCategory[]>([])
+const customers = ref<Customer[]>([])
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
 // 筛选条件
@@ -54,6 +56,26 @@ const loadCategories = async () => {
     categories.value = response.data || []
   } catch (error) {
     console.error('Failed to load categories:', error)
+  }
+}
+
+const loadCustomers = async () => {
+  try {
+    const response = await getCustomers('ACTIVE')
+    customers.value = response.data || []
+  } catch (error) {
+    console.error('Failed to load customers:', error)
+  }
+}
+
+// 获取产品的客户名称列表
+const getCustomerNames = (product: Product): string => {
+  if (!product.customerIds) return '-'
+  try {
+    const ids = JSON.parse(product.customerIds)
+    return ids.map((id: number) => customers.value.find(c => c.id === id)?.name).filter(Boolean).join('、')
+  } catch {
+    return '-'
   }
 }
 
@@ -135,6 +157,7 @@ const handleResize = () => {
 onMounted(() => {
   window.addEventListener('resize', handleResize)
   loadCategories()
+  loadCustomers()
   loadProducts()
   eventBus.on('prices-updated', loadProducts)
 })
@@ -237,6 +260,7 @@ onUnmounted(() => {
             <div class="table-cell name">产品名称</div>
             <div class="table-cell unit">计量单位</div>
             <div class="table-cell specs">产品规格</div>
+            <div class="table-cell customer-info">客户信息</div>
             <div class="table-cell description">产品描述</div>
             <div class="table-cell category">分类</div>
             <div class="table-cell status">状态</div>
@@ -249,9 +273,13 @@ onUnmounted(() => {
             @click="viewProduct(product)"
           >
             <div class="table-cell seq">{{ index + 1 }}</div>
-            <div class="table-cell name">{{ product.name }}</div>
+            <div class="table-cell name">
+              <span class="product-name-text">{{ product.name }}</span>
+              <span class="product-code-text" v-if="product.code">{{ product.code }}</span>
+            </div>
             <div class="table-cell unit">{{ product.unit || '-' }}</div>
             <div class="table-cell specs"><span class="scroll-text">{{ product.specs || '-' }}</span></div>
+            <div class="table-cell customer-info"><span class="scroll-text">{{ getCustomerNames(product) }}</span></div>
             <div class="table-cell description"><span class="scroll-text">{{ product.description || '-' }}</span></div>
             <div class="table-cell category">{{ product.category?.name || '-' }}</div>
             <div class="table-cell status">
@@ -633,9 +661,24 @@ onUnmounted(() => {
 }
 
 .table-cell.name {
-  flex: 2;
+  flex: 1.5;
   font-weight: 500;
-  min-width: 120px;
+  min-width: 100px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  justify-content: center;
+}
+
+.product-name-text {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.product-code-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono), monospace;
 }
 
 .table-cell.unit {
@@ -645,7 +688,7 @@ onUnmounted(() => {
 }
 
 .table-cell.specs {
-  flex: 2;
+  flex: 1.5;
   font-size: 14px;
   color: var(--text-secondary);
   overflow: hidden;
@@ -663,8 +706,22 @@ onUnmounted(() => {
   animation: marquee-scroll 4s ease-in-out infinite alternate;
 }
 
+.table-cell.customer-info {
+  flex: 1.5;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  justify-content: flex-start;
+  padding-left: 8px;
+}
+
+.table-cell.customer-info:hover .scroll-text {
+  animation: marquee-scroll 4s ease-in-out infinite alternate;
+}
+
 .table-cell.description {
-  flex: 2.5;
+  flex: 1.5;
   font-size: 14px;
   color: var(--text-secondary);
   overflow: hidden;
@@ -688,12 +745,12 @@ onUnmounted(() => {
 }
 
 .table-cell.category {
-  flex: 0 0 80px;
+  flex: 0 0 100px;
   color: var(--text-secondary);
 }
 
 .table-cell.status {
-  flex: 0 0 60px;
+  flex: 0 0 80px;
   justify-content: center;
 }
 
@@ -702,7 +759,7 @@ onUnmounted(() => {
 }
 
 .table-cell.actions {
-  flex: 0 0 120px;
+  flex: 0 0 140px;
   justify-content: center;
   gap: var(--spacing-sm);
 }

@@ -2,12 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
-import { useUserStore } from '@/store/useUserStore'
+// import { useUserStore } from '@/store/useUserStore'
 import { getCategories, updateCategory, deleteCategory } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
 import type { ProductCategory } from '@/types'
 
-const userStore = useUserStore()
+// const userStore = useUserStore()
 const router = useRouter()
 const { hasPermission } = usePermission()
 

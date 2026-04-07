@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCategory, createCategory, updateCategory } from '@/api/categories'
+import type { CategoryStatus } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,7 +22,13 @@ const isPCLayout = computed(() => {
 })
 
 // 表单数据
-const form = reactive({
+const form = reactive<{
+  name: string
+  code: string
+  status: CategoryStatus
+  sortOrder: number
+  remark: string
+}>({
   name: '',
   code: '',
   status: 'ACTIVE',
@@ -68,7 +75,7 @@ const handleSave = async () => {
       await createCategory(categoryData)
     }
 
-    router.push('/categories')
+    await router.push('/categories')
   } catch (error) {
     console.error('Failed to save category:', error)
   } finally {
@@ -353,7 +360,7 @@ onMounted(() => {
 }
 
 .navbar-title {
-  font-family: var(--font-heading, 'Newsreader', Georgia, serif);
+  font-family: var(--font-heading, 'Newsreader', Georgia, serif),serif;
   font-size: 20px;
   font-weight: 500;
   color: var(--text-primary, #1A1A1A);
@@ -366,7 +373,7 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: var(--font-body, 'Inter', sans-serif);
+  font-family: var(--font-body, 'Inter', sans-serif),serif;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

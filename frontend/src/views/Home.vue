@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useUserStore } from '@/store/useUserStore'
+//import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
@@ -8,7 +8,7 @@ import { getPricesByDate } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
 import type { Product, ProductCategory, Price } from '@/types'
 
-const userStore = useUserStore()
+// const userStore = useUserStore()
 const router = useRouter()
 const { hasPermission } = usePermission()
 
@@ -95,9 +95,9 @@ const onDateChange = () => {
 }
 
 // 导航
-const navigateTo = (path: string) => {
-  router.push(path)
-}
+// const navigateTo = (path: string) => {
+//   router.push(path)
+// }
 
 // Tab切换（移动端）
 const switchTab = (tab: string) => {

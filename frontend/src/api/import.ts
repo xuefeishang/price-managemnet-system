@@ -25,7 +25,7 @@ export const exportProducts = async (): Promise<void> => {
     const response = await http.get('/api/import/products', {
       responseType: 'blob'
     })
-    const url = window.URL.createObjectURL(new Blob([response]))
+    const url = window.URL.createObjectURL(new Blob([response.data]))
     const a = document.createElement('a')
     a.href = url
     const filename = `产品价格_${new Date().toISOString().slice(0, 10)}.xlsx`

@@ -29,6 +29,7 @@ const isPCLayout = computed(() => {
 
 // 表单数据
 const form = reactive({
+  code: '',
   name: '',
   categoryId: '',
   status: 'ACTIVE' as ProductStatus,
@@ -53,7 +54,7 @@ const selectedOriginId = ref<number | null>(null)
 const selectedCustomerIds = ref<number[]>([])
 const showCustomerDropdown = ref(false)
 const customerDropdownRef = ref<HTMLElement | null>(null)
-const formAreaRef = ref<HTMLElement | null>(null)
+// const formAreaRef = ref<HTMLElement | null>(null)
 const activeSection = ref('basic')
 
 // 表单分组导航
@@ -114,6 +115,7 @@ const loadProduct = async () => {
     const response = await getProduct(parseInt(productId))
     const product = response.data
     Object.assign(form, {
+      code: product.code || '',
       name: product.name,
       categoryId: product.category?.id?.toString() || '',
       status: product.status,
@@ -203,14 +205,40 @@ const handleScroll = () => {
 
 // 保存
 const handleSave = async () => {
-  if (!form.name.trim()) {
-    showToast('请输入产品名称')
-    return
+  // 校验基本信息必输项
+  const requiredFields: { key: 'code' | 'name' | 'categoryId' | 'specs' | 'unit'; label: string }[] = [
+    { key: 'code', label: '产品编码' },
+    { key: 'name', label: '产品名称' },
+    { key: 'categoryId', label: '产品分类' },
+    { key: 'specs', label: '产品规格' },
+    { key: 'unit', label: '计量单位' },
+  ]
+
+  for (const field of requiredFields) {
+    if (!form[field.key].trim()) {
+      showToast(`请输入${field.label}`)
+      scrollToSection('basic')
+      await nextTick()
+      // 尝试聚焦到对应输入框
+      const section = document.getElementById('section-basic')
+      if (section) {
+        const allInputs = section.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')
+        for (const input of allInputs) {
+          if (!input.value.trim()) {
+            input.focus()
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            break
+          }
+        }
+      }
+      return
+    }
   }
 
   saving.value = true
   try {
     const productData = {
+      code: form.code || undefined,
       name: form.name,
       categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
       status: form.status as ProductStatus,
@@ -316,6 +344,19 @@ onUnmounted(() => {
                 <div class="form-grid">
                   <div class="form-group">
                     <label class="form-label">
+                      产品编码
+                      <span class="required">*</span>
+                    </label>
+                    <input
+                      v-model="form.code"
+                      type="text"
+                      class="form-input"
+                      placeholder="请输入产品编码"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">
                       产品名称
                       <span class="required">*</span>
                     </label>
@@ -328,7 +369,10 @@ onUnmounted(() => {
                   </div>
 
                   <div class="form-group">
-                    <label class="form-label">产品分类</label>
+                    <label class="form-label">
+                      产品分类
+                      <span class="required">*</span>
+                    </label>
                     <select v-model="form.categoryId" class="form-select">
                       <option value="">请选择分类</option>
                       <option v-for="category in categories" :key="category.id" :value="category.id">
@@ -338,7 +382,10 @@ onUnmounted(() => {
                   </div>
 
                   <div class="form-group">
-                    <label class="form-label">产品规格</label>
+                    <label class="form-label">
+                      产品规格
+                      <span class="required">*</span>
+                    </label>
                     <input
                       v-model="form.specs"
                       type="text"
@@ -348,7 +395,10 @@ onUnmounted(() => {
                   </div>
 
                   <div class="form-group">
-                    <label class="form-label">计量单位</label>
+                    <label class="form-label">
+                      计量单位
+                      <span class="required">*</span>
+                    </label>
                     <select v-model="form.unit" class="form-select">
                       <option value="">请选择计量单位</option>
                       <option v-for="opt in unitOptions" :key="opt.value" :value="opt.value">
@@ -556,6 +606,19 @@ onUnmounted(() => {
 
           <div class="form-group">
             <label class="form-label">
+              产品编码
+              <span class="required">*</span>
+            </label>
+            <input
+              v-model="form.code"
+              type="text"
+              class="form-input"
+              placeholder="请输入产品编码"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
               产品名称
               <span class="required">*</span>
             </label>
@@ -568,7 +631,10 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">产品分类</label>
+            <label class="form-label">
+              产品分类
+              <span class="required">*</span>
+            </label>
             <select v-model="form.categoryId" class="form-select">
               <option value="">请选择分类</option>
               <option v-for="category in categories" :key="category.id" :value="category.id">
@@ -578,7 +644,10 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">产品规格</label>
+            <label class="form-label">
+              产品规格
+              <span class="required">*</span>
+            </label>
             <input
               v-model="form.specs"
               type="text"
@@ -588,7 +657,10 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">计量单位</label>
+            <label class="form-label">
+              计量单位
+              <span class="required">*</span>
+            </label>
             <select v-model="form.unit" class="form-select">
               <option value="">请选择计量单位</option>
               <option v-for="opt in unitOptions" :key="opt.value" :value="opt.value">

@@ -82,6 +82,7 @@ export interface Customer {
 // 产品类型
 export interface Product {
   id: number
+  code?: string
   name: string
   sellingPrice?: number
   categoryId?: number

@@ -17,7 +17,7 @@ import {
 } from '@/api/approval'
 
 // 加载状态
-const loading = ref(false)
+// const loading = ref(false)
 const workflowLoading = ref(false)
 
 // 工作流列表
@@ -208,7 +208,7 @@ const openNodeEditDialog = (node: ApprovalNode) => {
 // 保存节点
 const handleSaveNode = async () => {
   try {
-    await addWorkflowNode(editingNode.value as ApprovalNode)
+    await addWorkflowNode(selectedWorkflow.value!.id!, editingNode.value as ApprovalNode)
     showToast('添加成功')
     showNodeDialog.value = false
     if (selectedWorkflow.value?.id) {

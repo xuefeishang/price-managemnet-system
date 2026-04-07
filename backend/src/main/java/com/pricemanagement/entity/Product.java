@@ -26,6 +26,10 @@ public class Product {
     @Column(nullable = false, length = 200)
     private String name;
 
+
+    @Column(length = 100)
+    private String code;  // 产品编码
+
     @Column(name = "selling_price", precision = 15, scale = 4)
     private BigDecimal sellingPrice;
 

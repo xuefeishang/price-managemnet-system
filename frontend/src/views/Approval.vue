@@ -4,7 +4,7 @@ import { showToast, showConfirmDialog } from 'vant'
 import {
   getPendingApprovals,
   getMyRequests,
-  getRequests,
+  // getRequests,
   getWorkflows,
   getWorkflowNodes,
   approveRequest,
@@ -17,7 +17,7 @@ import {
   type ApprovalRequest,
   type ApprovalWorkflow,
   type ApprovalNode,
-  type ApprovalPageResponse
+  // type ApprovalPageResponse
 } from '@/api/approval'
 import { usePermission, Permission } from '@/composables/usePermission'
 
@@ -79,20 +79,20 @@ const editingNode = ref<Partial<ApprovalNode>>({
 })
 
 // 状态选项
-const statusOptions = [
-  { text: '全部', value: '' },
-  { text: '待审批', value: 'PENDING' },
-  { text: '已通过', value: 'APPROVED' },
-  { text: '已拒绝', value: 'REJECTED' },
-  { text: '已撤回', value: 'CANCELLED' }
-]
+// const statusOptions = [
+//   { text: '全部', value: '' },
+//   { text: '待审批', value: 'PENDING' },
+//   { text: '已通过', value: 'APPROVED' },
+//   { text: '已拒绝', value: 'REJECTED' },
+//   { text: '已撤回', value: 'CANCELLED' }
+// ]
 
 // 业务类型选项
-const businessTypeOptions = [
-  { text: '全部', value: '' },
-  { text: '价格变更', value: 'PRICE' },
-  { text: '产品创建', value: 'PRODUCT' }
-]
+// const businessTypeOptions = [
+//   { text: '全部', value: '' },
+//   { text: '价格变更', value: 'PRICE' },
+//   { text: '产品创建', value: 'PRODUCT' }
+// ]
 
 // 工作流类型选项
 const workflowTypeOptions = [
@@ -113,8 +113,8 @@ const roleOptions = [
 ]
 
 // 筛选条件
-const filterStatus = ref('')
-const filterBusinessType = ref('')
+// const filterStatus = ref('')
+// const filterBusinessType = ref('')
 
 // 加载待我审批
 const loadPendingApprovals = async () => {
@@ -348,7 +348,7 @@ const openNodeDialog = () => {
 // 保存节点
 const handleSaveNode = async () => {
   try {
-    await addWorkflowNode(editingNode.value as ApprovalNode)
+    await addWorkflowNode(selectedWorkflow.value!.id!, editingNode.value as ApprovalNode)
     showToast('保存成功')
     showNodeDialog.value = false
     if (selectedWorkflow.value?.id) {

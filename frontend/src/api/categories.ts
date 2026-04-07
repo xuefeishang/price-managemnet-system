@@ -14,7 +14,7 @@ export const getCategory = async (id: number): Promise<ApiResponse<ProductCatego
 }
 
 // 创建分类
-export const createCategory = async (data: ProductCategory): Promise<ApiResponse<ProductCategory>> => {
+export const createCategory = async (data: Partial<ProductCategory>): Promise<ApiResponse<ProductCategory>> => {
   return await http.post('/api/categories', data)
 }
 

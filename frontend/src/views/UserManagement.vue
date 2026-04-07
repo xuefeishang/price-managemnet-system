@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { showToast, showDialog } from 'vant'
-import { getUsers, createUser, updateUser, deleteUser, resetUserPassword } from '@/api/users'
+import { getUsers, createUser, updateUser, deleteUser } from '@/api/users'
 import { usePermission, Permission } from '@/composables/usePermission'
 import type { User } from '@/types'
 
