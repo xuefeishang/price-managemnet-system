@@ -126,12 +126,11 @@ public class OperationLogService {
         Map<String, Long> dailyCount = new LinkedHashMap<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd");
         for (Object[] row : dateStats) {
-            if (row[0] instanceof java.sql.Date) {
-                java.sql.Date sqlDate = (java.sql.Date) row[0];
+            if (row[0] instanceof java.sql.Date sqlDate) {
                 String dateStr = sqlDate.toLocalDate().format(formatter);
                 dailyCount.put(dateStr, (Long) row[1]);
-            } else if (row[0] instanceof LocalDate) {
-                String dateStr = ((LocalDate) row[0]).format(formatter);
+            } else if (row[0] instanceof LocalDate localDate) {
+                String dateStr = localDate.format(formatter);
                 dailyCount.put(dateStr, (Long) row[1]);
             }
         }
@@ -158,16 +157,20 @@ public class OperationLogService {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         for (Object[] row : dailyStats) {
             Map<String, Object> daily = new HashMap<>();
-            if (row[0] instanceof java.sql.Date) {
-                java.sql.Date sqlDate = (java.sql.Date) row[0];
-                daily.put("date", sqlDate.toLocalDate().format(formatter));
-            } else if (row[0] instanceof LocalDate) {
-                daily.put("date", ((LocalDate) row[0]).format(formatter));
+            LocalDate day;
+            if (row[0] instanceof java.sql.Date sqlDate) {
+                day = sqlDate.toLocalDate();
+                daily.put("date", day.format(formatter));
+            } else if (row[0] instanceof LocalDate localDate) {
+                day = localDate;
+                daily.put("date", day.format(formatter));
+            } else {
+                continue;
             }
             daily.put("count", row[1]);
 
             // 获取该日各操作类型的统计
-            LocalDateTime dayStart = ((LocalDate) row[0]).atStartOfDay();
+            LocalDateTime dayStart = day.atStartOfDay();
             LocalDateTime dayEnd = dayStart.plusDays(1).minusSeconds(1);
             List<Object[]> typeStats = operationLogRepository.countByOperationTypeBetween(dayStart, dayEnd);
             Map<String, Long> typeCount = new HashMap<>();

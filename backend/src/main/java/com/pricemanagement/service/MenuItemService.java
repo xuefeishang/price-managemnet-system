@@ -13,10 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pricemanagement.dto.MenuSortDTO;
 
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,9 +30,9 @@ public class MenuItemService {
         List<MenuItem> allMenus = menuItemRepository.findAll();
         List<MenuItem> rootMenus = allMenus.stream()
                 .filter(m -> m.getParentId() == null)
-                .sorted((a, b) -> a.getSortOrder().compareTo(b.getSortOrder()))
-                .collect(Collectors.toList());
-        return rootMenus.stream().map(menu -> buildTreeDTO(menu, allMenus)).collect(Collectors.toList());
+                .sorted(Comparator.comparing(MenuItem::getSortOrder))
+                .toList();
+        return rootMenus.stream().map(menu -> buildTreeDTO(menu, allMenus)).toList();
     }
 
     public List<MenuItemDTO> getMenuTree() {
@@ -40,20 +40,20 @@ public class MenuItemService {
         List<MenuItem> allMenus = menuItemRepository.findAll();
         List<MenuItem> rootMenus = allMenus.stream()
                 .filter(m -> m.getParentId() == null)
-                .sorted((a, b) -> a.getSortOrder().compareTo(b.getSortOrder()))
-                .collect(Collectors.toList());
+                .sorted(Comparator.comparing(MenuItem::getSortOrder))
+                .toList();
 
-        return rootMenus.stream().map(menu -> buildTreeDTO(menu, allMenus)).collect(Collectors.toList());
+        return rootMenus.stream().map(menu -> buildTreeDTO(menu, allMenus)).toList();
     }
 
     private MenuItemDTO buildTreeDTO(MenuItem menu, List<MenuItem> allMenus) {
         MenuItemDTO dto = toDTO(menu);
         List<MenuItem> children = allMenus.stream()
                 .filter(m -> m.getParentId() != null && m.getParentId().equals(menu.getId()))
-                .sorted((a, b) -> a.getSortOrder().compareTo(b.getSortOrder()))
-                .collect(Collectors.toList());
+                .sorted(Comparator.comparing(MenuItem::getSortOrder))
+                .toList();
         if (!children.isEmpty()) {
-            dto.setChildren(children.stream().map(c -> buildTreeDTO(c, allMenus)).collect(Collectors.toList()));
+            dto.setChildren(children.stream().map(c -> buildTreeDTO(c, allMenus)).toList());
         }
         return dto;
     }
@@ -62,15 +62,15 @@ public class MenuItemService {
         List<MenuItem> allMenus = menuItemRepository.findAll();
         List<MenuItem> visibleMenus = allMenus.stream()
                 .filter(menu -> menu.getVisible() && hasAccess(menu, userRole))
-                .collect(Collectors.toList());
+                .toList();
 
         // Get root menus from visible menus
         List<MenuItem> rootMenus = visibleMenus.stream()
                 .filter(m -> m.getParentId() == null)
-                .sorted((a, b) -> a.getSortOrder().compareTo(b.getSortOrder()))
-                .collect(Collectors.toList());
+                .sorted(Comparator.comparing(MenuItem::getSortOrder))
+                .toList();
 
-        return rootMenus.stream().map(menu -> buildTreeDTO(menu, visibleMenus)).collect(Collectors.toList());
+        return rootMenus.stream().map(menu -> buildTreeDTO(menu, visibleMenus)).toList();
     }
 
     private boolean hasAccess(MenuItem menu, String userRole) {
@@ -78,7 +78,7 @@ public class MenuItemService {
             return true; // No roles specified means accessible to all
         }
         try {
-            List<String> roles = objectMapper.readValue(menu.getRoles(), new TypeReference<List<String>>() {});
+            List<String> roles = objectMapper.readValue(menu.getRoles(), new TypeReference<>() {});
             if (roles == null || roles.isEmpty()) {
                 return true; // Empty array means accessible to all
             }
@@ -181,7 +181,7 @@ public class MenuItemService {
 
         if (menu.getRoles() != null && !menu.getRoles().isEmpty()) {
             try {
-                dto.setRoles(objectMapper.readValue(menu.getRoles(), new TypeReference<List<String>>() {}));
+                dto.setRoles(objectMapper.readValue(menu.getRoles(), new TypeReference<>() {}));
             } catch (JsonProcessingException e) {
                 dto.setRoles(new ArrayList<>());
             }

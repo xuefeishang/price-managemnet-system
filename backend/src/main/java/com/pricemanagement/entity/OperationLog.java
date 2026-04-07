@@ -3,6 +3,7 @@ package com.pricemanagement.entity;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.Getter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -70,6 +71,7 @@ public class OperationLog {
     @Column(name = "created_time", nullable = false, updatable = false)
     private LocalDateTime createdTime;
 
+    @Getter
     public enum OperationType {
         LOGIN("登录"),
         LOGOUT("登出"),
@@ -85,10 +87,6 @@ public class OperationLog {
 
         OperationType(String description) {
             this.description = description;
-        }
-
-        public String getDescription() {
-            return description;
         }
     }
 }

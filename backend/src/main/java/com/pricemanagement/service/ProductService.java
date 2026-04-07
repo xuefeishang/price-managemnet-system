@@ -99,17 +99,7 @@ public class ProductService {
             ApprovalWorkflow workflow = workflowOpt.get();
 
             // 序列化变更数据
-            Map<String, Object> changeData = new HashMap<>();
-            changeData.put("name", product.getName());
-            changeData.put("categoryId", product.getCategoryId());
-            changeData.put("status", product.getStatus() != null ? product.getStatus().name() : "ACTIVE");
-            changeData.put("description", product.getDescription());
-            changeData.put("specs", product.getSpecs());
-            changeData.put("imageUrl", product.getImageUrl());
-            changeData.put("originIds", product.getOriginIds());
-            changeData.put("customerIds", product.getCustomerIds());
-            changeData.put("remark", product.getRemark());
-            changeData.put("action", "CREATE");
+            Map<String, Object> changeData = buildProductChangeData(product, "CREATE");
 
             ApprovalRequest request = new ApprovalRequest();
             request.setWorkflowId(workflow.getId());
@@ -208,6 +198,21 @@ public class ProductService {
             });
         }
         log.info("Batch updated sort order for {} products", items.size());
+    }
+
+    private Map<String, Object> buildProductChangeData(Product product, String action) {
+        Map<String, Object> changeData = new HashMap<>();
+        changeData.put("name", product.getName());
+        changeData.put("categoryId", product.getCategoryId());
+        changeData.put("status", product.getStatus() != null ? product.getStatus().name() : "ACTIVE");
+        changeData.put("description", product.getDescription());
+        changeData.put("specs", product.getSpecs());
+        changeData.put("imageUrl", product.getImageUrl());
+        changeData.put("originIds", product.getOriginIds());
+        changeData.put("customerIds", product.getCustomerIds());
+        changeData.put("remark", product.getRemark());
+        changeData.put("action", action);
+        return changeData;
     }
 }
 

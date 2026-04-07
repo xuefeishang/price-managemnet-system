@@ -40,7 +40,7 @@ public class MenuController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<MenuItemDTO> getMenuById(@PathVariable Long id) {
         return menuItemService.getMenuById(id)
-                .map(menu -> Result.<MenuItemDTO>success("获取菜单成功", menu))
+                .map(menu -> Result.success("获取菜单成功", menu))
                 .orElse(Result.error(404, "菜单不存在: " + id));
     }
 

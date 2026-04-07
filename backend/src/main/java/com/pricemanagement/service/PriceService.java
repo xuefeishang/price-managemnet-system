@@ -232,7 +232,7 @@ public class PriceService {
         } else {
             if (oldPrice == null) {
                 Optional<Price> lastPrice = priceRepository.findFirstByProductIdOrderByCreatedTimeDesc(product.getId());
-                oldPrice = lastPrice.isPresent() ? lastPrice.get().getCurrentPrice() : null;
+                oldPrice = lastPrice.map(Price::getCurrentPrice).orElse(null);
             }
 
             if (effectiveDate != null) {

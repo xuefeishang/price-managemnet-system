@@ -26,9 +26,6 @@ public class ImportController {
         try {
             importExportService.importProducts(file);
             return Result.success("产品导入成功", "共导入 " + file.getSize() + " 字节的数据");
-        } catch (IOException e) {
-            log.error("产品导入失败: {}", e.getMessage());
-            return Result.error(500, "产品导入失败: " + e.getMessage());
         } catch (Exception e) {
             log.error("产品导入失败: {}", e.getMessage());
             return Result.error(500, "产品导入失败: " + e.getMessage());

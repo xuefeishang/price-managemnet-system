@@ -316,9 +316,7 @@ public class ApprovalController {
             Long userId = SecurityUtils.getCurrentUserId();
             ApprovalRequest updated = approvalService.cancel(id, userId);
             return Result.success("撤回成功", updated);
-        } catch (IllegalArgumentException e) {
-            return Result.error(400, e.getMessage());
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("撤回失败", e);
