@@ -145,6 +145,7 @@ const loadProduct = async () => {
     console.error('Failed to load product:', error)
   } finally {
     loading.value = false
+    nextTick(() => handleScroll())
   }
 }
 
