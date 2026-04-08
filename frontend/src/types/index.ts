@@ -8,6 +8,9 @@ export type UserStatus = 'ACTIVE' | 'INACTIVE'
 // 产品状态类型
 export type ProductStatus = 'ACTIVE' | 'INACTIVE'
 
+// 计价币种类型
+export type Currency = 'CNY' | 'USD' | 'EUR'
+
 // 分类状态类型
 export type CategoryStatus = 'ACTIVE' | 'INACTIVE'
 
@@ -96,6 +99,8 @@ export interface Product {
   remark?: string
   unit?: string
   sortOrder?: number
+  showOnHome?: boolean
+  currency?: string
   createdTime: string
   updatedTime: string
 }

@@ -172,6 +172,15 @@ public class ProductService {
         if (product.getUnit() != null) {
             existingProduct.setUnit(product.getUnit());
         }
+        if (product.getShowOnHome() != null) {
+            existingProduct.setShowOnHome(product.getShowOnHome());
+        }
+        if (product.getCurrency() != null) {
+            existingProduct.setCurrency(product.getCurrency());
+        }
+        if (product.getSortOrder() != null) {
+            existingProduct.setSortOrder(product.getSortOrder());
+        }
 
         Product savedProduct = productRepository.save(existingProduct);
         log.info("Updated product: {}", savedProduct.getName());

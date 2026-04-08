@@ -73,6 +73,12 @@ public class Product {
     @Column(name = "sort_order")
     private Integer sortOrder = 0;  // 排序顺序
 
+    @Column(name = "show_on_home", nullable = false)
+    private Boolean showOnHome = false;  // 是否在首页展示
+
+    @Column(name = "currency", length = 20)
+    private String currency = "CNY";  // 计价币种：CNY-人民币、USD-美元、EUR-欧元
+
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)
     private LocalDateTime createdTime;

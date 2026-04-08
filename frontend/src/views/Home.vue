@@ -3,25 +3,30 @@ import { ref, onMounted, computed } from 'vue'
 //import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
-import { getCategories } from '@/api/categories'
 import { getPricesByDate } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
-import type { Product, ProductCategory, Price } from '@/types'
+import type { Product, Price } from '@/types'
 
 // const userStore = useUserStore()
 const router = useRouter()
 const { hasPermission } = usePermission()
 
 const products = ref<Product[]>([])
-const categories = ref<ProductCategory[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 
-// 选中的日期
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+// 选中的日期（默认昨天）
+const getYesterday = () => {
+  const date = new Date()
+  date.setDate(date.getDate() - 1)
+  return date.toISOString().split('T')[0]
+}
+const selectedDate = ref(getYesterday())
 
 // 价格映射 (productId -> price)
 const priceMap = ref<Map<number, Price>>(new Map())
+// 前一天价格映射
+const previousPriceMap = ref<Map<number, Price>>(new Map())
 
 // 判断是否为PC布局
 const isPCLayout = computed(() => {
@@ -33,14 +38,9 @@ const isPCLayout = computed(() => {
 
 const activeTab = ref('home')
 
-// 统计数据
-const stats = computed(() => {
-  const activeProducts = products.value.filter(p => p.status === 'ACTIVE').length
-  return {
-    totalProducts: products.value.length,
-    activeProducts,
-    totalCategories: categories.value.length
-  }
+// 首页展示的产品
+const homeProducts = computed(() => {
+  return products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
 })
 
 // 过滤后的产品
@@ -56,6 +56,26 @@ const getTodayPrice = (productId: number) => {
   return priceMap.value.get(productId)
 }
 
+// 获取前一天的日期字符串
+const getPreviousDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  date.setDate(date.getDate() - 1)
+  return date.toISOString().split('T')[0]
+}
+
+// 获取产品的价格涨跌信息
+const getPriceChange = (productId: number) => {
+  const current = priceMap.value.get(productId)
+  const previous = previousPriceMap.value.get(productId)
+  if (!current || !previous) return null
+  const currentVal = parseFloat(current.currentPrice)
+  const previousVal = parseFloat(previous.currentPrice)
+  if (isNaN(currentVal) || isNaN(previousVal)) return null
+  const diff = currentVal - previousVal
+  if (diff === 0) return { direction: 'flat', diff: 0 }
+  return { direction: diff > 0 ? 'up' : 'down', diff }
+}
+
 // 格式化日期显示
 const formatDateDisplay = (dateStr: string) => {
   const date = new Date(dateStr)
@@ -66,20 +86,29 @@ const formatDateDisplay = (dateStr: string) => {
 const loadData = async () => {
   loading.value = true
   try {
-    const [productsRes, categoriesRes, pricesRes] = await Promise.all([
+    const prevDate = getPreviousDate(selectedDate.value)
+    const [productsRes, pricesRes, prevPricesRes] = await Promise.all([
       getProducts({ page: 0, size: 1000 }),
-      getCategories(),
-      getPricesByDate(selectedDate.value)
+      getPricesByDate(selectedDate.value),
+      getPricesByDate(prevDate)
     ])
     products.value = productsRes.data.content || []
-    categories.value = categoriesRes.data || []
 
-    // 处理价格数据
+    // 处理当日价格数据
     const prices = pricesRes.data || []
     priceMap.value.clear()
     prices.forEach((price: Price) => {
       if (price.product?.id) {
         priceMap.value.set(price.product.id, price)
+      }
+    })
+
+    // 处理前一天价格数据
+    const prevPrices = prevPricesRes.data || []
+    previousPriceMap.value.clear()
+    prevPrices.forEach((price: Price) => {
+      if (price.product?.id) {
+        previousPriceMap.value.set(price.product.id, price)
       }
     })
   } catch (error) {
@@ -153,30 +182,44 @@ onMounted(() => {
           </div>
           <button class="btn-primary-pc" @click="goToPriceMaintenance" v-if="hasPermission(Permission.PRODUCT_EDIT)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
             价格维护
           </button>
         </div>
 
-        <!-- 概览卡片区域 -->
-        <div class="overview-section-pc">
-          <div class="overview-card-pc">
-            <div class="overview-card-label">产品总数</div>
-            <div class="overview-card-value">{{ stats.totalProducts }}</div>
+        <!-- 首页展示产品 -->
+        <div class="home-featured-pc" v-if="homeProducts.length > 0 && !loading">
+          <div class="section-header-pc">
+            <h2 class="section-title-pc">重点关注</h2>
           </div>
-          <div class="overview-card-pc">
-            <div class="overview-card-label">展示产品</div>
-            <div class="overview-card-value success">{{ stats.activeProducts }}</div>
-          </div>
-          <div class="overview-card-pc">
-            <div class="overview-card-label">隐藏产品</div>
-            <div class="overview-card-value danger">{{ stats.totalProducts - stats.activeProducts }}</div>
-          </div>
-          <div class="overview-card-pc">
-            <div class="overview-card-label">产品分类</div>
-            <div class="overview-card-value">{{ stats.totalCategories }}</div>
+          <div class="home-featured-grid-pc">
+            <div
+              v-for="product in homeProducts"
+              :key="product.id"
+              class="product-card-pc featured"
+              @click="viewProduct(product)"
+            >
+              <div class="product-card-header">
+                <span class="product-name">{{ product.name }}</span>
+                <span class="price-change-badge" :class="getPriceChange(product.id)?.direction || 'none'" v-if="getPriceChange(product.id)">
+                  <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
+                  <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
+                  <span class="change-arrow" v-else>—</span>
+                  {{ getPriceChange(product.id)?.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                </span>
+                <span class="price-change-badge none" v-else>—</span>
+              </div>
+              <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+              <div class="product-price" v-if="getTodayPrice(product.id)">
+                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
+                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
+              </div>
+              <div class="product-price empty" v-else>
+                暂无价格
+              </div>
+            </div>
           </div>
         </div>
 
@@ -259,23 +302,34 @@ onMounted(() => {
           <span>{{ formatDateDisplay(selectedDate) }} 价格</span>
         </div>
 
-        <!-- 概览卡片 -->
-        <div class="overview-card">
-          <div class="card-header">
-            <span class="card-label">今日概况</span>
+        <!-- 首页展示产品 -->
+        <div class="home-featured-mobile" v-if="homeProducts.length > 0 && !loading">
+          <div class="section-header">
+            <h2 class="section-title">重点关注</h2>
           </div>
-          <div class="stats-row">
-            <div class="stat-item">
-              <span class="stat-value">{{ stats.totalProducts }}</span>
-              <span class="stat-label">产品总数</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-value">{{ stats.activeProducts }}</span>
-              <span class="stat-label">展示产品</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-value">{{ stats.totalCategories }}</span>
-              <span class="stat-label">产品分类</span>
+          <div class="home-featured-scroll">
+            <div
+              v-for="product in homeProducts"
+              :key="product.id"
+              class="home-featured-item-mobile"
+              @click="viewProduct(product)"
+            >
+              <div class="featured-item-top">
+                <span class="product-name">{{ product.name }}</span>
+                <span class="price-change-badge" :class="getPriceChange(product.id)?.direction || 'none'" v-if="getPriceChange(product.id)">
+                  <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
+                  <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
+                  <span class="change-arrow" v-else>—</span>
+                  {{ getPriceChange(product.id)?.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                </span>
+                <span class="price-change-badge none" v-else>—</span>
+              </div>
+              <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+              <div class="featured-item-price" v-if="getTodayPrice(product.id)">
+                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
+                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
+              </div>
+              <div class="featured-item-price empty" v-else>暂无价格</div>
             </div>
           </div>
         </div>
@@ -426,6 +480,38 @@ onMounted(() => {
   border-color: #0D6E6E;
 }
 
+.btn-primary-pc {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #0D6E6E 0%, #0A8A7A 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow: 0 2px 8px rgba(13, 110, 110, 0.25);
+}
+
+.btn-primary-pc:hover {
+  background: linear-gradient(135deg, #0A8A7A 0%, #0D6E6E 100%);
+  box-shadow: 0 4px 16px rgba(13, 110, 110, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary-pc:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(13, 110, 110, 0.2);
+}
+
+.btn-primary-pc svg {
+  flex-shrink: 0;
+}
+
 .overview-section-pc {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -460,6 +546,146 @@ onMounted(() => {
 
 .overview-card-value.danger {
   color: #EF4444;
+}
+
+/* 首页展示产品 - PC */
+.home-featured-pc {
+  margin-bottom: 24px;
+}
+
+.home-featured-grid-pc {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.product-card-pc.featured {
+  background: #FFFFFF;
+  border: 1px solid #0D6E6E;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 150ms;
+  box-shadow: 0 2px 8px rgba(13, 110, 110, 0.08);
+}
+
+.product-card-pc.featured:hover {
+  box-shadow: 0 4px 16px rgba(13, 110, 110, 0.15);
+}
+
+.price-change-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.price-change-badge.up {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+}
+
+.price-change-badge.down {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+
+.price-change-badge.flat {
+  background: rgba(156, 163, 175, 0.1);
+  color: #9CA3AF;
+}
+
+.price-change-badge.none {
+  background: rgba(156, 163, 175, 0.1);
+  color: #CCCCCC;
+}
+
+.change-arrow {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.featured-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(13, 110, 110, 0.1);
+  color: #0D6E6E;
+}
+
+/* 首页展示产品 - 移动端 */
+.home-featured-mobile {
+  margin-bottom: 8px;
+}
+
+.home-featured-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.home-featured-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.home-featured-item-mobile {
+  min-width: 160px;
+  max-width: 200px;
+  flex-shrink: 0;
+  background: #FFFFFF;
+  border: 1px solid #0D6E6E;
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(13, 110, 110, 0.08);
+}
+
+.featured-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.featured-item-top .product-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1A1A1A;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-item-price {
+  margin-top: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.featured-item-price .price-current {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0D6E6E;
+}
+
+.featured-item-price .price-unit {
+  font-size: 11px;
+  color: #888888;
+}
+
+.featured-item-price.empty {
+  font-size: 12px;
+  color: #CCCCCC;
 }
 
 .product-section-pc {
@@ -674,52 +900,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 32px;
   padding-bottom: 100px;
-}
-
-.overview-card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #E5E5E5;
-}
-
-.card-header {
-  margin-bottom: 16px;
-}
-
-.card-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  font-weight: 600;
-  color: #888888;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-
-.stats-row {
-  display: flex;
-  gap: 16px;
-}
-
-.stat-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.stat-value {
-  font-family: 'Inter', sans-serif;
-  font-size: 24px;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.stat-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: #888888;
 }
 
 .product-section {

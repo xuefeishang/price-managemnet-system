@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getProduct, createProduct, updateProduct } from '@/api/products'
@@ -20,12 +20,13 @@ const loading = ref(false)
 const saving = ref(false)
 
 // 判断是否为PC布局
-const isPCLayout = computed(() => {
-  if (typeof window !== 'undefined') {
-    return window.innerWidth >= 1024
-  }
-  return false
-})
+const isPCLayout = ref(typeof window !== 'undefined' ? window.innerWidth >= 1024 : false)
+const pcLayoutRef = ref<HTMLElement | null>(null)
+const mobileLayoutRef = ref<HTMLElement | null>(null)
+
+const handleResize = () => {
+  isPCLayout.value = window.innerWidth >= 1024
+}
 
 // 表单数据
 const form = reactive({
@@ -36,11 +37,21 @@ const form = reactive({
   specs: '',
   description: '',
   remark: '',
-  unit: ''
+  unit: '',
+  showOnHome: false,
+  currency: 'CNY',
+  sortOrder: 0
 })
 
 // 计量单位选项（从共享常量引入，与后端/数据库保持一致）
 const unitOptions = UNIT_OPTIONS
+
+// 计价币种选项
+const currencyOptions = [
+  { value: 'CNY', label: '人民币' },
+  { value: 'USD', label: '美元' },
+  { value: 'EUR', label: '欧元' }
+]
 
 // 分类数据
 const categories = ref<ProductCategory[]>([])
@@ -89,7 +100,8 @@ const removeCustomer = (id: number) => {
 // 滚动到指定分区
 const scrollToSection = (sectionId: string) => {
   activeSection.value = sectionId
-  const el = document.getElementById(`section-${sectionId}`)
+  const container = isPCLayout.value ? pcLayoutRef.value : mobileLayoutRef.value
+  const el = container?.querySelector(`#section-${sectionId}`) as HTMLElement | null
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -115,14 +127,17 @@ const loadProduct = async () => {
     const response = await getProduct(parseInt(productId))
     const product = response.data
     Object.assign(form, {
-      code: product.code || '',
+      code: product.code?.toUpperCase() || '',
       name: product.name,
       categoryId: product.category?.id?.toString() || '',
       status: product.status,
       specs: product.specs || '',
       description: product.description || '',
       remark: product.remark || '',
-      unit: product.unit || ''
+      unit: product.unit || '',
+      showOnHome: product.showOnHome ?? false,
+      currency: product.currency || 'CNY',
+      sortOrder: product.sortOrder ?? 0
     })
 
     // 解析产地（单选）和客户（多选）
@@ -189,9 +204,11 @@ const handleScroll = () => {
   if (!scrollTimer) {
     scrollTimer = setTimeout(() => {
       scrollTimer = null
+      const container = isPCLayout.value ? pcLayoutRef.value : mobileLayoutRef.value
+      if (!container) return
       const sectionIds = formSections.map(s => s.id)
       for (let i = sectionIds.length - 1; i >= 0; i--) {
-        const el = document.getElementById(`section-${sectionIds[i]}`)
+        const el = container.querySelector(`#section-${sectionIds[i]}`) as HTMLElement | null
         if (el) {
           const rect = el.getBoundingClientRect()
           if (rect.top <= 120) {
@@ -216,7 +233,7 @@ const handleSave = async () => {
   ]
 
   for (const field of requiredFields) {
-    if (!form[field.key].trim()) {
+    if (!String(form[field.key]).trim()) {
       showToast(`请输入${field.label}`)
       scrollToSection('basic')
       await nextTick()
@@ -239,7 +256,7 @@ const handleSave = async () => {
   saving.value = true
   try {
     const productData = {
-      code: form.code || undefined,
+      code: form.code?.toUpperCase() || undefined,
       name: form.name,
       categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
       status: form.status as ProductStatus,
@@ -247,6 +264,9 @@ const handleSave = async () => {
       description: form.description,
       remark: form.remark,
       unit: form.unit || undefined,
+      showOnHome: form.showOnHome,
+      currency: form.currency,
+      sortOrder: form.sortOrder || 0,
       originIds: selectedOriginId.value ? JSON.stringify([selectedOriginId.value]) : undefined,
       customerIds: selectedCustomerIds.value.length > 0 ? JSON.stringify(selectedCustomerIds.value) : undefined
     }
@@ -279,12 +299,14 @@ onMounted(() => {
   loadProduct()
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, { passive: true })
+  window.addEventListener('resize', handleResize)
   nextTick(() => handleScroll())
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('resize', handleResize)
   if (scrollTimer) clearTimeout(scrollTimer)
 })
 </script>
@@ -292,7 +314,7 @@ onUnmounted(() => {
 <template>
   <div class="product-edit-page">
     <!-- ==================== PC布局 ==================== -->
-    <div v-if="isPCLayout">
+    <div v-show="isPCLayout" ref="pcLayoutRef">
       <div class="pc-edit">
         <!-- 页面标题区 -->
         <div class="pc-header">
@@ -353,6 +375,7 @@ onUnmounted(() => {
                       type="text"
                       class="form-input"
                       placeholder="请输入产品编码"
+                      :readonly="isEdit"
                     />
                   </div>
 
@@ -409,6 +432,15 @@ onUnmounted(() => {
                   </div>
 
                   <div class="form-group">
+                    <label class="form-label">计价币种</label>
+                    <select v-model="form.currency" class="form-select">
+                      <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
                     <label class="form-label">显示状态</label>
                     <div class="status-toggle inline">
                       <button
@@ -426,6 +458,28 @@ onUnmounted(() => {
                       >
                         <span class="status-dot inactive"></span>
                         停用
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">首页展示</label>
+                    <div class="status-toggle inline">
+                      <button
+                        class="status-btn"
+                        :class="{ active: form.showOnHome }"
+                        @click="form.showOnHome = true"
+                      >
+                        <span class="status-dot home"></span>
+                        是
+                      </button>
+                      <button
+                        class="status-btn"
+                        :class="{ active: !form.showOnHome }"
+                        @click="form.showOnHome = false"
+                      >
+                        <span class="status-dot home-inactive"></span>
+                        否
                       </button>
                     </div>
                   </div>
@@ -523,6 +577,19 @@ onUnmounted(() => {
                   <span class="card-title">其他信息</span>
                 </div>
 
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label class="form-label">排序号</label>
+                    <input
+                      v-model.number="form.sortOrder"
+                      type="number"
+                      class="form-input"
+                      placeholder="数值越小越靠前"
+                      min="0"
+                    />
+                  </div>
+                </div>
+
                 <div class="form-group">
                   <label class="form-label">备注说明</label>
                     <textarea
@@ -576,7 +643,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ==================== 移动端布局 ==================== -->
-    <div v-else>
+    <div v-show="!isPCLayout" ref="mobileLayoutRef">
       <!-- 顶部导航栏 -->
       <header class="navbar">
         <div class="navbar-left">
@@ -615,6 +682,7 @@ onUnmounted(() => {
               type="text"
               class="form-input"
               placeholder="请输入产品编码"
+              :readonly="isEdit"
             />
           </div>
 
@@ -671,6 +739,15 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
+            <label class="form-label">计价币种</label>
+            <select v-model="form.currency" class="form-select">
+              <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group">
             <label class="form-label">显示状态</label>
             <div class="status-toggle">
               <button
@@ -688,6 +765,28 @@ onUnmounted(() => {
               >
                 <span class="status-dot inactive"></span>
                 隐藏
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">首页展示</label>
+            <div class="status-toggle">
+              <button
+                class="status-btn"
+                :class="{ active: form.showOnHome }"
+                @click="form.showOnHome = true"
+              >
+                <span class="status-dot home"></span>
+                是
+              </button>
+              <button
+                class="status-btn"
+                :class="{ active: !form.showOnHome }"
+                @click="form.showOnHome = false"
+              >
+                <span class="status-dot home-inactive"></span>
+                否
               </button>
             </div>
           </div>
@@ -779,6 +878,17 @@ onUnmounted(() => {
               </svg>
             </div>
             <span class="card-title">其他信息</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">排序号</label>
+            <input
+              v-model.number="form.sortOrder"
+              type="number"
+              class="form-input"
+              placeholder="数值越小越靠前"
+              min="0"
+            />
           </div>
 
           <div class="form-group">
@@ -1014,6 +1124,12 @@ onUnmounted(() => {
   margin-left: 2px;
 }
 
+.form-input[readonly] {
+  background: #F9FAFB;
+  color: #6B7280;
+  cursor: not-allowed;
+}
+
 .form-input,
 .form-select,
 .form-textarea {
@@ -1103,6 +1219,14 @@ onUnmounted(() => {
 }
 
 .status-dot.inactive {
+  background: #EF4444;
+}
+
+.status-dot.home {
+  background: #0D6E6E;
+}
+
+.status-dot.home-inactive {
   background: #EF4444;
 }
 
@@ -1484,6 +1608,12 @@ onUnmounted(() => {
 .required {
   color: #EF4444;
   margin-left: 2px;
+}
+
+.form-input[readonly] {
+  background: #F9FAFB;
+  color: #6B7280;
+  cursor: not-allowed;
 }
 
 .form-input,

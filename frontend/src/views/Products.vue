@@ -22,8 +22,8 @@ const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024
 // 筛选条件
 const filterCategoryId = ref<number | undefined>()
 const filterStatus = ref<string | undefined>()
-const sortBy = ref('id')
-const sortDirection = ref<'asc' | 'desc'>('desc')
+const sortBy = ref('sortOrder')
+const sortDirection = ref<'asc' | 'desc'>('asc')
 
 // 响应式布局
 const isPCLayout = computed(() => windowWidth.value >= 1024)
@@ -68,6 +68,7 @@ const loadCustomers = async () => {
   }
 }
 
+
 // 获取产品的客户名称列表
 const getCustomerNames = (product: Product): string => {
   if (!product.customerIds) return '-'
@@ -87,18 +88,22 @@ const handleFilterChange = () => {
   loadProducts()
 }
 
-const handleSortChange = () => {
-  loadProducts()
-}
-
 const clearFilters = () => {
   filterCategoryId.value = undefined
   filterStatus.value = undefined
   searchQuery.value = ''
-  sortBy.value = 'id'
-  sortDirection.value = 'desc'
   loadProducts()
 }
+
+// 统计数据
+const stats = computed(() => {
+  const activeProducts = products.value.filter(p => p.status === 'ACTIVE').length
+  return {
+    totalProducts: products.value.length,
+    activeProducts,
+    totalCategories: categories.value.length
+  }
+})
 
 const hasActiveFilters = computed(() => {
   return filterCategoryId.value !== undefined || filterStatus.value !== undefined || searchQuery.value !== ''
@@ -160,11 +165,13 @@ onMounted(() => {
   loadCustomers()
   loadProducts()
   eventBus.on('prices-updated', loadProducts)
+  eventBus.on('product-sort-updated', loadProducts)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   eventBus.off('prices-updated', loadProducts)
+  eventBus.off('product-sort-updated', loadProducts)
 })
 </script>
 
@@ -183,6 +190,26 @@ onUnmounted(() => {
             </svg>
             新增产品
           </button>
+        </div>
+
+        <!-- 概览卡片 -->
+        <div class="overview-section-pc">
+          <div class="overview-card-pc">
+            <div class="overview-card-label">产品总数</div>
+            <div class="overview-card-value">{{ stats.totalProducts }}</div>
+          </div>
+          <div class="overview-card-pc">
+            <div class="overview-card-label">展示产品</div>
+            <div class="overview-card-value success">{{ stats.activeProducts }}</div>
+          </div>
+          <div class="overview-card-pc">
+            <div class="overview-card-label">隐藏产品</div>
+            <div class="overview-card-value danger">{{ stats.totalProducts - stats.activeProducts }}</div>
+          </div>
+          <div class="overview-card-pc">
+            <div class="overview-card-label">产品分类</div>
+            <div class="overview-card-value">{{ stats.totalCategories }}</div>
+          </div>
         </div>
 
         <!-- 搜索和筛选区域 -->
@@ -223,21 +250,10 @@ onUnmounted(() => {
 
             <select v-model="filterStatus" class="filter-select-pc" @change="handleFilterChange">
               <option :value="undefined">全部状态</option>
-              <option value="ACTIVE">展示</option>
-              <option value="INACTIVE">隐藏</option>
+              <option value="ACTIVE">启用</option>
+              <option value="INACTIVE">停用</option>
             </select>
 
-            <select v-model="sortBy" class="filter-select-pc" @change="handleSortChange">
-              <option value="id">按ID排序</option>
-              <option value="name">按名称排序</option>
-              <option value="sortOrder">按排序号排序</option>
-              <option value="createdTime">按创建时间排序</option>
-            </select>
-
-            <select v-model="sortDirection" class="filter-select-pc" @change="handleSortChange">
-              <option value="desc">降序</option>
-              <option value="asc">升序</option>
-            </select>
 
             <button v-if="hasActiveFilters" class="btn-clear-filters-pc" @click="clearFilters">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -275,7 +291,7 @@ onUnmounted(() => {
             <div class="table-cell seq">{{ index + 1 }}</div>
             <div class="table-cell name">
               <span class="product-name-text">{{ product.name }}</span>
-              <span class="product-code-text" v-if="product.code">{{ product.code }}</span>
+              <span class="product-code-text" v-if="product.code">{{ product.code.toUpperCase() }}</span>
             </div>
             <div class="table-cell unit">{{ product.unit || '-' }}</div>
             <div class="table-cell specs"><span class="scroll-text">{{ product.specs || '-' }}</span></div>
@@ -318,6 +334,27 @@ onUnmounted(() => {
 
       <!-- 主内容区 -->
       <main class="content">
+        <!-- 概览卡片 -->
+        <div class="overview-card-mobile">
+          <div class="card-header-mobile">
+            <span class="card-label-mobile">产品概况</span>
+          </div>
+          <div class="stats-row-mobile">
+            <div class="stat-item-mobile">
+              <span class="stat-value-mobile">{{ stats.totalProducts }}</span>
+              <span class="stat-label-mobile">产品总数</span>
+            </div>
+            <div class="stat-item-mobile">
+              <span class="stat-value-mobile">{{ stats.activeProducts }}</span>
+              <span class="stat-label-mobile">展示产品</span>
+            </div>
+            <div class="stat-item-mobile">
+              <span class="stat-value-mobile">{{ stats.totalCategories }}</span>
+              <span class="stat-label-mobile">产品分类</span>
+            </div>
+          </div>
+        </div>
+
         <!-- 搜索框 -->
         <div class="search-bar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -471,6 +508,42 @@ onUnmounted(() => {
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 概览卡片 - PC */
+.overview-section-pc {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+}
+
+.overview-card-pc {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  border: 1px solid var(--border-color);
+}
+
+.overview-card-label {
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.overview-card-value {
+  font-family: var(--font-body), sans-serif;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.overview-card-value.success {
+  color: #10B981;
+}
+
+.overview-card-value.danger {
+  color: #EF4444;
 }
 
 .search-section-pc {
@@ -862,6 +935,52 @@ onUnmounted(() => {
   flex-direction: column;
   gap: var(--spacing-md);
   padding-bottom: 100px;
+}
+
+/* 概览卡片 - 移动端 */
+.overview-card-mobile {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  border: 1px solid var(--border-color);
+}
+
+.card-header-mobile {
+  margin-bottom: 12px;
+}
+
+.card-label-mobile {
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+.stats-row-mobile {
+  display: flex;
+  gap: 12px;
+}
+
+.stat-item-mobile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-value-mobile {
+  font-family: var(--font-body), sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stat-label-mobile {
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .search-bar {

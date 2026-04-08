@@ -203,18 +203,21 @@ public class PriceService {
 
     /**
      * 内部方法：真正保存价格
+     * 每个产品每天只有一条价格记录，各日期完全独立
      */
     @Transactional
     public Price doSavePrice(Product product, Price price, BigDecimal oldPriceValue) {
         LocalDate effectiveDate = price.getEffectiveDate();
+        // 按产品ID+生效日期精确查找已有记录
         Optional<Price> existingPrice = effectiveDate != null
-                ? priceRepository.findValidPriceByProductIdAndDate(product.getId(), effectiveDate)
+                ? priceRepository.findByProductIdAndEffectiveDate(product.getId(), effectiveDate)
                 : Optional.empty();
 
         Price savedPrice;
         BigDecimal oldPrice = oldPriceValue;
 
         if (existingPrice.isPresent()) {
+            // 已有该日期的价格记录，更新价格字段
             Price existing = existingPrice.get();
             if (oldPrice == null) {
                 oldPrice = existing.getCurrentPrice();
@@ -224,30 +227,17 @@ public class PriceService {
             existing.setCostPrice(price.getCostPrice());
             existing.setUnit(price.getUnit());
             existing.setPriceSpec(price.getPriceSpec());
-            if (price.getExpiryDate() != null) {
-                existing.setExpiryDate(price.getExpiryDate());
-            }
             savedPrice = priceRepository.save(existing);
-            log.debug("Updated existing price for product: {}", product.getName());
+            log.debug("Updated existing price for product: {} on date: {}", product.getName(), effectiveDate);
         } else {
+            // 该日期没有价格记录，新建一条
             if (oldPrice == null) {
                 Optional<Price> lastPrice = priceRepository.findFirstByProductIdOrderByCreatedTimeDesc(product.getId());
                 oldPrice = lastPrice.map(Price::getCurrentPrice).orElse(null);
             }
 
-            if (effectiveDate != null) {
-                Optional<Price> lastPrice = priceRepository.findFirstByProductIdOrderByCreatedTimeDesc(product.getId());
-                if (lastPrice.isPresent()) {
-                    Price last = lastPrice.get();
-                    if (last.getExpiryDate() == null || !last.getExpiryDate().isBefore(effectiveDate)) {
-                        last.setExpiryDate(effectiveDate.minusDays(1));
-                        priceRepository.save(last);
-                    }
-                }
-            }
-
             savedPrice = priceRepository.save(price);
-            log.debug("Added new price for product: {}", product.getName());
+            log.debug("Added new price for product: {} on date: {}", product.getName(), effectiveDate);
         }
 
         // 记录价格历史
@@ -260,8 +250,9 @@ public class PriceService {
         history.setRemark(oldPrice == null ? "创建产品价格" : "更新产品价格");
         priceHistoryRepository.save(history);
 
-        // 同步更新产品售价
-        if (savedPrice.getCurrentPrice() != null) {
+        // 同步更新产品售价（仅当价格生效日期为今天或之后时才同步）
+        if (savedPrice.getCurrentPrice() != null && savedPrice.getEffectiveDate() != null
+                && !savedPrice.getEffectiveDate().isBefore(LocalDate.now())) {
             product.setSellingPrice(savedPrice.getCurrentPrice());
             productRepository.save(product);
         }
@@ -315,7 +306,7 @@ public class PriceService {
             return existingPrice;
         }
 
-        // 审批流未启用，直接更新价格
+        // 审批流未启用，直接更新价格（仅更新价格字段，不修改 effectiveDate）
         BigDecimal oldPrice = existingPrice.getCurrentPrice();
 
         if (price.getOriginalPrice() != null) {
@@ -326,12 +317,6 @@ public class PriceService {
         }
         if (price.getCostPrice() != null) {
             existingPrice.setCostPrice(price.getCostPrice());
-        }
-        if (price.getEffectiveDate() != null) {
-            existingPrice.setEffectiveDate(price.getEffectiveDate());
-        }
-        if (price.getExpiryDate() != null) {
-            existingPrice.setExpiryDate(price.getExpiryDate());
         }
         if (price.getUnit() != null) {
             existingPrice.setUnit(price.getUnit());
@@ -355,8 +340,9 @@ public class PriceService {
             log.debug("Created price history for price change");
         }
 
-        // 同步更新产品售价
-        if (updatedPrice.getCurrentPrice() != null) {
+        // 同步更新产品售价（仅当价格生效日期为今天或之后时才同步）
+        if (updatedPrice.getCurrentPrice() != null && updatedPrice.getEffectiveDate() != null
+                && !updatedPrice.getEffectiveDate().isBefore(LocalDate.now())) {
             existingPrice.getProduct().setSellingPrice(updatedPrice.getCurrentPrice());
             productRepository.save(existingPrice.getProduct());
         }

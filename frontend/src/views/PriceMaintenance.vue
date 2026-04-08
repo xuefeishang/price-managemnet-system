@@ -92,6 +92,7 @@ const handleDragEnd = async () => {
     await batchUpdateProductSort(items)
     products.value.forEach((p, i) => { p.sortOrder = i + 1 })
     showToast('排序已保存')
+    eventBus.emit('product-sort-updated')
   } catch (error) {
     console.error('Failed to save sort order:', error)
     showToast('排序保存失败，请重试')
@@ -108,10 +109,10 @@ const loadPrices = async () => {
   try {
     const response = await getPricesByDateWithStats(selectedDate.value)
     const items = response.data || []
-    priceMap.value.clear()
-    yesterdayPriceMap.value.clear()
-    monthlyAverageMap.value.clear()
-    editingPrices.value.clear()
+    priceMap.value = new Map()
+    yesterdayPriceMap.value = new Map()
+    monthlyAverageMap.value = new Map()
+    editingPrices.value = new Map()
 
     for (const item of items) {
       if (item.price && item.price.product) {
@@ -268,6 +269,20 @@ watch(selectedDate, () => {
   loadPrices()
 })
 
+// 前一天
+const goToPrevDate = () => {
+  const date = new Date(selectedDate.value)
+  date.setDate(date.getDate() - 1)
+  selectedDate.value = date.toISOString().split('T')[0]
+}
+
+// 后一天
+const goToNextDate = () => {
+  const date = new Date(selectedDate.value)
+  date.setDate(date.getDate() + 1)
+  selectedDate.value = date.toISOString().split('T')[0]
+}
+
 // 响应式监听
 const handleResize = () => {
   windowWidth.value = window.innerWidth
@@ -304,6 +319,11 @@ onUnmounted(() => {
           </div>
           <div class="header-actions">
             <div class="date-picker">
+              <button class="date-nav-btn" @click="goToPrevDate" title="前一天">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                 <line x1="16" y1="2" x2="16" y2="6"/>
@@ -315,6 +335,11 @@ onUnmounted(() => {
                 v-model="selectedDate"
                 class="date-input"
               />
+              <button class="date-nav-btn" @click="goToNextDate" title="后一天">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
             </div>
             <button
               class="btn-save"
@@ -443,12 +468,26 @@ onUnmounted(() => {
 
       <!-- 日期选择 -->
       <div class="date-section">
-        <label class="date-label">选择日期</label>
-        <input
-          type="date"
-          v-model="selectedDate"
-          class="date-input-mobile"
-        />
+        <div class="date-nav">
+          <button class="date-nav-btn-mobile" @click="goToPrevDate" title="前一天">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <div class="date-center">
+            <label class="date-label">选择日期</label>
+            <input
+              type="date"
+              v-model="selectedDate"
+              class="date-input-mobile"
+            />
+          </div>
+          <button class="date-nav-btn-mobile" @click="goToNextDate" title="后一天">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 产品价格列表 -->
@@ -636,6 +675,27 @@ onUnmounted(() => {
   color: #1A1A1A;
   outline: none;
   cursor: pointer;
+}
+
+.date-nav-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666666;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+
+.date-nav-btn:hover {
+  background: #F5F5F5;
+  color: #1A1A1A;
+  border-color: #CCCCCC;
 }
 
 .btn-save {
@@ -980,6 +1040,40 @@ onUnmounted(() => {
   padding: 16px;
   background: #FFFFFF;
   border-bottom: 1px solid #E5E5E5;
+}
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.date-nav-btn-mobile {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #E5E5E5;
+  background: #F9FAFB;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666666;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+
+.date-nav-btn-mobile:active {
+  background: #E8F5F5;
+  color: #0D6E6E;
+  border-color: #0D6E6E;
 }
 
 .date-label {

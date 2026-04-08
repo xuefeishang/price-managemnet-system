@@ -20,21 +20,22 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
 
     List<Price> findByProductIdOrderByCreatedTimeDesc(Long productId);
 
-    List<Price> findByEffectiveDateLessThanEqualAndExpiryDateGreaterThanEqual(
-        LocalDate effectiveDate, LocalDate expiryDate);
+    /**
+     * 按产品和生效日期精确查找价格记录
+     */
+    Optional<Price> findByProductIdAndEffectiveDate(Long productId, LocalDate effectiveDate);
 
     /**
-     * 查询指定日期有效的价格（生效日期 <= 查询日期 且 (失效日期 >= 查询日期 或 失效日期为null)）
-     * 每个产品只返回最近生效日期的那条记录
+     * 查询指定日期有效的价格（精确匹配 effectiveDate）
      * 使用 LEFT JOIN FETCH 确保产品关联被正确加载
      */
-    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.effectiveDate <= :date AND (p.expiryDate >= :date OR p.expiryDate IS NULL) AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = p.product.id AND p2.effectiveDate <= :date AND (p2.expiryDate >= :date OR p2.expiryDate IS NULL)) ORDER BY p.product.id")
+    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.effectiveDate = :date ORDER BY p.product.id")
     List<Price> findValidPricesByDate(@Param("date") LocalDate date);
 
     /**
-     * 查询某产品在指定日期有效的价格
+     * 查询某产品在指定日期有效的价格（精确匹配 effectiveDate）
      */
-    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate <= :date AND (p.expiryDate >= :date OR p.expiryDate IS NULL) ORDER BY p.effectiveDate DESC")
+    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate = :date")
     Optional<Price> findValidPriceByProductIdAndDate(@Param("productId") Long productId, @Param("date") LocalDate date);
 
     /**
@@ -44,9 +45,9 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
     Double findAveragePriceByProductIdAndMonth(@Param("productId") Long productId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     /**
-     * 批量查询指定日期有效的价格（传入产品ID列表），使用 JOIN FETCH 确保产品关联加载
+     * 批量查询指定日期有效的价格（传入产品ID列表，精确匹配 effectiveDate）
      */
-    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.product.id IN :productIds AND p.effectiveDate <= :date AND (p.expiryDate >= :date OR p.expiryDate IS NULL) ORDER BY p.product.id, p.effectiveDate DESC")
+    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.product.id IN :productIds AND p.effectiveDate = :date ORDER BY p.product.id")
     List<Price> findValidPricesByProductIdsAndDate(@Param("productIds") List<Long> productIds, @Param("date") LocalDate date);
 
     /**

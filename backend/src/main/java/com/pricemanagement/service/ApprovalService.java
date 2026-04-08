@@ -387,16 +387,6 @@ public class ApprovalService {
                     price.setCostPrice(new BigDecimal(costPrice.toString()));
                 }
 
-                Object effectiveDate = changeData.get("effectiveDate");
-                if (effectiveDate != null) {
-                    price.setEffectiveDate(LocalDate.parse(effectiveDate.toString()));
-                }
-
-                Object expiryDate = changeData.get("expiryDate");
-                if (expiryDate != null) {
-                    price.setExpiryDate(LocalDate.parse(expiryDate.toString()));
-                }
-
                 Object unit = changeData.get("unit");
                 if (unit != null) {
                     price.setUnit((String) unit);
@@ -419,8 +409,9 @@ public class ApprovalService {
                 history.setRemark("审批通过 - 创建价格");
                 priceHistoryRepository.save(history);
 
-                // 同步更新产品售价
-                if (savedPrice.getCurrentPrice() != null) {
+                // 同步更新产品售价（仅当价格生效日期为今天或之后时才同步）
+                if (savedPrice.getCurrentPrice() != null && savedPrice.getEffectiveDate() != null
+                        && !savedPrice.getEffectiveDate().isBefore(LocalDate.now())) {
                     product.setSellingPrice(savedPrice.getCurrentPrice());
                     productRepository.save(product);
                 }
@@ -450,16 +441,6 @@ public class ApprovalService {
                     existingPrice.setCostPrice(new BigDecimal(costPrice.toString()));
                 }
 
-                Object effectiveDate = changeData.get("effectiveDate");
-                if (effectiveDate != null) {
-                    existingPrice.setEffectiveDate(LocalDate.parse(effectiveDate.toString()));
-                }
-
-                Object expiryDate = changeData.get("expiryDate");
-                if (expiryDate != null) {
-                    existingPrice.setExpiryDate(LocalDate.parse(expiryDate.toString()));
-                }
-
                 Object unit = changeData.get("unit");
                 if (unit != null) {
                     existingPrice.setUnit((String) unit);
@@ -482,8 +463,9 @@ public class ApprovalService {
                 history.setRemark("审批通过 - 更新价格");
                 priceHistoryRepository.save(history);
 
-                // 同步更新产品售价
-                if (updatedPrice.getCurrentPrice() != null) {
+                // 同步更新产品售价（仅当价格生效日期为今天或之后时才同步）
+                if (updatedPrice.getCurrentPrice() != null && updatedPrice.getEffectiveDate() != null
+                        && !updatedPrice.getEffectiveDate().isBefore(LocalDate.now())) {
                     product.setSellingPrice(updatedPrice.getCurrentPrice());
                     productRepository.save(product);
                 }
