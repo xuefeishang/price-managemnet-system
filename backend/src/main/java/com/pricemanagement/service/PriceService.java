@@ -20,11 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.pricemanagement.dto.PriceWithStatsDTO;
@@ -79,31 +81,52 @@ public class PriceService {
 
     /**
      * 获取指定日期有效的所有价格（带昨日价格和月均价）
+     * 覆盖所有活跃产品：没有当日价格的产品也返回，使用最近一次价格作为继承价格
      */
     public List<PriceWithStatsDTO> getValidPricesWithStatsByDate(LocalDate date) {
-        List<Price> prices = priceRepository.findValidPricesByDate(date);
-
-        if (prices.isEmpty()) {
+        // 1. 获取所有活跃产品
+        List<Product> activeProducts = productRepository.findByStatus(Product.ProductStatus.ACTIVE);
+        if (activeProducts.isEmpty()) {
             return List.of();
         }
 
-        List<Long> productIds = prices.stream()
-                .map(p -> p.getProduct().getId())
-                .distinct()
+        List<Long> allProductIds = activeProducts.stream()
+                .map(Product::getId)
                 .collect(Collectors.toList());
 
-        LocalDate yesterday = date.minusDays(1);
+        // 2. 查询当日有价格记录的产品
+        List<Price> todayPrices = priceRepository.findValidPricesByDate(date);
+        Map<Long, Price> todayPriceMap = new HashMap<>();
+        for (Price p : todayPrices) {
+            todayPriceMap.put(p.getProduct().getId(), p);
+        }
 
-        // 批量查询昨日价格
-        List<Price> yesterdayPrices = priceRepository.findValidPricesByProductIdsAndDate(productIds, yesterday);
+        // 3. 批量查询昨日价格
+        LocalDate yesterday = date.minusDays(1);
+        List<Price> yesterdayPrices = priceRepository.findValidPricesByProductIdsAndDate(allProductIds, yesterday);
         Map<Long, Price> yesterdayPriceMap = new HashMap<>();
         for (Price p : yesterdayPrices) {
             yesterdayPriceMap.put(p.getProduct().getId(), p);
         }
 
-        // 批量查询月均价
+        // 4. 对于没有当日价格、也没有昨日价格的产品，查找更早的最近价格作为昨日价格
+        Set<Long> productsNeedingLatestBeforeYesterday = allProductIds.stream()
+                .filter(pid -> !todayPriceMap.containsKey(pid) && !yesterdayPriceMap.containsKey(pid))
+                .collect(Collectors.toSet());
+
+        if (!productsNeedingLatestBeforeYesterday.isEmpty()) {
+            List<Price> latestBeforeYesterday = priceRepository.findLatestPricesBeforeDate(
+                    new ArrayList<>(productsNeedingLatestBeforeYesterday), yesterday);
+            for (Price p : latestBeforeYesterday) {
+                if (!yesterdayPriceMap.containsKey(p.getProduct().getId())) {
+                    yesterdayPriceMap.put(p.getProduct().getId(), p);
+                }
+            }
+        }
+
+        // 5. 批量查询月均价
         LocalDate monthStart = date.withDayOfMonth(1);
-        List<Object[]> avgResults = priceRepository.findAveragePricesByProductIdsAndMonth(productIds, monthStart, date);
+        List<Object[]> avgResults = priceRepository.findAveragePricesByProductIdsAndMonth(allProductIds, monthStart, date);
         Map<Long, BigDecimal> monthlyAvgMap = new HashMap<>();
         for (Object[] row : avgResults) {
             Long productId = (Long) row[0];
@@ -121,13 +144,45 @@ public class PriceService {
             monthlyAvgMap.put(productId, avg);
         }
 
-        // 组装结果
-        return prices.stream()
-                .map(price -> {
-                    Long productId = price.getProduct().getId();
+        // 6. 对于没有当日价格的产品，查找最近的价格作为继承价格
+        Set<Long> productsNeedingInherited = allProductIds.stream()
+                .filter(pid -> !todayPriceMap.containsKey(pid))
+                .collect(Collectors.toSet());
+
+        Map<Long, Price> inheritedPriceMap = new HashMap<>();
+        if (!productsNeedingInherited.isEmpty()) {
+            List<Price> latestPrices = priceRepository.findLatestPricesBeforeDate(
+                    new ArrayList<>(productsNeedingInherited), date);
+            for (Price p : latestPrices) {
+                inheritedPriceMap.put(p.getProduct().getId(), p);
+            }
+        }
+
+        // 7. 组装结果：覆盖所有活跃产品
+        return activeProducts.stream()
+                .map(product -> {
+                    Long productId = product.getId();
+                    Price todayPrice = todayPriceMap.get(productId);
                     Price yp = yesterdayPriceMap.get(productId);
                     BigDecimal avg = monthlyAvgMap.get(productId);
-                    return new PriceWithStatsDTO(price, yp, avg);
+
+                    // 继承价格：当天没有价格时取最近一次价格
+                    BigDecimal inheritedPrice = null;
+                    if (todayPrice == null && inheritedPriceMap.containsKey(productId)) {
+                        inheritedPrice = inheritedPriceMap.get(productId).getCurrentPrice();
+                    }
+
+                    if (todayPrice != null) {
+                        // 当天有价格记录
+                        return new PriceWithStatsDTO(todayPrice, yp, avg, null);
+                    } else {
+                        // 当天没有价格记录，创建一个空价格对象关联产品，附带继承价格
+                        Price emptyPrice = new Price();
+                        emptyPrice.setProduct(product);
+                        emptyPrice.setEffectiveDate(date);
+                        emptyPrice.setUnit(product.getUnit());
+                        return new PriceWithStatsDTO(emptyPrice, yp, avg, inheritedPrice);
+                    }
                 })
                 .collect(Collectors.toList());
     }

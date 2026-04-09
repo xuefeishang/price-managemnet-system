@@ -55,4 +55,17 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
      */
     @Query("SELECT p.product.id, AVG(p.currentPrice) FROM Price p WHERE p.product.id IN :productIds AND p.effectiveDate >= :startDate AND p.effectiveDate <= :endDate GROUP BY p.product.id")
     List<Object[]> findAveragePricesByProductIdsAndMonth(@Param("productIds") List<Long> productIds, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    /**
+     * 查找某产品在指定日期之前（含当天）最近的一条价格记录
+     */
+    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate <= :date ORDER BY p.effectiveDate DESC LIMIT 1")
+    Optional<Price> findLatestPriceBeforeDate(@Param("productId") Long productId, @Param("date") LocalDate date);
+
+    /**
+     * 批量查找多个产品在指定日期之前（含当天）最近的价格记录
+     * 返回每个产品的最新价格
+     */
+    @Query("SELECT p FROM Price p WHERE p.product.id IN :productIds AND p.effectiveDate <= :date AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = p.product.id AND p2.effectiveDate <= :date)")
+    List<Price> findLatestPricesBeforeDate(@Param("productIds") List<Long> productIds, @Param("date") LocalDate date);
 }

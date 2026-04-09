@@ -52,6 +52,7 @@ export interface PriceWithStats {
   price: Price
   yesterdayPrice: Price | null
   monthlyAveragePrice: number | null
+  inheritedPrice: number | null  // 继承的价格：当天无维护价格时取最近一次价格
 }
 
 export const getPricesByDateWithStats = async (date: string): Promise<ApiResponse<PriceWithStats[]>> => {

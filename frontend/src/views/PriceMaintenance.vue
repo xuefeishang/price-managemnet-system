@@ -39,6 +39,9 @@ const yesterdayPriceMap = ref<Map<number, Price>>(new Map())
 // 月均价映射 (productId -> average price)
 const monthlyAverageMap = ref<Map<number, number>>(new Map())
 
+// 继承价格映射 (productId -> inheritedPrice)，当天无维护价格时取最近一次价格
+const inheritedPriceMap = ref<Map<number, number>>(new Map())
+
 // 编辑中的价格
 const editingPrices = ref<Map<number, string>>(new Map())
 
@@ -57,8 +60,11 @@ const hasChanges = computed(() => {
 
 // 计算价格变化
 const getPriceChange = (productId: number) => {
-  const currentPrice = editingPrices.value.get(productId) ? parseFloat(editingPrices.value.get(productId)!) : null
-  const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice || null
+  const editPrice = editingPrices.value.get(productId)
+  // 当前价格：优先使用用户编辑的价格，否则使用继承价格
+  const currentPrice = editPrice ? parseFloat(editPrice) : inheritedPriceMap.value.get(productId) ?? null
+  // 昨日价格：优先使用精确的昨日价格，否则使用继承价格
+  const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice ?? inheritedPriceMap.value.get(productId) ?? null
 
   if (currentPrice === null || yesterdayPrice === null) {
     return null
@@ -66,17 +72,108 @@ const getPriceChange = (productId: number) => {
   return currentPrice - yesterdayPrice
 }
 
-// 加载产品列表
-const loadProducts = async () => {
+// 加载产品列表和价格
+const loadData = async () => {
+  loading.value = true
   try {
-    const response = await getProducts({ page: 0, size: 1000, status: 'ACTIVE' })
-    const list = response.data.content || []
-    // 按 sortOrder 排序，无排序值的排到最后
-    list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    products.value = list
+    // 并行加载产品列表和价格数据
+    const [productResponse, priceResponse] = await Promise.all([
+      getProducts({ page: 0, size: 1000, status: 'ACTIVE' }),
+      getPricesByDateWithStats(selectedDate.value)
+    ])
+
+    const productList = productResponse.data.content || []
+    // 按 sortOrder 排序
+    productList.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    products.value = productList
+
+    // 处理价格数据
+    priceMap.value = new Map()
+    yesterdayPriceMap.value = new Map()
+    monthlyAverageMap.value = new Map()
+    inheritedPriceMap.value = new Map()
+    editingPrices.value = new Map()
+
+    const items = priceResponse.data || []
+    for (const item of items) {
+      if (item.price && item.price.product) {
+        const productId = item.price.product.id
+        priceMap.value.set(productId, item.price)
+        if (item.price.currentPrice != null) {
+          editingPrices.value.set(productId, String(item.price.currentPrice))
+        } else {
+          editingPrices.value.set(productId, '')
+        }
+        if (item.yesterdayPrice) {
+          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
+        }
+        if (item.monthlyAveragePrice != null) {
+          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
+        }
+        if (item.inheritedPrice != null) {
+          inheritedPriceMap.value.set(productId, item.inheritedPrice)
+        }
+      }
+    }
+
+    // 为没有价格的产品初始化编辑数据
+    products.value.forEach(product => {
+      if (!editingPrices.value.has(product.id)) {
+        editingPrices.value.set(product.id, '')
+      }
+    })
   } catch (error) {
-    console.error('Failed to load products:', error)
-    showToast('加载产品列表失败')
+    console.error('Failed to load data:', error)
+    showToast('加载数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 仅重新加载价格数据（日期切换时使用）
+const loadPrices = async () => {
+  loading.value = true
+  try {
+    const response = await getPricesByDateWithStats(selectedDate.value)
+    const items = response.data || []
+    priceMap.value = new Map()
+    yesterdayPriceMap.value = new Map()
+    monthlyAverageMap.value = new Map()
+    inheritedPriceMap.value = new Map()
+    editingPrices.value = new Map()
+
+    for (const item of items) {
+      if (item.price && item.price.product) {
+        const productId = item.price.product.id
+        priceMap.value.set(productId, item.price)
+        if (item.price.currentPrice != null) {
+          editingPrices.value.set(productId, String(item.price.currentPrice))
+        } else {
+          editingPrices.value.set(productId, '')
+        }
+        if (item.yesterdayPrice) {
+          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
+        }
+        if (item.monthlyAveragePrice != null) {
+          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
+        }
+        if (item.inheritedPrice != null) {
+          inheritedPriceMap.value.set(productId, item.inheritedPrice)
+        }
+      }
+    }
+
+    // 为没有价格的产品初始化编辑数据
+    products.value.forEach(product => {
+      if (!editingPrices.value.has(product.id)) {
+        editingPrices.value.set(product.id, '')
+      }
+    })
+  } catch (error) {
+    console.error('Failed to load prices:', error)
+    showToast('加载价格数据失败')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -97,48 +194,9 @@ const handleDragEnd = async () => {
     console.error('Failed to save sort order:', error)
     showToast('排序保存失败，请重试')
     // 恢复原始顺序
-    loadProducts()
+    loadData()
   } finally {
     savingSort.value = false
-  }
-}
-
-// 加载指定日期的价格
-const loadPrices = async () => {
-  loading.value = true
-  try {
-    const response = await getPricesByDateWithStats(selectedDate.value)
-    const items = response.data || []
-    priceMap.value = new Map()
-    yesterdayPriceMap.value = new Map()
-    monthlyAverageMap.value = new Map()
-    editingPrices.value = new Map()
-
-    for (const item of items) {
-      if (item.price && item.price.product) {
-        const productId = item.price.product.id
-        priceMap.value.set(productId, item.price)
-        editingPrices.value.set(productId, String(item.price.currentPrice || ''))
-        if (item.yesterdayPrice) {
-          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
-        }
-        if (item.monthlyAveragePrice != null) {
-          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
-        }
-      }
-    }
-
-    // 为没有价格的产品初始化编辑数据
-    products.value.forEach(product => {
-      if (!editingPrices.value.has(product.id)) {
-        editingPrices.value.set(product.id, '')
-      }
-    })
-  } catch (error) {
-    console.error('Failed to load prices:', error)
-    showToast('加载价格数据失败')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -161,7 +219,26 @@ const updateEditPrice = (productId: number, value: string) => {
   editingPrices.value.set(productId, value)
 }
 
-// 格式化数字显示
+// 获取显示的昨日价格（优先精确昨日价格，否则使用继承价格）
+const getDisplayYesterdayPrice = (productId: number): number | null | undefined => {
+  const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice
+  if (yesterdayPrice != null) return yesterdayPrice
+  return inheritedPriceMap.value.get(productId) ?? null
+}
+
+// 获取显示的月均价（优先精确月均价，否则使用继承价格）
+const getDisplayMonthlyAvg = (productId: number): number | null | undefined => {
+  const avg = monthlyAverageMap.value.get(productId)
+  if (avg != null) return avg
+  return inheritedPriceMap.value.get(productId) ?? null
+}
+
+// 获取价格输入框的 placeholder
+const getPricePlaceholder = (productId: number): string => {
+  const inherited = inheritedPriceMap.value.get(productId)
+  if (inherited != null) return inherited.toFixed(2)
+  return '0.00'
+}
 const formatPrice = (price: number | null | undefined) => {
   if (price === null || price === undefined) return '-'
   return price.toFixed(2)
@@ -290,8 +367,7 @@ const handleResize = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
-  loadProducts()
-  loadPrices()
+  loadData()
 })
 
 onUnmounted(() => {
@@ -408,13 +484,13 @@ onUnmounted(() => {
                     :value="getEditData(product.id)"
                     @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
                     class="price-input"
-                    placeholder="0.00"
+                    :placeholder="getPricePlaceholder(product.id)"
                   />
                 </div>
               </div>
               <div class="table-cell price-col">
                 <span class="price-value">
-                  {{ formatPrice(yesterdayPriceMap.get(product.id)?.currentPrice) }}
+                  {{ formatPrice(getDisplayYesterdayPrice(product.id)) }}
                 </span>
               </div>
               <div class="table-cell price-col">
@@ -424,7 +500,7 @@ onUnmounted(() => {
               </div>
               <div class="table-cell price-col">
                 <span class="price-value">
-                  {{ formatPrice(monthlyAverageMap.get(product.id)) }}
+                  {{ formatPrice(getDisplayMonthlyAvg(product.id)) }}
                 </span>
               </div>
               <div class="table-cell unit">
@@ -535,7 +611,7 @@ onUnmounted(() => {
                     :value="getEditData(product.id)"
                     @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
                     class="price-input"
-                    placeholder="0.00"
+                    :placeholder="getPricePlaceholder(product.id)"
                   />
                 </div>
               </div>
@@ -545,7 +621,7 @@ onUnmounted(() => {
             <div class="price-compare-row">
               <div class="compare-item">
                 <span class="compare-label">昨日售价</span>
-                <span class="compare-value">{{ formatPrice(yesterdayPriceMap.get(product.id)?.currentPrice) }}</span>
+                <span class="compare-value">{{ formatPrice(getDisplayYesterdayPrice(product.id)) }}</span>
               </div>
               <div class="compare-item">
                 <span class="compare-label">价格变化</span>
@@ -555,7 +631,7 @@ onUnmounted(() => {
               </div>
               <div class="compare-item">
                 <span class="compare-label">月均价</span>
-                <span class="compare-value">{{ formatPrice(monthlyAverageMap.get(product.id)) }}</span>
+                <span class="compare-value">{{ formatPrice(getDisplayMonthlyAvg(product.id)) }}</span>
               </div>
             </div>
 
