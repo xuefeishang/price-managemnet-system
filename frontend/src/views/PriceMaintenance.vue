@@ -284,7 +284,7 @@ const handleSave = async () => {
 
       const existingPrice = priceMap.value.get(productId)
 
-      if (existingPrice) {
+      if (existingPrice && existingPrice.id != null) {
         saveTasks.push(
           updatePrice(existingPrice.id, {
             currentPrice,

@@ -109,9 +109,10 @@ public class PriceService {
             yesterdayPriceMap.put(p.getProduct().getId(), p);
         }
 
-        // 4. 对于没有当日价格、也没有昨日价格的产品，查找更早的最近价格作为昨日价格
+        // 4. 对于没有昨日价格的产品，查找更早的最近价格作为昨日价格
+        // （即使当天有价格，如果昨天没有价格，也需要找到上一次有价格的日期作为"昨日价格"）
         Set<Long> productsNeedingLatestBeforeYesterday = allProductIds.stream()
-                .filter(pid -> !todayPriceMap.containsKey(pid) && !yesterdayPriceMap.containsKey(pid))
+                .filter(pid -> !yesterdayPriceMap.containsKey(pid))
                 .collect(Collectors.toSet());
 
         if (!productsNeedingLatestBeforeYesterday.isEmpty()) {
