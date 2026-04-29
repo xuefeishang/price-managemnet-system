@@ -1,5 +1,6 @@
 package com.pricemanagement.config;
 
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.util.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,13 +23,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
 
-    // 不需要认证的路径
-    private static final List<String> PUBLIC_PATHS = List.of(
-            "/api/auth/login",
-            "/api/auth/register",
-            "/api/menus/tree",
-            "/api/menus/visible"
-    );
+    // 不需要认证的路径（统一从 SystemConstants 获取）
+    private static final List<String> PUBLIC_PATHS = List.of(SystemConstants.PUBLIC_PATHS);
 
     public JwtAuthenticationFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
@@ -56,7 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     if (username != null && role != null) {
                         List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                                new SimpleGrantedAuthority("ROLE_" + role)
+                                new SimpleGrantedAuthority(SystemConstants.ROLE_PREFIX + role)
                         );
                         UsernamePasswordAuthenticationToken authentication =
                                 new UsernamePasswordAuthenticationToken(username, null, authorities);
@@ -80,8 +76,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private String extractToken(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+        String bearerToken = request.getHeader(SystemConstants.AUTH_HEADER);
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(SystemConstants.BEARER_PREFIX)) {
             return bearerToken.substring(7);
         }
         return null;

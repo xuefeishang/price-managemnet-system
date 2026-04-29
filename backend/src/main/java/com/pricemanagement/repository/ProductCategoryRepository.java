@@ -1,6 +1,7 @@
 
 package com.pricemanagement.repository;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.ProductCategory;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,7 @@ public interface ProductCategoryRepository extends JpaRepository<ProductCategory
 
     Optional<ProductCategory> findByCode(String code);
 
-    List<ProductCategory> findByStatusOrderBySortOrderAsc(ProductCategory.CategoryStatus status);
+    List<ProductCategory> findByStatusOrderBySortOrderAsc(CommonStatus status);
 
     boolean existsByCode(String code);
 }

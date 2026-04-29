@@ -2,10 +2,18 @@
 import { ref, onMounted, computed } from 'vue'
 //import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { getProducts } from '@/api/products'
-import { getPricesByDate } from '@/api/products'
+import { getPricesByDate, getProductPriceHistory } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
-import type { Product, Price } from '@/types'
+import type { Product, Price, PriceHistory } from '@/types'
+
+// 注册 ECharts 组件
+use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 // const userStore = useUserStore()
 const router = useRouter()
@@ -27,6 +35,10 @@ const selectedDate = ref(getYesterday())
 const priceMap = ref<Map<number, Price>>(new Map())
 // 前一天价格映射
 const previousPriceMap = ref<Map<number, Price>>(new Map())
+// 30天价格历史映射 (productId -> PriceHistory[])
+const priceHistoryMap = ref<Map<number, PriceHistory[]>>(new Map())
+// 折线图选项映射 (productId -> ECharts option)
+const chartOptionsMap = ref<Map<number, any>>(new Map())
 
 // 判断是否为PC布局
 const isPCLayout = computed(() => {
@@ -43,12 +55,11 @@ const homeProducts = computed(() => {
   return products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
 })
 
-// 过滤后的产品
+// 过滤后的产品（仅展示启用的产品）
 const filteredProducts = computed(() => {
-  if (!searchQuery.value) return products.value.slice(0, 6)
-  return products.value
-    .filter(p => p.name.includes(searchQuery.value))
-    .slice(0, 6)
+  const activeProducts = products.value.filter(p => p.status === 'ACTIVE')
+  if (!searchQuery.value) return activeProducts
+  return activeProducts.filter(p => p.name.includes(searchQuery.value))
 })
 
 // 获取产品的当日价格
@@ -68,12 +79,88 @@ const getPriceChange = (productId: number) => {
   const current = priceMap.value.get(productId)
   const previous = previousPriceMap.value.get(productId)
   if (!current || !previous) return null
-  const currentVal = parseFloat(current.currentPrice)
-  const previousVal = parseFloat(previous.currentPrice)
-  if (isNaN(currentVal) || isNaN(previousVal)) return null
+  const currentVal = current.currentPrice
+  const previousVal = previous.currentPrice
+  if (currentVal == null || previousVal == null) return null
   const diff = currentVal - previousVal
   if (diff === 0) return { direction: 'flat', diff: 0 }
   return { direction: diff > 0 ? 'up' : 'down', diff }
+}
+
+// 获取最后一次价格（当天有价格取当天，否则取继承价或最近历史）
+const getLastPrice = (productId: number): string | null => {
+  const todayPrice = priceMap.value.get(productId)
+  if (todayPrice && todayPrice.currentPrice != null) {
+    return String(todayPrice.currentPrice)
+  }
+  // 从历史记录中取最近一次价格
+  const history = priceHistoryMap.value.get(productId)
+  if (history && history.length > 0) {
+    const sorted = [...history].sort((a, b) => new Date(b.changedTime).getTime() - new Date(a.changedTime).getTime())
+    if (sorted[0].newPrice != null) return String(sorted[0].newPrice)
+  }
+  return null
+}
+
+// 生成30天折线图选项
+const generateChartOption = (productId: number) => {
+  const history = priceHistoryMap.value.get(productId) || []
+  if (history.length === 0) return null
+
+  // 按时间排序
+  const sorted = [...history].sort((a, b) => new Date(a.changedTime).getTime() - new Date(b.changedTime).getTime())
+
+  // 取最近30条
+  const recent = sorted.slice(-30)
+
+  const dates = recent.map(h => {
+    const d = new Date(h.changedTime)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })
+  const prices = recent.map(h => h.newPrice)
+
+  // 判断整体趋势颜色
+  let lineColor = '#0D6E6E'
+  if (prices.length >= 2) {
+    const first = prices[0]
+    const last = prices[prices.length - 1]
+    if (first != null && last != null) {
+      if (last > first) lineColor = '#EF4444'
+      else if (last < first) lineColor = '#10B981'
+    }
+  }
+
+  return {
+    grid: { left: 0, right: 0, top: 2, bottom: 0 },
+    xAxis: { type: 'category', show: false, data: dates },
+    yAxis: { type: 'value', show: false },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const p = params[0]
+        return p ? `${p.axisValue}<br/>价格: ${p.value}` : ''
+      },
+      confine: true,
+      textStyle: { fontSize: 10 }
+    },
+    series: [{
+      type: 'line',
+      data: prices,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { width: 1.5, color: lineColor },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: lineColor + '30' },
+            { offset: 1, color: lineColor + '05' }
+          ]
+        }
+      }
+    }]
+  }
 }
 
 // 格式化日期显示
@@ -81,6 +168,10 @@ const formatDateDisplay = (dateStr: string) => {
   const date = new Date(dateStr)
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
+
+// 获取字典数据
+import { getCurrencySymbol as _getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+const getCurrencySymbol = _getCurrencySymbol
 
 // 加载数据
 const loadData = async () => {
@@ -111,6 +202,23 @@ const loadData = async () => {
         previousPriceMap.value.set(price.product.id, price)
       }
     })
+
+    // 加载所有产品的30天价格历史
+    priceHistoryMap.value.clear()
+    chartOptionsMap.value.clear()
+    await Promise.all(products.value.map(async (product) => {
+      try {
+        const historyRes = await getProductPriceHistory(product.id)
+        const historyData = historyRes.data || []
+        priceHistoryMap.value.set(product.id, historyData)
+        const option = generateChartOption(product.id)
+        if (option) {
+          chartOptionsMap.value.set(product.id, option)
+        }
+      } catch (e) {
+        console.error(`Failed to load price history for product ${product.id}:`, e)
+      }
+    }))
   } catch (error) {
     console.error('Failed to load data:', error)
   } finally {
@@ -158,6 +266,7 @@ const goToPriceMaintenance = () => {
 }
 
 onMounted(() => {
+  loadAllDicts()
   loadData()
 })
 </script>
@@ -192,7 +301,7 @@ onMounted(() => {
         <!-- 首页展示产品 -->
         <div class="home-featured-pc" v-if="homeProducts.length > 0 && !loading">
           <div class="section-header-pc">
-            <h2 class="section-title-pc">重点关注</h2>
+            <h2 class="section-title-pc">重点关注指标</h2>
           </div>
           <div class="home-featured-grid-pc">
             <div
@@ -207,17 +316,23 @@ onMounted(() => {
                   <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
                   <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
                   <span class="change-arrow" v-else>—</span>
-                  {{ getPriceChange(product.id)?.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                  {{ (getPriceChange(product.id)?.diff ?? 0) > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
                 </span>
                 <span class="price-change-badge none" v-else>—</span>
               </div>
               <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
-              <div class="product-price" v-if="getTodayPrice(product.id)">
-                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
-                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
+              <div class="product-price" v-if="getLastPrice(product.id)">
+                <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
+                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
               </div>
-              <div class="product-price empty" v-else>
+              <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
+                <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+              </div>
+              <div class="product-price empty" v-if="!getLastPrice(product.id)">
                 暂无价格
+              </div>
+              <div class="product-chart-area" v-if="chartOptionsMap.get(product.id)">
+                <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
               </div>
             </div>
           </div>
@@ -246,22 +361,27 @@ onMounted(() => {
             <div
               v-for="product in filteredProducts"
               :key="product.id"
-              class="product-card-pc"
+              class="product-card-pc list-card"
               @click="viewProduct(product)"
             >
-              <div class="product-card-header">
-                <span class="product-name">{{ product.name }}</span>
-                <span class="product-status" :class="product.status?.toLowerCase()">
-                  {{ product.status === 'ACTIVE' ? '展示' : '隐藏' }}
-                </span>
+              <div class="list-card-left">
+                <div class="product-card-header">
+                  <span class="product-name">{{ product.name }}</span>
+                </div>
+                <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                <div class="product-price" v-if="getLastPrice(product.id)">
+                  <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
+                  <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
+                </div>
+                <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
+                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+                </div>
+                <div class="product-price empty" v-if="!getLastPrice(product.id)">
+                  暂无价格
+                </div>
               </div>
-              <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
-              <div class="product-price" v-if="getTodayPrice(product.id)">
-                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
-                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
-              </div>
-              <div class="product-price empty" v-else>
-                暂无价格
+              <div class="list-card-chart" v-if="chartOptionsMap.get(product.id)">
+                <v-chart class="list-chart-pc" :option="chartOptionsMap.get(product.id)" autoresize />
               </div>
             </div>
             <div v-if="filteredProducts.length === 0" class="empty-state-pc">
@@ -305,7 +425,7 @@ onMounted(() => {
         <!-- 首页展示产品 -->
         <div class="home-featured-mobile" v-if="homeProducts.length > 0 && !loading">
           <div class="section-header">
-            <h2 class="section-title">重点关注</h2>
+            <h2 class="section-title">重点关注指标</h2>
           </div>
           <div class="home-featured-scroll">
             <div
@@ -320,16 +440,22 @@ onMounted(() => {
                   <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
                   <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
                   <span class="change-arrow" v-else>—</span>
-                  {{ getPriceChange(product.id)?.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                  {{ (getPriceChange(product.id)?.diff ?? 0) > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
                 </span>
                 <span class="price-change-badge none" v-else>—</span>
               </div>
               <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
-              <div class="featured-item-price" v-if="getTodayPrice(product.id)">
-                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
-                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
+              <div class="featured-item-price" v-if="getLastPrice(product.id)">
+                <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
+                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
               </div>
-              <div class="featured-item-price empty" v-else>暂无价格</div>
+              <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
+                <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+              </div>
+              <div class="featured-item-price empty" v-if="!getLastPrice(product.id)">暂无价格</div>
+              <div class="product-chart-area-mobile" v-if="chartOptionsMap.get(product.id)">
+                <v-chart class="mini-chart-mobile" :option="chartOptionsMap.get(product.id)" autoresize />
+              </div>
             </div>
           </div>
         </div>
@@ -371,10 +497,21 @@ onMounted(() => {
               <div class="product-info">
                 <span class="product-name">{{ product.name }}</span>
                 <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
+                <div class="product-price-mobile" v-if="getLastPrice(product.id)">
+                  <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
+                  <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
+                </div>
+                <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
+                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+                </div>
+                <div class="product-price-mobile empty" v-if="!getLastPrice(product.id)">暂无价格</div>
               </div>
-              <div class="product-price-display" v-if="getTodayPrice(product.id)">
-                <span class="price-current">¥{{ getTodayPrice(product.id)?.currentPrice }}</span>
-                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || '元' }}</span>
+              <div class="product-list-chart" v-if="chartOptionsMap.get(product.id)">
+                <v-chart class="list-chart-mobile" :option="chartOptionsMap.get(product.id)" autoresize />
+              </div>
+              <div class="product-price-display" v-else-if="getLastPrice(product.id)">
+                <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
+                <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
               </div>
               <div class="product-price-display empty" v-else>
                 暂无价格
@@ -567,10 +704,41 @@ onMounted(() => {
   cursor: pointer;
   transition: all 150ms;
   box-shadow: 0 2px 8px rgba(13, 110, 110, 0.08);
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 1 / 1;
+  position: relative;
+  overflow: hidden;
 }
 
 .product-card-pc.featured:hover {
   box-shadow: 0 4px 16px rgba(13, 110, 110, 0.15);
+}
+
+.product-card-pc.featured .product-card-header {
+  flex-shrink: 0;
+}
+
+.product-card-pc.featured .product-specs {
+  flex-shrink: 0;
+}
+
+.product-card-pc.featured .product-price {
+  flex-shrink: 0;
+}
+
+.product-card-pc.featured .product-chart-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.mini-chart {
+  width: 100%;
+  height: 80px;
 }
 
 .price-change-badge {
@@ -639,6 +807,8 @@ onMounted(() => {
 .home-featured-item-mobile {
   min-width: 160px;
   max-width: 200px;
+  width: 180px;
+  height: 200px;
   flex-shrink: 0;
   background: #FFFFFF;
   border: 1px solid #0D6E6E;
@@ -646,6 +816,24 @@ onMounted(() => {
   padding: 14px;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(13, 110, 110, 0.08);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.product-chart-area-mobile {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.mini-chart-mobile {
+  width: 100%;
+  height: 60px;
 }
 
 .featured-item-top {
@@ -670,6 +858,11 @@ onMounted(() => {
   display: flex;
   align-items: baseline;
   gap: 4px;
+}
+
+.featured-item-price .price-label {
+  font-size: 10px;
+  color: #888888;
 }
 
 .featured-item-price .price-current {
@@ -754,6 +947,28 @@ onMounted(() => {
   border: 1px solid transparent;
 }
 
+.product-card-pc.list-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.list-card-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-card-chart {
+  flex-shrink: 0;
+  width: 160px;
+  height: 60px;
+}
+
+.list-chart-pc {
+  width: 160px;
+  height: 60px;
+}
+
 .product-card-pc:hover {
   border-color: #0D6E6E;
   background: #FFFFFF;
@@ -806,6 +1021,13 @@ onMounted(() => {
   gap: 4px;
 }
 
+.price-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #888888;
+  margin-right: 2px;
+}
+
 .product-price .price-current {
   font-family: 'Inter', sans-serif;
   font-size: 18px;
@@ -816,6 +1038,28 @@ onMounted(() => {
 .product-price .price-unit {
   font-size: 12px;
   color: #888888;
+}
+
+.price-diff {
+  margin-top: 2px;
+}
+
+.price-diff-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.price-diff-value.up {
+  color: #10B981;
+}
+
+.price-diff-value.down {
+  color: #EF4444;
+}
+
+.price-diff-value.flat {
+  color: #9CA3AF;
 }
 
 .product-price.empty {
@@ -980,19 +1224,55 @@ onMounted(() => {
   padding: 16px;
   border: 1px solid #E5E5E5;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   cursor: pointer;
+}
+
+.product-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.product-list-chart {
+  flex-shrink: 0;
+  width: 120px;
+  height: 50px;
+}
+
+.list-chart-mobile {
+  width: 120px;
+  height: 50px;
+}
+
+.product-price-mobile {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.product-price-mobile .price-current {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0D6E6E;
+}
+
+.product-price-mobile .price-unit {
+  font-size: 11px;
+  color: #888888;
+}
+
+.product-price-mobile.empty {
+  font-size: 12px;
+  color: #CCCCCC;
 }
 
 .product-item:hover {
   border-color: #0D6E6E;
-}
-
-.product-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 .product-price-display {

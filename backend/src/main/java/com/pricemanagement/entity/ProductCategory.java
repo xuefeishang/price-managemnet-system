@@ -2,6 +2,7 @@
 package com.pricemanagement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.pricemanagement.constants.CommonStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
@@ -30,7 +31,7 @@ public class ProductCategory {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private CategoryStatus status = CategoryStatus.ACTIVE;
+    private CommonStatus status = CommonStatus.ACTIVE;
 
     @Column(columnDefinition = "TEXT")
     private String remark;
@@ -43,8 +44,4 @@ public class ProductCategory {
     @Column(name = "updated_time")
     private LocalDateTime updatedTime;
 
-    public enum CategoryStatus {
-        ACTIVE,     // 启用
-        INACTIVE    // 禁用
-    }
 }

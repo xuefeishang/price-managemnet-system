@@ -57,6 +57,29 @@
 
 ## 项目技术规范
 
+### 核心原则：禁止硬编码
+
+**所有编码值的显示名称必须从字典服务动态获取，严禁在前端代码中硬编码中文标签。**
+
+违反示例与正确做法：
+
+```vue
+<!-- ❌ 禁止 -->
+<span>{{ product.status === 'ACTIVE' ? '启用' : '停用' }}</span>
+<option value="ADMIN">管理员</option>
+const roleMap = { ADMIN: '管理员', EDITOR: '编辑者' }
+
+<!-- ✅ 正确 -->
+<span>{{ getStatusLabel(product.status) }}</span>
+<option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+const roleName = getRoleLabel(user.role)
+```
+
+**允许硬编码的场景：**
+- API 请求/响应中的枚举值（如 `status: 'ACTIVE'`）— 这是数据协议
+- 后端 Entity/Enum 中的常量定义
+- CSS 类名绑定（如 `:class="status?.toLowerCase()"`）
+
 ### 后端规范
 
 **Java 代码规范：**
@@ -94,6 +117,17 @@
 - 类型定义放在 `src/types/` 目录
 - API 接口放在 `src/api/` 目录
 - 视图组件放在 `src/views/` 目录
+
+**字典服务使用规范：**
+
+- 所有编码值的显示名称必须通过 `useDict` composable 获取，禁止硬编码
+- 页面 `onMounted` 中必须调用 `loadAllDicts()` 加载字典缓存
+- 状态显示：使用 `getStatusLabel(key)` 而非 `status === 'ACTIVE' ? '启用' : '停用'`
+- 角色显示：使用 `getRoleLabel(key)` 而非硬编码映射
+- 货币符号：使用 `getCurrencySymbol(key)` 获取
+- 通用字典值：使用 `getDictValue(category, key)` 获取
+- 下拉选项：使用 `getDictOptions(category)` 获取启用项列表
+- 字典分类参见 `useDict.ts` 中的 `CATEGORY_LABELS`
 
 **ECharts 使用规范：**
 
@@ -137,6 +171,7 @@ price-management-system/
 │   └── src/
 │       ├── api/           # API接口
 │       ├── components/    # 公共组件
+│       ├── composables/   # 组合式函数（useDict等）
 │       ├── views/         # 页面视图
 │       ├── router/        # 路由配置
 │       ├── store/         # 状态管理
@@ -177,6 +212,9 @@ price-management-system/
 
 基础运维
   ├── 分类管理
+  ├── 字典管理
+  │   ├── 产地管理
+  │   └── 客户管理
   └── 导入导出
 
 系统管理

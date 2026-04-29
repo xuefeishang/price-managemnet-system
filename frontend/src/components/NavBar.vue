@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter, useRoute } from 'vue-router'
+import { getRoleLabel } from '@/composables/useDict'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -100,8 +101,7 @@ const handleLogout = () => {
             <div class="user-details hidden-mobile">
               <div class="user-name">{{ userStore.user?.nickname }}</div>
               <div class="user-role" :class="userStore.user?.role?.toLowerCase()">
-                {{ userStore.user?.role === 'ADMIN' ? '管理员' :
-                   userStore.user?.role === 'EDITOR' ? '编辑者' : '查看者' }}
+                {{ getRoleLabel(userStore.user?.role || '') }}
               </div>
             </div>
           </div>
@@ -143,8 +143,7 @@ const handleLogout = () => {
           <div>
             <div class="user-name">{{ userStore.user?.nickname }}</div>
             <div class="user-role" :class="userStore.user?.role?.toLowerCase()">
-              {{ userStore.user?.role === 'ADMIN' ? '管理员' :
-                 userStore.user?.role === 'EDITOR' ? '编辑者' : '查看者' }}
+              {{ getRoleLabel(userStore.user?.role || '') }}
             </div>
           </div>
         </div>

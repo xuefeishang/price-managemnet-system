@@ -60,11 +60,9 @@ const formData = ref({
   parentId: null as number | null
 })
 
-const roleOptions: { value: Role; label: string }[] = [
-  { value: 'ADMIN', label: '管理员' },
-  { value: 'EDITOR', label: '编辑者' },
-  { value: 'VIEWER', label: '查看者' }
-]
+// 角色选项（从字典服务获取）
+import { getDictOptions } from '@/composables/useDict'
+const roleOptions: { value: Role; label: string }[] = getDictOptions('user_role').map(o => ({ value: o.value as Role, label: o.label }))
 
 const iconOptions = [
   { value: 'home', label: '首页' },

@@ -1,6 +1,7 @@
 package com.pricemanagement.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.util.JwtUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -41,8 +42,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
-                        .requestMatchers("/api/menus/tree", "/api/menus/visible").permitAll()
+                        .requestMatchers(SystemConstants.PUBLIC_PATHS).permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )

@@ -1,6 +1,7 @@
 
 package com.pricemanagement.service;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.Product;
 import com.pricemanagement.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +39,7 @@ class ProductServiceTests {
         testProduct = new Product();
         testProduct.setId(1L);
         testProduct.setName("测试产品");
-        testProduct.setStatus(Product.ProductStatus.ACTIVE);
+        testProduct.setStatus(CommonStatus.ACTIVE);
     }
 
     @Test

@@ -140,6 +140,12 @@ const router = createRouter({
           name: 'ApprovalConfig',
           component: () => import('../views/ApprovalConfig.vue'),
           meta: { title: '审批流配置', adminOnly: true }
+        },
+        {
+          path: 'dict-management',
+          name: 'DictManagement',
+          component: () => import('../views/DictManagement.vue'),
+          meta: { title: '数据字典', adminOnly: true }
         }
       ]
     }

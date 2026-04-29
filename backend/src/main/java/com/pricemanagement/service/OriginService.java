@@ -1,5 +1,6 @@
 package com.pricemanagement.service;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.Origin;
 import com.pricemanagement.repository.OriginRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ public class OriginService {
     }
 
     public List<Origin> getActiveOrigins() {
-        return originRepository.findByStatusOrderBySortOrderAsc(Origin.OriginStatus.ACTIVE);
+        return originRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
     public Optional<Origin> getOriginById(Long id) {

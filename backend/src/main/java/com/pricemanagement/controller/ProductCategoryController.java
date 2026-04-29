@@ -1,6 +1,7 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.ProductCategory;
 import com.pricemanagement.service.ProductCategoryService;
@@ -25,7 +26,7 @@ public class ProductCategoryController {
             @RequestParam(required = false) String status) {
         if (status != null) {
             try {
-                ProductCategory.CategoryStatus categoryStatus = ProductCategory.CategoryStatus.valueOf(status);
+                CommonStatus categoryStatus = CommonStatus.valueOf(status);
                 return Result.success("获取分类列表成功",
                         productCategoryService.getActiveCategories());
             } catch (IllegalArgumentException e) {

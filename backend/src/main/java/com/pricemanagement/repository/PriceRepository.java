@@ -21,21 +21,34 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
     List<Price> findByProductIdOrderByCreatedTimeDesc(Long productId);
 
     /**
-     * 按产品和生效日期精确查找价格记录
+     * 按产品和生效日期精确查找价格记录（取最新创建的一条，防止重复数据导致异常）
      */
-    Optional<Price> findByProductIdAndEffectiveDate(Long productId, LocalDate effectiveDate);
+    Optional<Price> findFirstByProductIdAndEffectiveDateOrderByCreatedTimeDesc(Long productId, LocalDate effectiveDate);
+
+    /**
+     * 查找某产品某日期的所有价格记录（用于清理重复数据）
+     */
+    List<Price> findAllByProductIdAndEffectiveDateOrderByCreatedTimeDesc(Long productId, LocalDate effectiveDate);
+
+    /**
+     * 查找所有存在重复 (product_id, effective_date) 的产品ID和日期
+     */
+    @Query("SELECT p.product.id, p.effectiveDate FROM Price p GROUP BY p.product.id, p.effectiveDate HAVING COUNT(p) > 1")
+    List<Object[]> findDuplicateProductDateCombinations();
 
     /**
      * 查询指定日期有效的价格（精确匹配 effectiveDate）
      * 使用 LEFT JOIN FETCH 确保产品关联被正确加载
+     * 按product_id和createdTime排序，确保同产品同日期重复数据中最新记录被保留
      */
-    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.effectiveDate = :date ORDER BY p.product.id")
+    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.effectiveDate = :date ORDER BY p.product.id, p.createdTime DESC")
     List<Price> findValidPricesByDate(@Param("date") LocalDate date);
 
     /**
      * 查询某产品在指定日期有效的价格（精确匹配 effectiveDate）
+     * 如有重复数据，返回createdTime最新的一条
      */
-    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate = :date")
+    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate = :date ORDER BY p.createdTime DESC LIMIT 1")
     Optional<Price> findValidPriceByProductIdAndDate(@Param("productId") Long productId, @Param("date") LocalDate date);
 
     /**
@@ -46,8 +59,9 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
 
     /**
      * 批量查询指定日期有效的价格（传入产品ID列表，精确匹配 effectiveDate）
+     * 按product_id和createdTime排序，确保同产品同日期重复数据中最新记录被保留
      */
-    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.product.id IN :productIds AND p.effectiveDate = :date ORDER BY p.product.id")
+    @Query("SELECT DISTINCT p FROM Price p LEFT JOIN FETCH p.product WHERE p.product.id IN :productIds AND p.effectiveDate = :date ORDER BY p.product.id, p.createdTime DESC")
     List<Price> findValidPricesByProductIdsAndDate(@Param("productIds") List<Long> productIds, @Param("date") LocalDate date);
 
     /**
@@ -68,4 +82,11 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
      */
     @Query("SELECT p FROM Price p WHERE p.product.id IN :productIds AND p.effectiveDate <= :date AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = p.product.id AND p2.effectiveDate <= :date)")
     List<Price> findLatestPricesBeforeDate(@Param("productIds") List<Long> productIds, @Param("date") LocalDate date);
+
+    /**
+     * 查询某产品在指定日期范围内的价格记录，按生效日期升序排列
+     * 如同一天有多条记录，只取createdTime最新的一条
+     */
+    @Query("SELECT p FROM Price p WHERE p.product.id = :productId AND p.effectiveDate >= :startDate AND p.effectiveDate <= :endDate ORDER BY p.effectiveDate ASC, p.createdTime DESC")
+    List<Price> findByProductIdAndDateRange(@Param("productId") Long productId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getProduct, createProduct, updateProduct } from '@/api/products'
 import { getCategories } from '@/api/categories'
-import { getOrigins } from '@/api/origins'
-import { getCustomers } from '@/api/customers'
 import { UNIT_OPTIONS } from '@/constants/units'
+import { getDictOptions, getStatusLabel, loadAllDicts, getOriginOptions, getCustomerOptions, getCustomerName } from '@/composables/useDict'
 import { eventBus } from '@/utils/eventBus'
-import type { ProductCategory, Origin, Customer, ProductStatus } from '@/types'
+import type { ProductCategory, ProductStatus } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,29 +39,26 @@ const form = reactive({
   unit: '',
   showOnHome: false,
   currency: 'CNY',
-  sortOrder: 0
+  sortOrder: 0,
+  budgetPrice: '' as string | number
 })
 
 // 计量单位选项（从共享常量引入，与后端/数据库保持一致）
 const unitOptions = UNIT_OPTIONS
 
-// 计价币种选项
-const currencyOptions = [
-  { value: 'CNY', label: '人民币' },
-  { value: 'USD', label: '美元' },
-  { value: 'EUR', label: '欧元' }
-]
+// 计价币种选项（从字典服务获取，computed 保证缓存刷新后联动）
+const currencyOptions = computed(() => getDictOptions('currency'))
 
 // 分类数据
 const categories = ref<ProductCategory[]>([])
 
-// 产地和客户数据
-const origins = ref<Origin[]>([])
-const customers = ref<Customer[]>([])
+// 产地和客户数据（从字典缓存获取，computed 保证缓存刷新后联动）
+const originOptions = computed(() => getOriginOptions())
+const customerOpts = computed(() => getCustomerOptions())
 
-// 选中的产地（单选）和客户（多选）
-const selectedOriginId = ref<number | null>(null)
-const selectedCustomerIds = ref<number[]>([])
+// 选中的产地（单选，存 dictKey）和客户（多选，存 dictKey）
+const selectedOriginKey = ref<string>('')
+const selectedCustomerKeys = ref<string[]>([])
 const showCustomerDropdown = ref(false)
 const customerDropdownRef = ref<HTMLElement | null>(null)
 // const formAreaRef = ref<HTMLElement | null>(null)
@@ -88,13 +84,12 @@ const formSections = [
 ]
 
 // 辅助函数
-const getCustomerName = (id: number) => {
-  const customer = customers.value.find(c => c.id === id)
-  return customer?.name || ''
+const getCustomerNameByKey = (key: string) => {
+  return getCustomerName(key)
 }
 
-const removeCustomer = (id: number) => {
-  selectedCustomerIds.value = selectedCustomerIds.value.filter(cid => cid !== id)
+const removeCustomer = (key: string) => {
+  selectedCustomerKeys.value = selectedCustomerKeys.value.filter(k => k !== key)
 }
 
 // 滚动到指定分区
@@ -109,6 +104,15 @@ const scrollToSection = (sectionId: string) => {
 
 const toggleCustomerDropdown = () => {
   showCustomerDropdown.value = !showCustomerDropdown.value
+}
+
+const toggleCustomerSelection = (key: string) => {
+  const idx = selectedCustomerKeys.value.indexOf(key)
+  if (idx >= 0) {
+    selectedCustomerKeys.value.splice(idx, 1)
+  } else {
+    selectedCustomerKeys.value.push(key)
+  }
 }
 
 // 点击外部关闭下拉
@@ -137,23 +141,24 @@ const loadProduct = async () => {
       unit: product.unit || '',
       showOnHome: product.showOnHome ?? false,
       currency: product.currency || 'CNY',
-      sortOrder: product.sortOrder ?? 0
+      sortOrder: product.sortOrder ?? 0,
+      budgetPrice: product.budgetPrice ?? ''
     })
 
-    // 解析产地（单选）和客户（多选）
+    // 解析产地（单选，dictKey）和客户（多选，dictKey）
     if (product.originIds) {
       try {
-        const ids = JSON.parse(product.originIds)
-        selectedOriginId.value = ids.length > 0 ? ids[0] : null
+        const keys = JSON.parse(product.originIds)
+        selectedOriginKey.value = keys.length > 0 ? keys[0] : ''
       } catch (e) {
-        selectedOriginId.value = null
+        selectedOriginKey.value = ''
       }
     }
     if (product.customerIds) {
       try {
-        selectedCustomerIds.value = JSON.parse(product.customerIds)
+        selectedCustomerKeys.value = JSON.parse(product.customerIds)
       } catch (e) {
-        selectedCustomerIds.value = []
+        selectedCustomerKeys.value = []
       }
     }
   } catch (error) {
@@ -171,20 +176,6 @@ const loadCategories = async () => {
     categories.value = response.data || []
   } catch (error) {
     console.error('Failed to load categories:', error)
-  }
-}
-
-// 加载产地和客户
-const loadOriginsAndCustomers = async () => {
-  try {
-    const [originsRes, customersRes] = await Promise.all([
-      getOrigins('ACTIVE'),
-      getCustomers('ACTIVE')
-    ])
-    origins.value = originsRes.data || []
-    customers.value = customersRes.data || []
-  } catch (error) {
-    console.error('Failed to load origins and customers:', error)
   }
 }
 
@@ -267,8 +258,9 @@ const handleSave = async () => {
       showOnHome: form.showOnHome,
       currency: form.currency,
       sortOrder: form.sortOrder || 0,
-      originIds: selectedOriginId.value ? JSON.stringify([selectedOriginId.value]) : undefined,
-      customerIds: selectedCustomerIds.value.length > 0 ? JSON.stringify(selectedCustomerIds.value) : undefined
+      budgetPrice: form.budgetPrice ? parseFloat(parseFloat(String(form.budgetPrice)).toFixed(2)) : undefined,
+      originIds: selectedOriginKey.value ? JSON.stringify([selectedOriginKey.value]) : undefined,
+      customerIds: selectedCustomerKeys.value.length > 0 ? JSON.stringify(selectedCustomerKeys.value) : undefined
     }
 
     if (isEdit) {
@@ -294,8 +286,8 @@ const goBack = () => {
 }
 
 onMounted(() => {
+  loadAllDicts()
   loadCategories()
-  loadOriginsAndCustomers()
   loadProduct()
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, { passive: true })
@@ -441,6 +433,17 @@ onUnmounted(() => {
                   </div>
 
                   <div class="form-group">
+                    <label class="form-label">预算价格</label>
+                    <input
+                      v-model="form.budgetPrice"
+                      type="number"
+                      class="form-input"
+                      placeholder="请输入预算价格"
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div class="form-group">
                     <label class="form-label">显示状态</label>
                     <div class="status-toggle inline">
                       <button
@@ -449,7 +452,7 @@ onUnmounted(() => {
                         @click="form.status = 'ACTIVE'"
                       >
                         <span class="status-dot active"></span>
-                        启用
+                        {{ getStatusLabel('ACTIVE') }}
                       </button>
                       <button
                         class="status-btn"
@@ -457,7 +460,7 @@ onUnmounted(() => {
                         @click="form.status = 'INACTIVE'"
                       >
                         <span class="status-dot inactive"></span>
-                        停用
+                        {{ getStatusLabel('INACTIVE') }}
                       </button>
                     </div>
                   </div>
@@ -505,27 +508,27 @@ onUnmounted(() => {
                 <div class="form-grid two-col">
                   <div class="form-group">
                     <label class="form-label">产地</label>
-                    <select v-model="selectedOriginId" class="form-select">
-                      <option :value="null">请选择产地</option>
-                      <option v-for="origin in origins" :key="origin.id" :value="origin.id">
-                        {{ origin.name }}
+                    <select v-model="selectedOriginKey" class="form-select">
+                      <option value="">请选择产地</option>
+                      <option v-for="opt in originOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
                       </option>
                     </select>
                   </div>
 
-                  <div class="form-group" v-if="customers.length > 0">
+                  <div class="form-group" v-if="customerOpts.length > 0">
                     <label class="form-label">客户信息</label>
                     <div class="multi-select-dropdown pc" ref="customerDropdownRef">
                       <div class="multi-select-trigger" @click="toggleCustomerDropdown">
-                        <span class="multi-select-placeholder" v-if="selectedCustomerIds.length === 0">请选择客户（可多选）</span>
+                        <span class="multi-select-placeholder" v-if="selectedCustomerKeys.length === 0">请选择客户（可多选）</span>
                         <span class="multi-select-tags" v-else>
                           <span
-                            v-for="id in selectedCustomerIds"
-                            :key="id"
+                            v-for="key in selectedCustomerKeys"
+                            :key="key"
                             class="multi-select-tag"
                           >
-                            {{ getCustomerName(id) }}
-                            <span class="tag-remove" @click.stop="removeCustomer(id)">×</span>
+                            {{ getCustomerNameByKey(key) }}
+                            <span class="tag-remove" @click.stop="removeCustomer(key)">×</span>
                           </span>
                         </span>
                         <svg class="dropdown-arrow" :class="{ open: showCustomerDropdown }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -534,18 +537,18 @@ onUnmounted(() => {
                       </div>
                       <div class="multi-select-panel" v-if="showCustomerDropdown">
                         <label
-                          v-for="customer in customers"
-                          :key="customer.id"
+                          v-for="opt in customerOpts"
+                          :key="opt.value"
                           class="multi-select-option"
-                          :class="{ selected: selectedCustomerIds.includes(customer.id) }"
+                          :class="{ selected: selectedCustomerKeys.includes(opt.value) }"
                         >
                           <input
                             type="checkbox"
-                            :value="customer.id"
-                            v-model="selectedCustomerIds"
-                            @click.stop
+                            :value="opt.value"
+                            :checked="selectedCustomerKeys.includes(opt.value)"
+                            @click.stop="toggleCustomerSelection(opt.value)"
                           />
-                          <span>{{ customer.name }}</span>
+                          <span>{{ opt.label }}</span>
                         </label>
                       </div>
                     </div>
@@ -748,6 +751,17 @@ onUnmounted(() => {
           </div>
 
           <div class="form-group">
+            <label class="form-label">预算价格</label>
+            <input
+              v-model="form.budgetPrice"
+              type="number"
+              class="form-input"
+              placeholder="请输入预算价格"
+              step="0.01"
+            />
+          </div>
+
+          <div class="form-group">
             <label class="form-label">显示状态</label>
             <div class="status-toggle">
               <button
@@ -756,7 +770,7 @@ onUnmounted(() => {
                 @click="form.status = 'ACTIVE'"
               >
                 <span class="status-dot active"></span>
-                展示
+                {{ getStatusLabel('ACTIVE') }}
               </button>
               <button
                 class="status-btn"
@@ -764,7 +778,7 @@ onUnmounted(() => {
                 @click="form.status = 'INACTIVE'"
               >
                 <span class="status-dot inactive"></span>
-                隐藏
+                {{ getStatusLabel('INACTIVE') }}
               </button>
             </div>
           </div>
@@ -807,30 +821,30 @@ onUnmounted(() => {
           </div>
 
           <!-- 产地单选 -->
-          <div class="form-group" v-if="origins.length > 0">
+          <div class="form-group" v-if="originOptions.length > 0">
             <label class="form-label">产地</label>
-            <select v-model="selectedOriginId" class="form-select">
-              <option :value="null">请选择产地</option>
-              <option v-for="origin in origins" :key="origin.id" :value="origin.id">
-                {{ origin.name }}
+            <select v-model="selectedOriginKey" class="form-select">
+              <option value="">请选择产地</option>
+              <option v-for="opt in originOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
               </option>
             </select>
           </div>
 
           <!-- 客户多选下拉 -->
-          <div class="form-group" v-if="customers.length > 0">
+          <div class="form-group" v-if="customerOpts.length > 0">
             <label class="form-label">客户信息</label>
             <div class="multi-select-dropdown mobile" ref="customerDropdownRef">
               <div class="multi-select-trigger" @click="toggleCustomerDropdown">
-                <span class="multi-select-placeholder" v-if="selectedCustomerIds.length === 0">请选择客户</span>
+                <span class="multi-select-placeholder" v-if="selectedCustomerKeys.length === 0">请选择客户</span>
                 <span class="multi-select-tags" v-else>
                   <span
-                    v-for="id in selectedCustomerIds"
-                    :key="id"
+                    v-for="key in selectedCustomerKeys"
+                    :key="key"
                     class="multi-select-tag"
                   >
-                    {{ getCustomerName(id) }}
-                    <span class="tag-remove" @click.stop="removeCustomer(id)">×</span>
+                    {{ getCustomerNameByKey(key) }}
+                    <span class="tag-remove" @click.stop="removeCustomer(key)">×</span>
                   </span>
                 </span>
                 <svg class="dropdown-arrow" :class="{ open: showCustomerDropdown }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -839,18 +853,18 @@ onUnmounted(() => {
               </div>
               <div class="multi-select-panel" v-if="showCustomerDropdown">
                 <label
-                  v-for="customer in customers"
-                  :key="customer.id"
+                  v-for="opt in customerOpts"
+                  :key="opt.value"
                   class="multi-select-option"
-                  :class="{ selected: selectedCustomerIds.includes(customer.id) }"
+                  :class="{ selected: selectedCustomerKeys.includes(opt.value) }"
                 >
                   <input
                     type="checkbox"
-                    :value="customer.id"
-                    v-model="selectedCustomerIds"
-                    @click.stop
+                    :value="opt.value"
+                    :checked="selectedCustomerKeys.includes(opt.value)"
+                    @click.stop="toggleCustomerSelection(opt.value)"
                   />
-                  <span>{{ customer.name }}</span>
+                  <span>{{ opt.label }}</span>
                 </label>
               </div>
             </div>

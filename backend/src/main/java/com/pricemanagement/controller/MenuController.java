@@ -1,5 +1,6 @@
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.dto.MenuSortDTO;
 import com.pricemanagement.dto.MenuItemDTO;
 import com.pricemanagement.dto.Result;
@@ -27,7 +28,7 @@ public class MenuController {
 
     @GetMapping("/visible")
     public Result<List<MenuItemDTO>> getVisibleMenus(@RequestParam(required = false) String role) {
-        return Result.success("获取菜单成功", menuItemService.getVisibleMenus(role != null ? role : "VIEWER"));
+        return Result.success("获取菜单成功", menuItemService.getVisibleMenus(role != null ? role : SystemConstants.DEFAULT_ROLE));
     }
 
     @GetMapping

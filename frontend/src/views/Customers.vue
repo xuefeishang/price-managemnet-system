@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getCustomers, updateCustomer, deleteCustomer } from '@/api/customers'
 //import { usePermission } from '@/composables/usePermission'
+import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
 import type { Customer } from '@/types'
 
 const router = useRouter()
@@ -33,7 +34,7 @@ const handleToggleStatus = async (customer: Customer) => {
   if (togglingId.value === customer.id) return
 
   const newStatus = customer.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
-  const actionText = newStatus === 'ACTIVE' ? '启用' : '停用'
+  const actionText = getStatusLabel(newStatus)
 
   try {
     togglingId.value = customer.id
@@ -102,6 +103,7 @@ const handleResize = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  loadAllDicts()
   loadCustomers()
 })
 
@@ -175,7 +177,7 @@ onUnmounted(() => {
                 <div class="toggle-slider"></div>
               </div>
               <span class="status-text" :class="customer.status">
-                {{ customer.status === 'ACTIVE' ? '启用' : '停用' }}
+                {{ getStatusLabel(customer.status) }}
               </span>
             </div>
             <div class="table-cell actions" @click.stop>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getOrigins, updateOrigin, deleteOrigin } from '@/api/origins'
 //import { usePermission } from '@/composables/usePermission'
+import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
 import type { Origin } from '@/types'
 
 const router = useRouter()
@@ -33,7 +34,7 @@ const handleToggleStatus = async (origin: Origin) => {
   if (togglingId.value === origin.id) return
 
   const newStatus = origin.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
-  const actionText = newStatus === 'ACTIVE' ? '启用' : '停用'
+  const actionText = getStatusLabel(newStatus)
 
   try {
     togglingId.value = origin.id
@@ -102,6 +103,7 @@ const handleResize = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  loadAllDicts()
   loadOrigins()
 })
 
@@ -169,7 +171,7 @@ onUnmounted(() => {
                 <div class="toggle-slider"></div>
               </div>
               <span class="status-text" :class="origin.status">
-                {{ origin.status === 'ACTIVE' ? '启用' : '停用' }}
+                {{ getStatusLabel(origin.status) }}
               </span>
             </div>
             <div class="table-cell sort">{{ origin.sortOrder || 0 }}</div>

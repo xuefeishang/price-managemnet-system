@@ -11,23 +11,30 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "origin", indexes = {
-    @Index(name = "idx_origin_code", columnList = "code"),
-    @Index(name = "idx_origin_status", columnList = "status"),
-    @Index(name = "idx_origin_sort", columnList = "sort_order")
+@Table(name = "sys_dict", indexes = {
+    @Index(name = "idx_dict_category", columnList = "category"),
+    @Index(name = "idx_dict_category_key", columnList = "category, dict_key", unique = true),
+    @Index(name = "idx_dict_status", columnList = "status"),
+    @Index(name = "idx_dict_sort", columnList = "sort_order")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class Origin {
+public class SysDict {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 100)
-    private String name;
+    @Column(nullable = false, length = 50)
+    private String category;
 
-    @Column(unique = true, nullable = false, length = 50)
-    private String code;
+    @Column(name = "dict_key", nullable = false, length = 100)
+    private String dictKey;
+
+    @Column(name = "dict_value", nullable = false, length = 200)
+    private String dictValue;
+
+    @Column(name = "extra_value", length = 200)
+    private String extraValue;
 
     @Column(name = "sort_order")
     private Integer sortOrder = 0;

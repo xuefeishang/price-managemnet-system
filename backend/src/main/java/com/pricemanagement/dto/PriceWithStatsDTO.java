@@ -19,6 +19,11 @@ public class PriceWithStatsDTO {
      * 用于计算昨日价格、月均价和价格变化，但不显示在输入框中
      */
     private BigDecimal inheritedPrice;
+    /**
+     * 继承的预算价格：当当天没有维护预算价格时，取最近一次的预算价格
+     * 用于预算价格的继承显示
+     */
+    private BigDecimal inheritedBudgetPrice;
 
     public PriceWithStatsDTO(Price price, Price yesterdayPrice, BigDecimal monthlyAveragePrice) {
         this.price = price;
@@ -31,5 +36,13 @@ public class PriceWithStatsDTO {
         this.yesterdayPrice = yesterdayPrice;
         this.monthlyAveragePrice = monthlyAveragePrice;
         this.inheritedPrice = inheritedPrice;
+    }
+
+    public PriceWithStatsDTO(Price price, Price yesterdayPrice, BigDecimal monthlyAveragePrice, BigDecimal inheritedPrice, BigDecimal inheritedBudgetPrice) {
+        this.price = price;
+        this.yesterdayPrice = yesterdayPrice;
+        this.monthlyAveragePrice = monthlyAveragePrice;
+        this.inheritedPrice = inheritedPrice;
+        this.inheritedBudgetPrice = inheritedBudgetPrice;
     }
 }

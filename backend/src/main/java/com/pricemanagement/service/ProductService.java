@@ -20,6 +20,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pricemanagement.constants.CommonStatus;
+import com.pricemanagement.constants.SystemConstants;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +40,7 @@ public class ProductService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Page<Product> getProducts(int page, int size, String keyword, Long categoryId,
-                                     Product.ProductStatus status, String sortBy, String sortDirection) {
+                                     CommonStatus status, String sortBy, String sortDirection) {
         Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
         Sort sort = Sort.by(direction, sortBy != null ? sortBy : "id");
         Pageable pageable = PageRequest.of(page, size, sort);
@@ -69,7 +72,7 @@ public class ProductService {
     }
 
     public List<Product> getActiveProducts() {
-        return productRepository.findByStatus(Product.ProductStatus.ACTIVE);
+        return productRepository.findByStatus(CommonStatus.ACTIVE);
     }
 
     /**
@@ -99,7 +102,7 @@ public class ProductService {
             ApprovalWorkflow workflow = workflowOpt.get();
 
             // 序列化变更数据
-            Map<String, Object> changeData = buildProductChangeData(product, "CREATE");
+            Map<String, Object> changeData = buildProductChangeData(product, SystemConstants.ACTION_CREATE);
 
             ApprovalRequest request = new ApprovalRequest();
             request.setWorkflowId(workflow.getId());
@@ -119,7 +122,7 @@ public class ProductService {
 
             // 返回带有待审批标记的产品对象
             product.setId(savedRequest.getId());
-            product.setRemark("PENDING_APPROVAL");
+            product.setRemark(SystemConstants.PENDING_APPROVAL);
             return product;
         }
 
@@ -139,6 +142,9 @@ public class ProductService {
         }
         if (product.getSellingPrice() != null) {
             existingProduct.setSellingPrice(product.getSellingPrice());
+        }
+        if (product.getBudgetPrice() != null) {
+            existingProduct.setBudgetPrice(product.getBudgetPrice());
         }
         // 优先使用categoryId转换，其次使用category对象
         if (product.getCategoryId() != null) {
@@ -213,13 +219,14 @@ public class ProductService {
         Map<String, Object> changeData = new HashMap<>();
         changeData.put("name", product.getName());
         changeData.put("categoryId", product.getCategoryId());
-        changeData.put("status", product.getStatus() != null ? product.getStatus().name() : "ACTIVE");
+        changeData.put("status", product.getStatus() != null ? product.getStatus().name() : CommonStatus.ACTIVE.name());
         changeData.put("description", product.getDescription());
         changeData.put("specs", product.getSpecs());
         changeData.put("imageUrl", product.getImageUrl());
         changeData.put("originIds", product.getOriginIds());
         changeData.put("customerIds", product.getCustomerIds());
         changeData.put("remark", product.getRemark());
+        changeData.put("budgetPrice", product.getBudgetPrice());
         changeData.put("action", action);
         return changeData;
     }

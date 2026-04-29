@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCategory, createCategory, updateCategory } from '@/api/categories'
+import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
 import type { CategoryStatus } from '@/types'
 
 const route = useRoute()
@@ -88,6 +89,7 @@ const goBack = () => {
 }
 
 onMounted(() => {
+  loadAllDicts()
   loadCategory()
 })
 </script>
@@ -131,14 +133,14 @@ onMounted(() => {
                   :class="{ active: form.status === 'ACTIVE' }"
                   @click="form.status = 'ACTIVE'"
                 >
-                  启用
+                  {{ getStatusLabel('ACTIVE') }}
                 </button>
                 <button
                   class="status-btn"
                   :class="{ active: form.status === 'INACTIVE' }"
                   @click="form.status = 'INACTIVE'"
                 >
-                  禁用
+                  {{ getStatusLabel('INACTIVE') }}
                 </button>
               </div>
             </div>
@@ -226,14 +228,14 @@ onMounted(() => {
                 :class="{ active: form.status === 'ACTIVE' }"
                 @click="form.status = 'ACTIVE'"
               >
-                启用
+                {{ getStatusLabel('ACTIVE') }}
               </button>
               <button
                 class="status-btn"
                 :class="{ active: form.status === 'INACTIVE' }"
                 @click="form.status = 'INACTIVE'"
               >
-                禁用
+                {{ getStatusLabel('INACTIVE') }}
               </button>
             </div>
           </div>

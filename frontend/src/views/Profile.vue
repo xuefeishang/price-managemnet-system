@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
+import { getRoleLabel } from '@/composables/useDict'
 import { updateProfile, changePassword } from '@/api/auth'
 import type { UpdateProfileRequest, ChangePasswordRequest } from '@/api/auth'
 
@@ -36,14 +37,9 @@ const switchTab = (tab: string) => {
   }
 }
 
-// 角色名称映射
+// 角色名称映射（从字典服务获取）
 const getRoleName = (role?: string) => {
-  const map: Record<string, string> = {
-    ADMIN: '管理员',
-    EDITOR: '编辑者',
-    VIEWER: '查看者'
-  }
-  return role ? map[role] : ''
+  return role ? getRoleLabel(role) : ''
 }
 
 // 获取角色颜色类

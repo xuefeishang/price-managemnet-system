@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
 import {
   getWorkflows,
@@ -42,27 +42,19 @@ const editingNode = ref<Partial<ApprovalNode>>({
   isRequired: true
 })
 
-// 工作流类型选项
-const workflowTypeOptions = [
-  { text: '价格变更', value: 'PRICE_CHANGE' },
-  { text: '产品创建', value: 'PRODUCT_CREATE' }
-]
+// 工作流类型选项（从字典服务获取，computed 保证缓存刷新后联动）
+import { getDictOptions, getDictValue } from '@/composables/useDict'
+const workflowTypeOptions = computed(() => getDictOptions('workflow_type').map(o => ({ text: o.label, value: o.value })))
 
-// 节点类型选项
-const nodeTypeOptions = [
-  { text: '审批节点', value: 'APPROVER' },
-  { text: '知会节点', value: 'NOTIFIER' }
-]
+// 节点类型选项（从字典服务获取）
+const nodeTypeOptions = computed(() => getDictOptions('node_type').map(o => ({ text: o.label, value: o.value })))
 
-// 角色选项
-const roleOptions = [
-  { text: '管理员', value: 'ADMIN' },
-  { text: '编辑者', value: 'EDITOR' }
-]
+// 角色选项（从字典服务获取，审批角色不含VIEWER）
+const roleOptions = computed(() => getDictOptions('user_role').filter(o => o.value !== 'VIEWER').map(o => ({ text: o.label, value: o.value })))
 
 // 获取工作流类型名称
 const getWorkflowTypeName = (type: string) => {
-  return type === 'PRICE_CHANGE' ? '价格变更' : '产品创建'
+  return getDictValue('workflow_type', type)
 }
 
 // 加载工作流列表
@@ -379,9 +371,9 @@ onMounted(() => {
               <div class="node-info">
                 <div class="node-row">
                   <span class="node-type-badge" :class="node.nodeType.toLowerCase()">
-                    {{ node.nodeType === 'APPROVER' ? '审批' : '知会' }}
+                    {{ getDictValue('node_type', node.nodeType) }}
                   </span>
-                  <strong>{{ node.approverRole === 'ADMIN' ? '管理员' : '编辑者' }}</strong>
+                  <strong>{{ getDictValue('user_role', node.approverRole) }}</strong>
                 </div>
                 <div class="node-row">
                   <span class="node-label">顺序：</span>

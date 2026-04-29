@@ -88,6 +88,7 @@ export interface Product {
   code?: string
   name: string
   sellingPrice?: number
+  budgetPrice?: number
   categoryId?: number
   category?: ProductCategory
   status: ProductStatus
@@ -113,6 +114,7 @@ export interface Price {
   originalPrice?: number
   currentPrice: number
   costPrice?: number
+  budgetPrice?: number
   effectiveDate?: string
   expiryDate?: string
   unit?: string
@@ -205,4 +207,20 @@ export interface MenuItem {
   createdTime: string
   updatedTime: string
   children?: MenuItem[]
+}
+
+// 数据字典类型
+export type DictStatus = 'ACTIVE' | 'INACTIVE'
+
+export interface SysDict {
+  id: number
+  category: string
+  dictKey: string
+  dictValue: string
+  extraValue?: string
+  sortOrder: number
+  status: DictStatus
+  remark?: string
+  createdTime: string
+  updatedTime: string
 }

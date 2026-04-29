@@ -3,8 +3,10 @@ package com.pricemanagement.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.dto.MenuItemDTO;
 import com.pricemanagement.entity.MenuItem;
+import com.pricemanagement.entity.User;
 import com.pricemanagement.repository.MenuItemRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,8 @@ import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static com.pricemanagement.constants.SystemConstants.toJsonRoles;
 
 @Slf4j
 @Service
@@ -200,33 +204,33 @@ public class MenuItemService {
             // Create root menus
             MenuItem home = createMenuItem(null, "首页", "/home", "home", 1, true, null);
             MenuItem productMgmt = createMenuItem(null, "产品管理", null, "product", 2, true, null);
-            MenuItem basicMgmt = createMenuItem(null, "基础运维", null, "category", 3, true, "[\"ADMIN\",\"EDITOR\"]");
-            MenuItem systemMgmt = createMenuItem(null, "系统管理", null, "settings", 4, true, "[\"ADMIN\"]");
+            MenuItem basicMgmt = createMenuItem(null, "基础运维", null, "category", 3, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            MenuItem systemMgmt = createMenuItem(null, "系统管理", null, "settings", 4, true, toJsonRoles(User.Role.ADMIN));
 
             // Create child menus under 产品管理
             createMenuItem(productMgmt, "产品列表", "/products", null, 1, true, null);
-            createMenuItem(productMgmt, "价格维护", "/price-maintenance", "price", 2, true, "[\"ADMIN\",\"EDITOR\"]");
+            createMenuItem(productMgmt, "价格维护", "/price-maintenance", "price", 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
 
             // Create child menus under 基础运维
-            createMenuItem(basicMgmt, "产品维护", "/product-edit", null, 1, true, "[\"ADMIN\",\"EDITOR\"]");
-            createMenuItem(basicMgmt, "分类管理", "/categories", null, 2, true, "[\"ADMIN\",\"EDITOR\"]");
-            createMenuItem(basicMgmt, "导入导出", "/import", null, 3, true, "[\"ADMIN\",\"EDITOR\"]");
+            createMenuItem(basicMgmt, "产品维护", "/product-edit", null, 1, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(basicMgmt, "分类管理", "/categories", null, 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(basicMgmt, "导入导出", "/import", null, 3, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
 
             // Create child menus under 系统管理
-            createMenuItem(systemMgmt, "用户管理", "/users", "users", 1, true, "[\"ADMIN\"]");
-            createMenuItem(systemMgmt, "菜单配置", "/menu-config", "menu", 2, true, "[\"ADMIN\"]");
-            createMenuItem(systemMgmt, "日志管理", "/operation-log", "log", 3, true, "[\"ADMIN\"]");
-            createMenuItem(systemMgmt, "审批流配置", "/approval-config", "workflow", 4, true, "[\"ADMIN\"]");
+            createMenuItem(systemMgmt, "用户管理", "/users", "users", 1, true, toJsonRoles(User.Role.ADMIN));
+            createMenuItem(systemMgmt, "菜单配置", "/menu-config", "menu", 2, true, toJsonRoles(User.Role.ADMIN));
+            createMenuItem(systemMgmt, "日志管理", "/operation-log", "log", 3, true, toJsonRoles(User.Role.ADMIN));
+            createMenuItem(systemMgmt, "审批流配置", "/approval-config", "workflow", 4, true, toJsonRoles(User.Role.ADMIN));
 
             // Create child menus under 基础运维 - 审批管理
-            createMenuItem(basicMgmt, "审批管理", "/approval", "check-circle", 4, true, "[\"ADMIN\",\"EDITOR\"]");
+            createMenuItem(basicMgmt, "审批管理", "/approval", "check-circle", 4, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
 
             // Create child menus under 基础运维 - 字典管理
-            createMenuItem(basicMgmt, "字典管理", null, "dict", 5, true, "[\"ADMIN\",\"EDITOR\"]");
+            createMenuItem(basicMgmt, "字典管理", null, "dict", 5, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
             MenuItem dictMgmt = menuItemRepository.findByPath("/dict").orElse(null);
             if (dictMgmt != null) {
-                createMenuItem(dictMgmt, "产地管理", "/origins", null, 1, true, "[\"ADMIN\",\"EDITOR\"]");
-                createMenuItem(dictMgmt, "客户管理", "/customers", null, 2, true, "[\"ADMIN\",\"EDITOR\"]");
+                createMenuItem(dictMgmt, "产地管理", "/origins", null, 1, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+                createMenuItem(dictMgmt, "客户管理", "/customers", null, 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
             }
 
             log.info("Default menu items initialized");

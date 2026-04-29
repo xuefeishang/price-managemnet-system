@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS product (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '产品ID',
     name VARCHAR(200) NOT NULL COMMENT '产品名称',
     selling_price DECIMAL(15, 4) COMMENT '售价',
+    budget_price DECIMAL(15, 4) COMMENT '预算价格',
     category_id BIGINT COMMENT '分类ID',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
     description TEXT COMMENT '产品描述',
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS price (
     original_price DECIMAL(15, 4) COMMENT '原价',
     current_price DECIMAL(15, 4) NOT NULL COMMENT '现价',
     cost_price DECIMAL(15, 4) COMMENT '成本价',
+    budget_price DECIMAL(15, 4) COMMENT '预算价格',
     effective_date DATE COMMENT '生效日期',
     expiry_date DATE COMMENT '失效日期',
     unit VARCHAR(50) COMMENT '单位：元/吨、元/克等',
@@ -115,7 +117,8 @@ CREATE TABLE IF NOT EXISTS price (
     FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE ON UPDATE CASCADE,
     INDEX idx_price_product (product_id),
     INDEX idx_price_effective (effective_date, expiry_date),
-    INDEX idx_price_created (created_time)
+    INDEX idx_price_created (created_time),
+    UNIQUE KEY uk_product_effective_date (product_id, effective_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='价格表';
 
 -- 1.5 价格历史表
@@ -290,6 +293,7 @@ SELECT * FROM (
     UNION ALL SELECT 33, 4, '审批流配置', '/approval-config', 'workflow', 4, TRUE, '["ADMIN"]', NOW(), NOW()
     UNION ALL SELECT 40, 24, '产地管理', '/origins', NULL, 1, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 41, 24, '客户管理', '/customers', NULL, 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
+    UNION ALL SELECT 42, 24, '数据字典', '/dict-management', NULL, 3, TRUE, '["ADMIN"]', NOW(), NOW()
 ) AS tmp
 WHERE @has_menu = 0;
 
@@ -326,6 +330,123 @@ SELECT * FROM (
 WHERE @has_customer = 0;
 
 SELECT CONCAT('客户数据: ', IF(@has_customer > 0, '已存在，跳过', '初始化完成（2个客户）')) AS status;
+
+-- =====================================================
+-- 7.3 数据字典表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_dict (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '字典ID',
+    category VARCHAR(50) NOT NULL COMMENT '分类标识',
+    dict_key VARCHAR(100) NOT NULL COMMENT '字典键',
+    dict_value VARCHAR(200) NOT NULL COMMENT '显示值',
+    extra_value VARCHAR(200) COMMENT '扩展值（如货币符号、图标名等）',
+    sort_order INT DEFAULT 0 COMMENT '排序顺序',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
+    remark TEXT COMMENT '备注',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_category_key (category, dict_key),
+    INDEX idx_dict_category (category),
+    INDEX idx_dict_status (status),
+    INDEX idx_dict_sort (sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据字典表';
+
+-- =====================================================
+-- 7.4 初始化字典数据
+-- =====================================================
+
+SET @has_dict = 0;
+SELECT COUNT(*) INTO @has_dict FROM sys_dict;
+
+-- 币种字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'currency' AS category, 'CNY' AS dict_key, '人民币' AS dict_value, '¥' AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '中国人民币' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'currency', 'USD', '美元', '$', 2, 'ACTIVE', '美国美元', NOW(), NOW()
+    UNION ALL SELECT 'currency', 'EUR', '欧元', '€', 3, 'ACTIVE', '欧元', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 通用状态字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'common_status' AS category, 'ACTIVE' AS dict_key, '启用' AS dict_value, '#52c41a' AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '启用状态' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'common_status', 'INACTIVE', '停用', '#ff4d4f', 2, 'ACTIVE', '停用状态', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 用户角色字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'user_role' AS category, 'ADMIN' AS dict_key, '管理员' AS dict_value, 'shield' AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '系统管理员' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'user_role', 'EDITOR', '编辑者', 'edit', 2, 'ACTIVE', '内容编辑者', NOW(), NOW()
+    UNION ALL SELECT 'user_role', 'VIEWER', '查看者', 'eye', 3, 'ACTIVE', '只读查看者', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 审批状态字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'approval_status' AS category, 'PENDING' AS dict_key, '待审批' AS dict_value, '#faad14' AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '等待审批' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'approval_status', 'APPROVED', '已通过', '#52c41a', 2, 'ACTIVE', '审批通过', NOW(), NOW()
+    UNION ALL SELECT 'approval_status', 'REJECTED', '已拒绝', '#ff4d4f', 3, 'ACTIVE', '审批拒绝', NOW(), NOW()
+    UNION ALL SELECT 'approval_status', 'CANCELLED', '已撤回', '#999999', 4, 'ACTIVE', '审批撤回', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 工作流类型字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'workflow_type' AS category, 'PRICE_CHANGE' AS dict_key, '价格变更' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '价格变更审批' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'workflow_type', 'PRODUCT_CREATE', '产品创建', NULL, 2, 'ACTIVE', '产品创建审批', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 审批节点类型字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'node_type' AS category, 'APPROVER' AS dict_key, '审批' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '审批节点' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'node_type', 'NOTIFIER', '知会', NULL, 2, 'ACTIVE', '知会节点', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 业务类型字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'business_type' AS category, 'PRICE' AS dict_key, '价格' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '价格业务' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'business_type', 'PRODUCT', '产品', NULL, 2, 'ACTIVE', '产品业务', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 审批操作字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'approval_action' AS category, 'APPROVE' AS dict_key, '通过' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '审批通过' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'approval_action', 'REJECT', '拒绝', NULL, 2, 'ACTIVE', '审批拒绝', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 价格变更类型字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'change_type' AS category, 'CREATE' AS dict_key, '新建' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '新建记录' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'change_type', 'UPDATE', '更新', NULL, 2, 'ACTIVE', '更新记录', NOW(), NOW()
+    UNION ALL SELECT 'change_type', 'DELETE', '删除', NULL, 3, 'ACTIVE', '删除记录', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 计量单位字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'unit' AS category, '元/吨' AS dict_key, '元/吨' AS dict_value, NULL AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '每吨价格（元）' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'unit', '万元/吨', '万元/吨', NULL, 2, 'ACTIVE', '每吨价格（万元）', NOW(), NOW()
+    UNION ALL SELECT 'unit', '元/克', '元/克', NULL, 3, 'ACTIVE', '每克价格（元）', NOW(), NOW()
+    UNION ALL SELECT 'unit', '元/千克', '元/千克', NULL, 4, 'ACTIVE', '每千克价格（元）', NOW(), NOW()
+    UNION ALL SELECT 'unit', '元/吨度', '元/吨度', NULL, 5, 'ACTIVE', '每吨度价格（元）', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+SELECT CONCAT('字典数据: ', IF(@has_dict > 0, '已存在，跳过', '初始化完成（8个分类）')) AS status;
 
 -- =====================================================
 -- 8. 审批流程定义表

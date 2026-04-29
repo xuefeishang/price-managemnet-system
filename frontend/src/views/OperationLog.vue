@@ -7,6 +7,7 @@ import { LineChart, BarChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { getLogs, getLogStatistics, getMonthlyReport, getYearlyReport, type OperationLog, type LogStatistics, type MonthlyReport, type YearlyReport } from '@/api/logs'
+import { getDictOptions, getDictValue, getOperationTypeLabel, loadAllDicts } from '@/composables/useDict'
 
 use([LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer])
 
@@ -51,29 +52,17 @@ const filters = ref({
   operationModule: ''
 })
 
-// 操作类型选项
-const operationTypes = [
-  { text: '全部', value: '' },
-  { text: '登录', value: 'LOGIN' },
-  { text: '登出', value: 'LOGOUT' },
-  { text: '创建', value: 'CREATE' },
-  { text: '更新', value: 'UPDATE' },
-  { text: '删除', value: 'DELETE' },
-  { text: '导出', value: 'EXPORT' },
-  { text: '导入', value: 'IMPORT' },
-  { text: '查询', value: 'QUERY' }
-]
+// 操作类型选项（从字典获取）
+const operationTypes = computed(() => {
+  const opts = getDictOptions('operation_type')
+  return [{ text: '全部', value: '' }, ...opts.map(o => ({ text: o.label, value: o.value }))]
+})
 
-// 操作模块选项
-const operationModules = [
-  { text: '全部', value: '' },
-  { text: '用户管理', value: '用户管理' },
-  { text: '产品管理', value: '产品管理' },
-  { text: '价格管理', value: '价格管理' },
-  { text: '分类管理', value: '分类管理' },
-  { text: '菜单配置', value: '菜单配置' },
-  { text: '认证模块', value: '认证模块' }
-]
+// 操作模块选项（从字典获取）
+const operationModules = computed(() => {
+  const opts = getDictOptions('operation_module')
+  return [{ text: '全部', value: '' }, ...opts.map(o => ({ text: o.label, value: o.value }))]
+})
 
 // 计算日期范围
 const dateRange = computed(() => {
@@ -246,12 +235,8 @@ const trendChartOptions = computed(() => {
 const operationTypeChartOptions = computed(() => {
   if (!statistics.value?.operationTypeCount) return {}
   const data = statistics.value.operationTypeCount
-  const typeMap: Record<string, string> = {
-    LOGIN: '登录', LOGOUT: '登出', CREATE: '创建', UPDATE: '更新',
-    DELETE: '删除', EXPORT: '导出', IMPORT: '导入', QUERY: '查询', OTHER: '其他'
-  }
   const pieData = Object.entries(data).map(([key, value]) => ({
-    name: typeMap[key] || key,
+    name: getOperationTypeLabel(key),
     value: value
   }))
 
@@ -346,10 +331,10 @@ const yearlyTrendChartOptions = computed(() => {
 })
 
 // 获取状态样式
-const getStatusClass = (status: string) => status === 'SUCCESS' ? 'success' : 'error'
+const getStatusClass = (status: string) => status === 'SUCCESS' ? 'success' : 'error' // SUCCESS/FAIL 是日志特有状态，不在通用字典中
 
 // 获取状态名称
-const getStatusName = (status: string) => status === 'SUCCESS' ? '成功' : '失败'
+const getStatusName = (status: string) => getDictValue('common_status', status) || (status === 'SUCCESS' ? '成功' : '失败')
 
 // 格式化时间
 const formatTime = (time: string) => {
@@ -367,15 +352,10 @@ const getOperationTypeClass = (type: string) => {
 }
 
 // 获取操作类型中文名
-const getOperationTypeName = (type: string) => {
-  const map: Record<string, string> = {
-    LOGIN: '登录', LOGOUT: '登出', CREATE: '创建', UPDATE: '更新',
-    DELETE: '删除', EXPORT: '导出', IMPORT: '导入', QUERY: '查询', OTHER: '其他'
-  }
-  return map[type] || type
-}
+const getOperationTypeName = (type: string) => getOperationTypeLabel(type)
 
 onMounted(() => {
+  loadAllDicts()
   loadLogs()
   loadStatistics()
 })

@@ -1,6 +1,8 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.SystemConstants;
+import com.pricemanagement.dto.PriceTrendDTO;
 import com.pricemanagement.dto.PriceWithStatsDTO;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.Price;
@@ -116,7 +118,7 @@ public class PriceController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Price savedPrice = priceService.addProductPrice(productId, price, userId);
-            if ("PENDING_APPROVAL".equals(savedPrice.getRemark())) {
+            if (SystemConstants.PENDING_APPROVAL.equals(savedPrice.getRemark())) {
                 return Result.success("价格已提交，等待审批", savedPrice);
             }
             return Result.success("添加价格成功", savedPrice);
@@ -132,12 +134,36 @@ public class PriceController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Price updatedPrice = priceService.updatePrice(id, price, userId);
-            if ("PENDING_APPROVAL".equals(updatedPrice.getRemark())) {
+            if (SystemConstants.PENDING_APPROVAL.equals(updatedPrice.getRemark())) {
                 return Result.success("价格已提交，等待审批", updatedPrice);
             }
             return Result.success("更新价格成功", updatedPrice);
         } catch (IllegalArgumentException e) {
             return Result.error(404, e.getMessage());
         }
+    }
+
+    /**
+     * 清理重复的价格数据（同一产品同一日期只保留最新一条）
+     */
+    @PostMapping("/prices/cleanup-duplicates")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Integer> cleanupDuplicatePrices() {
+        int deleted = priceService.cleanupDuplicatePrices();
+        return Result.success("清理完成，删除了 " + deleted + " 条重复记录", deleted);
+    }
+
+    /**
+     * 获取某产品的价格走势数据
+     * @param productId 产品ID
+     * @param days 天数（30、180、365等），默认30
+     */
+    @GetMapping("/products/{productId}/price-trend")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<List<PriceTrendDTO>> getPriceTrend(
+            @PathVariable Long productId,
+            @RequestParam(defaultValue = "30") int days) {
+        List<PriceTrendDTO> trendData = priceService.getPriceTrend(productId, days);
+        return Result.success("获取价格走势成功", trendData);
     }
 }

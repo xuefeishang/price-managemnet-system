@@ -1,5 +1,6 @@
 package com.pricemanagement.util;
 
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.entity.User;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -46,7 +47,7 @@ public class SecurityUtils {
             return authentication.getAuthorities().stream()
                     .findFirst()
                     .map(GrantedAuthority::getAuthority)
-                    .map(role -> role.replace("ROLE_", ""))
+                    .map(role -> role.replace(SystemConstants.ROLE_PREFIX, ""))
                     .orElse(null);
         }
         return null;
@@ -74,7 +75,7 @@ public class SecurityUtils {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.isAuthenticated()) {
             return authentication.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ROLE_" + role));
+                    .anyMatch(a -> a.getAuthority().equals(SystemConstants.ROLE_PREFIX + role));
         }
         return false;
     }

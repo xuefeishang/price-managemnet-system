@@ -1,6 +1,7 @@
 
 package com.pricemanagement.repository;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,11 +17,11 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Page<Product> findByNameContaining(String name, Pageable pageable);
 
-    List<Product> findByStatus(Product.ProductStatus status);
+    List<Product> findByStatus(CommonStatus status);
 
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 
-    Page<Product> findByStatus(Product.ProductStatus status, Pageable pageable);
+    Page<Product> findByStatus(CommonStatus status, Pageable pageable);
 
-    Page<Product> findByCategoryIdAndStatus(Long categoryId, Product.ProductStatus status, Pageable pageable);
+    Page<Product> findByCategoryIdAndStatus(Long categoryId, CommonStatus status, Pageable pageable);
 }

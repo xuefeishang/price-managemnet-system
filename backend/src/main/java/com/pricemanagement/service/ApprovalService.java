@@ -1,6 +1,7 @@
 package com.pricemanagement.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.entity.*;
 import com.pricemanagement.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -367,7 +368,7 @@ public class ApprovalService {
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new IllegalStateException("产品不存在: " + productId));
 
-            if ("CREATE".equals(action)) {
+            if (SystemConstants.ACTION_CREATE.equals(action)) {
                 // 创建价格
                 Price price = new Price();
                 price.setProduct(product);
@@ -385,6 +386,11 @@ public class ApprovalService {
                 Object costPrice = changeData.get("costPrice");
                 if (costPrice != null) {
                     price.setCostPrice(new BigDecimal(costPrice.toString()));
+                }
+
+                Object budgetPrice = changeData.get("budgetPrice");
+                if (budgetPrice != null) {
+                    price.setBudgetPrice(new BigDecimal(budgetPrice.toString()));
                 }
 
                 Object unit = changeData.get("unit");
@@ -418,7 +424,7 @@ public class ApprovalService {
 
                 log.info("Price created via approval: priceId={}, productId={}", savedPrice.getId(), productId);
 
-            } else if ("UPDATE".equals(action)) {
+            } else if (SystemConstants.ACTION_UPDATE.equals(action)) {
                 // 更新价格
                 Long priceId = ((Number) changeData.get("priceId")).longValue();
                 Price existingPrice = priceRepository.findById(priceId)
@@ -439,6 +445,11 @@ public class ApprovalService {
                 Object costPrice = changeData.get("costPrice");
                 if (costPrice != null) {
                     existingPrice.setCostPrice(new BigDecimal(costPrice.toString()));
+                }
+
+                Object budgetPrice = changeData.get("budgetPrice");
+                if (budgetPrice != null) {
+                    existingPrice.setBudgetPrice(new BigDecimal(budgetPrice.toString()));
                 }
 
                 Object unit = changeData.get("unit");

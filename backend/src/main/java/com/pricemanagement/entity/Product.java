@@ -2,6 +2,8 @@
 package com.pricemanagement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.pricemanagement.constants.CommonStatus;
+import com.pricemanagement.constants.SystemConstants;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
@@ -33,6 +35,9 @@ public class Product {
     @Column(name = "selling_price", precision = 15, scale = 4)
     private BigDecimal sellingPrice;
 
+    @Column(name = "budget_price", precision = 15, scale = 4)
+    private BigDecimal budgetPrice;  // 预算价格
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
@@ -47,7 +52,7 @@ public class Product {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private ProductStatus status = ProductStatus.ACTIVE;
+    private CommonStatus status = CommonStatus.ACTIVE;
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -77,7 +82,7 @@ public class Product {
     private Boolean showOnHome = false;  // 是否在首页展示
 
     @Column(name = "currency", length = 20)
-    private String currency = "CNY";  // 计价币种：CNY-人民币、USD-美元、EUR-欧元
+    private String currency = SystemConstants.DEFAULT_CURRENCY;  // 计价币种：CNY-人民币、USD-美元、EUR-欧元
 
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)
@@ -87,8 +92,5 @@ public class Product {
     @Column(name = "updated_time")
     private LocalDateTime updatedTime;
 
-    public enum ProductStatus {
-        ACTIVE,     // 启用
-        INACTIVE    // 禁用
-    }
 }
+

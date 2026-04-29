@@ -1,6 +1,8 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.CommonStatus;
+import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.OperationLog;
 import com.pricemanagement.entity.Product;
@@ -33,7 +35,7 @@ public class ProductController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) Product.ProductStatus status,
+            @RequestParam(required = false) CommonStatus status,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false, defaultValue = "asc") String sortDirection) {
         Page<Product> products = productService.getProducts(page, size, keyword, categoryId, status, sortBy, sortDirection);
@@ -54,7 +56,7 @@ public class ProductController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Product savedProduct = productService.createProduct(product, userId);
-            if ("PENDING_APPROVAL".equals(savedProduct.getRemark())) {
+            if (SystemConstants.PENDING_APPROVAL.equals(savedProduct.getRemark())) {
                 operationLogHelper.logSuccess("产品管理", OperationLog.OperationType.CREATE,
                         "创建产品待审批", "产品名称：" + product.getName());
                 return Result.success("产品已提交，等待审批", savedProduct);

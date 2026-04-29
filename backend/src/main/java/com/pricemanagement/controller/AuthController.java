@@ -1,6 +1,7 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.ChangePasswordRequest;
 import com.pricemanagement.dto.LoginRequest;
 import com.pricemanagement.dto.LoginResponse;
@@ -53,7 +54,7 @@ public class AuthController {
                 return Result.error(401, "用户名或密码错误");
             }
 
-            if (user.getStatus() != User.UserStatus.ACTIVE) {
+            if (user.getStatus() != CommonStatus.ACTIVE) {
                 log.debug("User account is inactive: {}", loginRequest.getUsername());
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                         "用户登录失败：账号被禁用", loginRequest.getUsername(), "账号已被禁用");
@@ -181,7 +182,7 @@ public class AuthController {
         user.setUsername(registerRequest.getUsername());
         user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
         user.setRole(User.Role.VIEWER); // 默认角色为查看者
-        user.setStatus(User.UserStatus.ACTIVE);
+        user.setStatus(CommonStatus.ACTIVE);
         user.setNickname(registerRequest.getUsername());
         user.setEmail(registerRequest.getUsername() + "@pricemanagement.com");
         user.setPhone("");

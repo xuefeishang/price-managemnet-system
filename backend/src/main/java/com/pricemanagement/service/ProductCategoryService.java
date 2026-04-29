@@ -1,6 +1,7 @@
 
 package com.pricemanagement.service;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.ProductCategory;
 import com.pricemanagement.repository.ProductCategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,7 @@ public class ProductCategoryService {
     }
 
     public List<ProductCategory> getActiveCategories() {
-        return productCategoryRepository.findByStatusOrderBySortOrderAsc(ProductCategory.CategoryStatus.ACTIVE);
+        return productCategoryRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
     public Optional<ProductCategory> getCategoryById(Long id) {

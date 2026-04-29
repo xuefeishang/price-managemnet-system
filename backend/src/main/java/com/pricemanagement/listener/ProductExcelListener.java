@@ -4,6 +4,7 @@ package com.pricemanagement.listener;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.read.listener.ReadListener;
 import com.alibaba.excel.util.ListUtils;
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.ProductExcelData;
 import com.pricemanagement.entity.Product;
 import com.pricemanagement.entity.Price;
@@ -63,8 +64,8 @@ public class ProductExcelListener implements ReadListener<ProductExcelData> {
                 product.setCategory(category);
                 product.setSpecs(excelData.getSpecs());
                 product.setStatus(excelData.getStatus() != null ?
-                        Product.ProductStatus.valueOf(excelData.getStatus()) :
-                        Product.ProductStatus.ACTIVE);
+                        CommonStatus.valueOf(excelData.getStatus()) :
+                        CommonStatus.ACTIVE);
                 product.setDescription(excelData.getDescription());
                 product.setRemark(excelData.getRemark());
 
@@ -101,7 +102,7 @@ public class ProductExcelListener implements ReadListener<ProductExcelData> {
         ProductCategory category = new ProductCategory();
         category.setCode(categoryCode);
         category.setName(categoryCode); // 用编码作为名称
-        category.setStatus(ProductCategory.CategoryStatus.ACTIVE);
+        category.setStatus(CommonStatus.ACTIVE);
         return categoryRepository.save(category);
     }
 }

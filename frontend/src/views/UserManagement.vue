@@ -4,6 +4,7 @@ import { useUserStore } from '@/store/useUserStore'
 import { showToast, showDialog } from 'vant'
 import { getUsers, createUser, updateUser, deleteUser } from '@/api/users'
 import { usePermission, Permission } from '@/composables/usePermission'
+import { getRoleLabel, getStatusLabel, getDictOptions, loadAllDicts } from '@/composables/useDict'
 import type { User } from '@/types'
 
 const userStore = useUserStore()
@@ -184,18 +185,17 @@ const getRoleClass = (role: string) => {
 
 // 获取角色名称
 const getRoleName = (role: string) => {
-  const map: Record<string, string> = {
-    ADMIN: '管理员',
-    EDITOR: '编辑者',
-    VIEWER: '查看者'
-  }
-  return map[role] || role
+  return getRoleLabel(role)
 }
 
 // 获取状态名称
 const getStatusName = (status: string) => {
-  return status === 'ACTIVE' ? '启用' : '禁用'
+  return getStatusLabel(status)
 }
+
+// 角色选项和状态选项（来自字典）
+const roleOptions = computed(() => getDictOptions('user_role'))
+const statusOptions = computed(() => getDictOptions('common_status'))
 
 onMounted(() => {
   // 检查权限 - 已在路由守卫中检查，但作为额外保障
@@ -203,6 +203,7 @@ onMounted(() => {
     window.location.href = '/#/home'
     return
   }
+  loadAllDicts()
   loadUsers()
 })
 </script>
@@ -238,16 +239,13 @@ onMounted(() => {
         <div class="filter-item">
           <select v-model="roleFilter" class="input">
             <option value="">全部角色</option>
-            <option value="ADMIN">管理员</option>
-            <option value="EDITOR">编辑者</option>
-            <option value="VIEWER">查看者</option>
+            <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
         <div class="filter-item">
           <select v-model="statusFilter" class="input">
             <option value="">全部状态</option>
-            <option value="ACTIVE">启用</option>
-            <option value="INACTIVE">禁用</option>
+            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
       </div>
@@ -417,16 +415,13 @@ onMounted(() => {
             <div class="form-group">
               <label class="form-label">角色 <span class="required">*</span></label>
               <select v-model="formData.role" class="input">
-                <option value="ADMIN">管理员</option>
-                <option value="EDITOR">编辑者</option>
-                <option value="VIEWER">查看者</option>
+                <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">状态</label>
               <select v-model="formData.status" class="input">
-                <option value="ACTIVE">启用</option>
-                <option value="INACTIVE">禁用</option>
+                <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
           </div>

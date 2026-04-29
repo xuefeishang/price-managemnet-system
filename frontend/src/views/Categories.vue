@@ -5,6 +5,7 @@ import { showToast, showDialog } from 'vant'
 // import { useUserStore } from '@/store/useUserStore'
 import { getCategories, updateCategory, deleteCategory } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
+import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
 import type { ProductCategory } from '@/types'
 
 // const userStore = useUserStore()
@@ -38,7 +39,7 @@ const handleToggleStatus = async (category: ProductCategory) => {
   if (togglingId.value === category.id) return
 
   const newStatus = category.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
-  const actionText = newStatus === 'ACTIVE' ? '启用' : '停用'
+  const actionText = getStatusLabel(newStatus)
 
   try {
     togglingId.value = category.id
@@ -113,6 +114,7 @@ const handleResize = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  loadAllDicts()
   loadCategories()
 })
 
@@ -182,7 +184,7 @@ onUnmounted(() => {
                 <div class="toggle-slider"></div>
               </div>
               <span class="status-text" :class="category.status">
-                {{ category.status === 'ACTIVE' ? '启用' : '停用' }}
+                {{ getStatusLabel(category.status) }}
               </span>
             </div>
             <div class="table-cell sort">{{ category.sortOrder || 0 }}</div>

@@ -1,6 +1,7 @@
 
 package com.pricemanagement.service;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.ProductCategory;
 import com.pricemanagement.repository.ProductCategoryRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +36,7 @@ class ProductCategoryServiceTests {
         testCategory.setId(1L);
         testCategory.setCode("C001");
         testCategory.setName("测试分类");
-        testCategory.setStatus(ProductCategory.CategoryStatus.ACTIVE);
+        testCategory.setStatus(CommonStatus.ACTIVE);
     }
 
     @Test

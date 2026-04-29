@@ -3,6 +3,7 @@ package com.pricemanagement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.pricemanagement.constants.CommonStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
@@ -33,7 +34,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private UserStatus status = UserStatus.ACTIVE;
+    private CommonStatus status = CommonStatus.ACTIVE;
 
     @Column(length = 50)
     private String nickname;
@@ -56,10 +57,5 @@ public class User {
         ADMIN,      // 管理员
         EDITOR,     // 编辑者
         VIEWER      // 查看者
-    }
-
-    public enum UserStatus {
-        ACTIVE,     // 启用
-        INACTIVE    // 禁用
     }
 }

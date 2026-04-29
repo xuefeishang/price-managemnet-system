@@ -1,5 +1,6 @@
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.Origin;
 import com.pricemanagement.service.OriginService;
@@ -24,7 +25,7 @@ public class OriginController {
             @RequestParam(required = false) String status) {
         if (status != null) {
             try {
-                Origin.OriginStatus originStatus = Origin.OriginStatus.valueOf(status);
+                CommonStatus originStatus = CommonStatus.valueOf(status);
                 return Result.success("获取产地列表成功",
                         originService.getActiveOrigins());
             } catch (IllegalArgumentException e) {

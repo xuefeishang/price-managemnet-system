@@ -3,11 +3,11 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
-import { getCustomers } from '@/api/customers'
 import { usePermission, Permission } from '@/composables/usePermission'
+import { getCustomerName, loadAllDicts, getCurrencySymbol, getStatusLabel, getDictOptions } from '@/composables/useDict'
 import EmptyState from '@/components/EmptyState.vue'
 import { eventBus } from '@/utils/eventBus'
-import type { Product, ProductCategory, Customer } from '@/types'
+import type { Product, ProductCategory } from '@/types'
 
 const router = useRouter()
 const { hasPermission } = usePermission()
@@ -16,7 +16,6 @@ const products = ref<Product[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const categories = ref<ProductCategory[]>([])
-const customers = ref<Customer[]>([])
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
 // 筛选条件
@@ -59,22 +58,13 @@ const loadCategories = async () => {
   }
 }
 
-const loadCustomers = async () => {
-  try {
-    const response = await getCustomers('ACTIVE')
-    customers.value = response.data || []
-  } catch (error) {
-    console.error('Failed to load customers:', error)
-  }
-}
 
-
-// 获取产品的客户名称列表
+// 获取产品的客户名称列表（从字典缓存）
 const getCustomerNames = (product: Product): string => {
   if (!product.customerIds) return '-'
   try {
-    const ids = JSON.parse(product.customerIds)
-    return ids.map((id: number) => customers.value.find(c => c.id === id)?.name).filter(Boolean).join('、')
+    const keys = JSON.parse(product.customerIds)
+    return keys.map((key: string) => getCustomerName(key)).filter(Boolean).join('、')
   } catch {
     return '-'
   }
@@ -128,6 +118,10 @@ const viewProduct = (product: Product) => {
   router.push(`/product-detail/${product.id}`)
 }
 
+// 获取字典数据（已合并至顶部 import）
+// 状态选项（从字典获取）
+const statusOptions = computed(() => getDictOptions('common_status'))
+
 const editProduct = (product: Product) => {
   router.push(`/product-edit/${product.id}`)
 }
@@ -161,8 +155,8 @@ const handleResize = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  loadAllDicts()
   loadCategories()
-  loadCustomers()
   loadProducts()
   eventBus.on('prices-updated', loadProducts)
   eventBus.on('product-sort-updated', loadProducts)
@@ -250,8 +244,7 @@ onUnmounted(() => {
 
             <select v-model="filterStatus" class="filter-select-pc" @change="handleFilterChange">
               <option :value="undefined">全部状态</option>
-              <option value="ACTIVE">启用</option>
-              <option value="INACTIVE">停用</option>
+              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
 
 
@@ -275,6 +268,7 @@ onUnmounted(() => {
             <div class="table-cell seq">序号</div>
             <div class="table-cell name">产品名称</div>
             <div class="table-cell unit">计量单位</div>
+            <div class="table-cell budget-price">预算价格</div>
             <div class="table-cell specs">产品规格</div>
             <div class="table-cell customer-info">客户信息</div>
             <div class="table-cell description">产品描述</div>
@@ -294,13 +288,14 @@ onUnmounted(() => {
               <span class="product-code-text" v-if="product.code">{{ product.code.toUpperCase() }}</span>
             </div>
             <div class="table-cell unit">{{ product.unit || '-' }}</div>
+            <div class="table-cell budget-price">{{ product.budgetPrice != null ? getCurrencySymbol(product.currency) + product.budgetPrice.toFixed(2) : '-' }}</div>
             <div class="table-cell specs"><span class="scroll-text">{{ product.specs || '-' }}</span></div>
             <div class="table-cell customer-info"><span class="scroll-text">{{ getCustomerNames(product) }}</span></div>
             <div class="table-cell description"><span class="scroll-text">{{ product.description || '-' }}</span></div>
             <div class="table-cell category">{{ product.category?.name || '-' }}</div>
             <div class="table-cell status">
               <span class="status-badge" :class="product.status?.toLowerCase()">
-                {{ product.status === 'ACTIVE' ? '启用' : '停用' }}
+                {{ getStatusLabel(product.status) }}
               </span>
             </div>
             <div class="table-cell actions" @click.stop>
@@ -390,13 +385,17 @@ onUnmounted(() => {
                 <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
               </div>
               <div class="product-status" :class="product.status?.toLowerCase()">
-                {{ product.status === 'ACTIVE' ? '启用' : '停用' }}
+                {{ getStatusLabel(product.status) }}
               </div>
             </div>
-            <div class="product-meta" v-if="product.unit || product.description">
+            <div class="product-meta" v-if="product.unit || product.budgetPrice != null || product.description">
               <div class="meta-row" v-if="product.unit">
                 <span class="meta-label">单位</span>
                 <span class="meta-value">{{ product.unit }}</span>
+              </div>
+              <div class="meta-row" v-if="product.budgetPrice != null">
+                <span class="meta-label">预算价格</span>
+                <span class="meta-value price">{{ getCurrencySymbol(product.currency) }}{{ product.budgetPrice.toFixed(2) }}</span>
               </div>
               <div class="meta-row" v-if="product.description">
                 <span class="meta-label">描述</span>
@@ -758,6 +757,14 @@ onUnmounted(() => {
   flex: 0 0 80px;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+.table-cell.budget-price {
+  flex: 0 0 100px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: right;
+  justify-content: flex-end;
 }
 
 .table-cell.specs {

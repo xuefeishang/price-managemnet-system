@@ -1,5 +1,6 @@
 package com.pricemanagement.service;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.Customer;
 import com.pricemanagement.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ public class CustomerService {
     }
 
     public List<Customer> getActiveCustomers() {
-        return customerRepository.findByStatusOrderBySortOrderAsc(Customer.CustomerStatus.ACTIVE);
+        return customerRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
     public Optional<Customer> getCustomerById(Long id) {

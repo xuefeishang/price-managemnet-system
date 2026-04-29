@@ -53,6 +53,7 @@ export interface PriceWithStats {
   yesterdayPrice: Price | null
   monthlyAveragePrice: number | null
   inheritedPrice: number | null  // 继承的价格：当天无维护价格时取最近一次价格
+  inheritedBudgetPrice: number | null  // 继承的预算价格：当天无维护预算价格时取最近一次预算价格
 }
 
 export const getPricesByDateWithStats = async (date: string): Promise<ApiResponse<PriceWithStats[]>> => {
@@ -82,4 +83,16 @@ export const getYesterdayPrice = async (productId: number): Promise<ApiResponse<
 // 获取某产品当月的平均价格
 export const getMonthlyAveragePrice = async (productId: number): Promise<ApiResponse<number | null>> => {
   return await http.get(`/api/products/${productId}/monthly-average-price`)
+}
+
+// 价格走势数据点
+export interface PriceTrendPoint {
+  date: string
+  currentPrice: number | null
+  budgetPrice: number | null
+}
+
+// 获取某产品的价格走势数据
+export const getPriceTrend = async (productId: number, days: number): Promise<ApiResponse<PriceTrendPoint[]>> => {
+  return await http.get(`/api/products/${productId}/price-trend`, { params: { days } })
 }

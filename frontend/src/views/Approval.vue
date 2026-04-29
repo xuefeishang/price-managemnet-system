@@ -19,6 +19,7 @@ import {
   type ApprovalNode,
   // type ApprovalPageResponse
 } from '@/api/approval'
+import { getDictValue, getDictOptions, loadAllDicts } from '@/composables/useDict'
 import { usePermission, Permission } from '@/composables/usePermission'
 
 // 加载状态
@@ -94,23 +95,14 @@ const editingNode = ref<Partial<ApprovalNode>>({
 //   { text: '产品创建', value: 'PRODUCT' }
 // ]
 
-// 工作流类型选项
-const workflowTypeOptions = [
-  { text: '价格变更', value: 'PRICE_CHANGE' },
-  { text: '产品创建', value: 'PRODUCT_CREATE' }
-]
+// 工作流类型选项（从字典服务获取）
+const workflowTypeOptions = computed(() => getDictOptions('workflow_type').map(o => ({ text: o.label, value: o.value })))
 
-// 节点类型选项
-const nodeTypeOptions = [
-  { text: '审批节点', value: 'APPROVER' },
-  { text: '知会节点', value: 'NOTIFIER' }
-]
+// 节点类型选项（从字典服务获取）
+const nodeTypeOptions = computed(() => getDictOptions('node_type').map(o => ({ text: o.label, value: o.value })))
 
-// 角色选项
-const roleOptions = [
-  { text: '管理员', value: 'ADMIN' },
-  { text: '编辑者', value: 'EDITOR' }
-]
+// 角色选项（从字典服务获取）
+const roleOptions = computed(() => getDictOptions('user_role').filter(o => o.value !== 'VIEWER').map(o => ({ text: o.label, value: o.value })))
 
 // 筛选条件
 // const filterStatus = ref('')
@@ -200,24 +192,14 @@ const getStatusClass = (status: string) => {
   return map[status] || 'default'
 }
 
-// 获取状态名称
+// 获取状态名称（从字典服务获取）
 const getStatusName = (status: string) => {
-  const map: Record<string, string> = {
-    PENDING: '待审批',
-    APPROVED: '已通过',
-    REJECTED: '已拒绝',
-    CANCELLED: '已撤回'
-  }
-  return map[status] || status
+  return getDictValue('approval_status', status)
 }
 
-// 获取业务类型名称
+// 获取业务类型名称（从字典服务获取）
 const getBusinessTypeName = (type: string) => {
-  const map: Record<string, string> = {
-    PRICE: '价格变更',
-    PRODUCT: '产品创建'
-  }
-  return map[type] || type
+  return getDictValue('business_type', type)
 }
 
 // 格式化时间
@@ -390,6 +372,7 @@ const handlePageChange = (type: 'pending' | 'my', page: number) => {
 }
 
 onMounted(() => {
+  loadAllDicts()
   // 获取用户角色
   const storedUser = localStorage.getItem('user')
   if (storedUser) {
@@ -607,7 +590,7 @@ onMounted(() => {
             >
               <div class="workflow-item-info">
                 <span class="workflow-name">{{ workflow.workflowName }}</span>
-                <span class="workflow-type">{{ workflow.workflowType === 'PRICE_CHANGE' ? '价格变更' : '产品创建' }}</span>
+                <span class="workflow-type">{{ getDictValue('workflow_type', workflow.workflowType) }}</span>
               </div>
               <div class="workflow-item-actions">
                 <button class="icon-btn" @click.stop="openWorkflowDialog(workflow)">
@@ -646,7 +629,7 @@ onMounted(() => {
               <div v-for="(node, index) in workflowNodes" :key="node.id" class="node-card">
                 <div class="node-order">{{ index + 1 }}</div>
                 <div class="node-info">
-                  <p><strong>节点类型：</strong>{{ node.nodeType === 'APPROVER' ? '审批节点' : '知会节点' }}</p>
+                  <p><strong>节点类型：</strong>{{ getDictValue('node_type', node.nodeType) }}</p>
                   <p><strong>审批角色：</strong>{{ node.approverRole }}</p>
                   <p><strong>是否必填：</strong>{{ node.isRequired ? '是' : '否' }}</p>
                 </div>

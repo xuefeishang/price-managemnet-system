@@ -42,6 +42,9 @@ const monthlyAverageMap = ref<Map<number, number>>(new Map())
 // 继承价格映射 (productId -> inheritedPrice)，当天无维护价格时取最近一次价格
 const inheritedPriceMap = ref<Map<number, number>>(new Map())
 
+// 继承预算价格映射 (productId -> inheritedBudgetPrice)，当天无维护预算价格时取最近一次预算价格
+const inheritedBudgetPriceMap = ref<Map<number, number>>(new Map())
+
 // 编辑中的价格
 const editingPrices = ref<Map<number, string>>(new Map())
 
@@ -92,6 +95,7 @@ const loadData = async () => {
     yesterdayPriceMap.value = new Map()
     monthlyAverageMap.value = new Map()
     inheritedPriceMap.value = new Map()
+    inheritedBudgetPriceMap.value = new Map()
     editingPrices.value = new Map()
 
     const items = priceResponse.data || []
@@ -112,6 +116,9 @@ const loadData = async () => {
         }
         if (item.inheritedPrice != null) {
           inheritedPriceMap.value.set(productId, item.inheritedPrice)
+        }
+        if (item.inheritedBudgetPrice != null) {
+          inheritedBudgetPriceMap.value.set(productId, item.inheritedBudgetPrice)
         }
       }
     }
@@ -140,6 +147,7 @@ const loadPrices = async () => {
     yesterdayPriceMap.value = new Map()
     monthlyAverageMap.value = new Map()
     inheritedPriceMap.value = new Map()
+    inheritedBudgetPriceMap.value = new Map()
     editingPrices.value = new Map()
 
     for (const item of items) {
@@ -159,6 +167,9 @@ const loadPrices = async () => {
         }
         if (item.inheritedPrice != null) {
           inheritedPriceMap.value.set(productId, item.inheritedPrice)
+        }
+        if (item.inheritedBudgetPrice != null) {
+          inheritedBudgetPriceMap.value.set(productId, item.inheritedBudgetPrice)
         }
       }
     }
@@ -219,6 +230,29 @@ const updateEditPrice = (productId: number, value: string) => {
   editingPrices.value.set(productId, value)
 }
 
+// 格式化预算价格显示值（不含货币符号）
+const formatBudgetPriceValue = (productId: number): string => {
+  const price = priceMap.value.get(productId)
+  if (price?.budgetPrice != null) return price.budgetPrice.toFixed(2)
+  const inherited = inheritedBudgetPriceMap.value.get(productId)
+  if (inherited != null) return inherited.toFixed(2)
+  const product = products.value.find(p => p.id === productId)
+  if (product?.budgetPrice != null) return product.budgetPrice.toFixed(2)
+  return '-'
+}
+
+// 格式化预算价格显示（兼容旧调用，含货币符号）
+const formatBudgetPrice = (productId: number): string => {
+  const symbol = getProductCurrencySymbol(productId)
+  const price = priceMap.value.get(productId)
+  if (price?.budgetPrice != null) return symbol + price.budgetPrice.toFixed(2)
+  const inherited = inheritedBudgetPriceMap.value.get(productId)
+  if (inherited != null) return symbol + inherited.toFixed(2)
+  const product = products.value.find(p => p.id === productId)
+  if (product?.budgetPrice != null) return symbol + product.budgetPrice.toFixed(2)
+  return '-'
+}
+
 // 获取显示的昨日价格（优先精确昨日价格，否则使用继承价格）
 const getDisplayYesterdayPrice = (productId: number): number | null | undefined => {
   const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice
@@ -242,6 +276,16 @@ const getPricePlaceholder = (productId: number): string => {
 const formatPrice = (price: number | null | undefined) => {
   if (price === null || price === undefined) return '-'
   return price.toFixed(2)
+}
+
+// 获取货币符号（从字典服务获取）
+import { getCurrencySymbol as _getCurrencySymbol } from '@/composables/useDict'
+const getCurrencySymbol = _getCurrencySymbol
+
+// 获取产品的货币符号
+const getProductCurrencySymbol = (productId: number): string => {
+  const product = products.value.find(p => p.id === productId)
+  return getCurrencySymbol(product?.currency)
 }
 
 // 格式化价格变化显示
@@ -309,13 +353,15 @@ const handleSave = async () => {
 
     await Promise.allSettled(saveTasks)
 
+    // 无论成功还是部分失败，都刷新价格数据，确保priceMap中的id是最新的
+    // 这样后续保存时才能正确判断是新增还是更新
+    loadPrices()
+    eventBus.emit('prices-updated')
+
     if (failCount === 0) {
       showToast(`保存成功，共 ${successCount} 条价格记录`)
-      loadPrices()
-      eventBus.emit('prices-updated')
     } else {
       showToast(`部分保存成功，成功 ${successCount} 条，失败 ${failCount} 条`)
-      eventBus.emit('prices-updated')
     }
   } catch (error) {
     console.error('Failed to save prices:', error)
@@ -439,6 +485,7 @@ onUnmounted(() => {
             <div class="table-cell seq-col">序号</div>
             <div class="table-cell product">产品信息</div>
             <div class="table-cell price-col">当日售价</div>
+            <div class="table-cell price-col">预算价格</div>
             <div class="table-cell price-col">昨日售价</div>
             <div class="table-cell price-col">价格变化</div>
             <div class="table-cell price-col">月均价</div>
@@ -478,7 +525,7 @@ onUnmounted(() => {
               </div>
               <div class="table-cell price-col">
                 <div class="price-input-wrapper">
-                  <span class="price-unit">¥</span>
+                  <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
                   <input
                     type="number"
                     :value="getEditData(product.id)"
@@ -487,6 +534,11 @@ onUnmounted(() => {
                     :placeholder="getPricePlaceholder(product.id)"
                   />
                 </div>
+              </div>
+              <div class="table-cell price-col">
+                <span class="budget-price-value">
+                  {{ getProductCurrencySymbol(product.id) }}{{ formatBudgetPriceValue(product.id) }}
+                </span>
               </div>
               <div class="table-cell price-col">
                 <span class="price-value">
@@ -605,7 +657,7 @@ onUnmounted(() => {
               <div class="main-price-field">
                 <label class="field-label">当日售价</label>
                 <div class="price-input-wrapper">
-                  <span class="price-unit">¥</span>
+                  <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
                   <input
                     type="number"
                     :value="getEditData(product.id)"
@@ -614,6 +666,12 @@ onUnmounted(() => {
                     :placeholder="getPricePlaceholder(product.id)"
                   />
                 </div>
+              </div>
+              <div class="main-price-field">
+                <label class="field-label">预算价格</label>
+                <span class="budget-price-value budget-price-mobile">
+                  {{ formatBudgetPrice(product.id) }}
+                </span>
               </div>
             </div>
 
@@ -975,6 +1033,23 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
   color: #1A1A1A;
+}
+
+.budget-price-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.budget-price-mobile {
+  display: block;
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #6B7280;
+  background: #F9FAFB;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
 }
 
 .price-change {

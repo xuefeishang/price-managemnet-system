@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useMenuStore } from '@/store/useMenuStore'
 import { useRouter, useRoute } from 'vue-router'
+import { loadAllDicts } from '@/composables/useDict'
 import type { MenuItem } from '@/types'
 
 const userStore = useUserStore()
@@ -218,6 +219,8 @@ onMounted(async () => {
     await userStore.fetchProfile()
   }
   loadMenus()
+  // 全局加载字典数据
+  loadAllDicts()
   window.addEventListener('resize', handleResize)
 })
 

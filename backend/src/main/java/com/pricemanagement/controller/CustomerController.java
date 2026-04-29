@@ -1,5 +1,6 @@
 package com.pricemanagement.controller;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.Customer;
 import com.pricemanagement.service.CustomerService;
@@ -24,7 +25,7 @@ public class CustomerController {
             @RequestParam(required = false) String status) {
         if (status != null) {
             try {
-                Customer.CustomerStatus customerStatus = Customer.CustomerStatus.valueOf(status);
+                CommonStatus customerStatus = CommonStatus.valueOf(status);
                 return Result.success("获取客户列表成功",
                         customerService.getActiveCustomers());
             } catch (IllegalArgumentException e) {
