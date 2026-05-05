@@ -1,5 +1,6 @@
 package com.pricemanagement.config;
 
+import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.SysDict;
 import com.pricemanagement.entity.User;
@@ -26,6 +27,7 @@ public class DataInitializer implements CommandLineRunner {
     private final MenuItemService menuItemService;
     private final SysDictRepository sysDictRepository;
     private final PriceService priceService;
+    private final SecurityProperties securityProperties;
 
     @Override
     public void run(String... args) {
@@ -36,9 +38,15 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initUsers() {
-        initUser("admin", "admin123", User.Role.ADMIN, "管理员", "admin@pricemanagement.com", "13800138000");
-        initUser("editor", "admin123", User.Role.EDITOR, "编辑员", "editor@pricemanagement.com", "13800138001");
-        initUser("viewer", "admin123", User.Role.VIEWER, "查看员", "viewer@pricemanagement.com", "13800138002");
+        String defaultPassword = securityProperties.getDefaultUserPassword();
+        if (defaultPassword == null || defaultPassword.isEmpty()) {
+            log.warn("Default user password not configured, skipping user initialization. Set security.default-user-password environment variable.");
+            return;
+        }
+
+        initUser("admin", defaultPassword, User.Role.ADMIN, "管理员", "admin@pricemanagement.com", "13800138000");
+        initUser("editor", defaultPassword, User.Role.EDITOR, "编辑员", "editor@pricemanagement.com", "13800138001");
+        initUser("viewer", defaultPassword, User.Role.VIEWER, "查看员", "viewer@pricemanagement.com", "13800138002");
     }
 
     private void initUser(String username, String password, User.Role role, String nickname, String email, String phone) {
@@ -53,8 +61,8 @@ public class DataInitializer implements CommandLineRunner {
             user.setPhone(phone);
             userRepository.save(user);
             log.info("Created default user: {}", username);
-        } else {
-            // 用户已存在时，重置密码确保默认凭据可用
+        } else if (securityProperties.isResetPasswordOnStartup()) {
+            // 用户已存在时，可选重置密码确保默认凭据可用
             userRepository.findByUsername(username).ifPresent(user -> {
                 user.setPassword(passwordEncoder.encode(password));
                 user.setRole(role);
@@ -176,6 +184,25 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("customer", "CUST002", "南方矿业公司", "{\"contact\":\"李总\",\"phone\":\"020-55550002\"}", 2, "长期合作"));
             dicts.add(createDict("customer", "CUST003", "北方金属制品厂", "{\"contact\":\"王工\",\"phone\":\"010-55550003\"}", 3, null));
             dicts.add(createDict("customer", "CUST004", "西部资源开发有限公司", "{\"contact\":\"赵经理\",\"phone\":\"028-55550004\"}", 4, null));
+
+            // 样式主题 theme（dictKey=主题标识, dictValue=主题名称, extraValue=主题配置JSON）
+            dicts.add(createDict("theme", "theme_red_green", "红涨绿跌", "{\"priceRise\":\"#EF4444\",\"priceFall\":\"#10B981\",\"priceFlat\":\"#9CA3AF\",\"chartPrimary\":\"#0D6E6E\",\"chartBudget\":\"#F59E0B\",\"chartColors\":\"#0D6E6E,#10B981,#F59E0B,#EF4444,#8B5CF6,#EC4899,#6366F1,#14B8A6,#64748B\"}", 1, "传统配色，涨价显示红色，跌价显示绿色"));
+            dicts.add(createDict("theme", "theme_green_red", "绿涨红跌", "{\"priceRise\":\"#10B981\",\"priceFall\":\"#EF4444\",\"priceFlat\":\"#9CA3AF\",\"chartPrimary\":\"#0D6E6E\",\"chartBudget\":\"#F59E0B\",\"chartColors\":\"#0D6E6E,#10B981,#F59E0B,#EF4444,#8B5CF6,#EC4899,#6366F1,#14B8A6,#64748B\"}", 2, "美股风格配色，涨价显示绿色，跌价显示红色"));
+            dicts.add(createDict("theme", "theme_blue_orange", "蓝涨橙跌", "{\"priceRise\":\"#3B82F6\",\"priceFall\":\"#F97316\",\"priceFlat\":\"#9CA3AF\",\"chartPrimary\":\"#0D6E6E\",\"chartBudget\":\"#F59E0B\",\"chartColors\":\"#0D6E6E,#3B82F6,#F97316,#8B5CF6,#EC4899,#6366F1,#14B8A6,#64748B,#10B981\"}", 3, "商务风格配色"));
+            dicts.add(createDict("theme", "theme_purple_gold", "紫涨金跌", "{\"priceRise\":\"#8B5CF6\",\"priceFall\":\"#EAB308\",\"priceFlat\":\"#9CA3AF\",\"chartPrimary\":\"#8B5CF6\",\"chartBudget\":\"#F59E0B\",\"chartColors\":\"#8B5CF6,#EAB308,#0D6E6E,#EC4899,#6366F1,#14B8A6,#64748B,#10B981,#F59E0B\"}", 4, "高贵风格配色"));
+
+            // 样式配置 style（dictKey=配置项, dictValue=配置项名称, extraValue=配置值）
+            dicts.add(createDict("style", "price_rise_color", "涨价颜色", "#EF4444", 1, null));
+            dicts.add(createDict("style", "price_fall_color", "跌价颜色", "#10B981", 2, null));
+            dicts.add(createDict("style", "price_flat_color", "平价颜色", "#9CA3AF", 3, null));
+            dicts.add(createDict("style", "chart_primary_color", "图表主色", "#0D6E6E", 4, null));
+            dicts.add(createDict("style", "chart_budget_color", "预算线颜色", "#F59E0B", 5, null));
+            dicts.add(createDict("style", "chart_colors", "图表配色", "#0D6E6E,#10B981,#F59E0B,#EF4444,#8B5CF6,#EC4899,#6366F1,#14B8A6,#64748B", 6, null));
+            dicts.add(createDict("style", "heading_font", "标题字体", "Newsreader", 7, null));
+            dicts.add(createDict("style", "body_font", "正文字体", "Inter", 8, null));
+            dicts.add(createDict("style", "number_font", "数字字体", "JetBrains Mono", 9, null));
+            dicts.add(createDict("style", "logo_url", "Logo地址", "/api/static/logo.png", 10, null));
+            dicts.add(createDict("style", "active_theme", "当前主题", "theme_red_green", 11, null));
 
             // 保存到数据库（跳过已存在的）
             int created = 0;

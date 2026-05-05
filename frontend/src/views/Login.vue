@@ -2,9 +2,11 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
+import { useTheme } from '@/composables/useTheme'
 
 const userStore = useUserStore()
 const router = useRouter()
+const { themeConfig, loadThemeConfig } = useTheme()
 
 const form = ref({
   username: '',
@@ -92,11 +94,14 @@ const clearError = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (userStore.isAuthenticated) {
     router.push('/home')
     return
   }
+
+  // 加载主题配置（包含系统名称）
+  await loadThemeConfig()
 
   // 恢复记住的用户名
   const savedUsername = localStorage.getItem('rememberUsername')
@@ -121,7 +126,7 @@ onUnmounted(() => {
         <!-- 左侧品牌区域 -->
         <div class="brand-section">
           <div class="brand-content">
-            <h1 class="brand-title">价格管理系统</h1>
+            <h1 class="brand-title">{{ themeConfig.systemName }}</h1>
             <p class="brand-subtitle">企业价格展示与管理平台</p>
           </div>
         </div>
@@ -227,7 +232,7 @@ onUnmounted(() => {
       <div class="login-content">
         <!-- 标题区域 -->
         <div class="title-section">
-          <h1 class="main-title">价格管理系统</h1>
+          <h1 class="main-title">{{ themeConfig.systemName }}</h1>
           <p class="subtitle">企业价格展示与管理平台</p>
         </div>
 

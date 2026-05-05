@@ -6,16 +6,19 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { getProduct, getProductPriceHistory, getCurrentPrice, getPriceTrend } from '@/api/products'
+import { getProduct, getProductPriceHistory, getCurrentPrice, getPriceTrend, getPriceByDate } from '@/api/products'
 import type { PriceTrendPoint } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
 import { getOriginName, getCustomerName, loadAllDicts } from '@/composables/useDict'
 import { getCurrencySymbol, getStatusLabel, getDictValue } from '@/composables/useDict'
+import { useTheme } from '@/composables/useTheme'
 import { eventBus } from '@/utils/eventBus'
 import type { Product, PriceHistory, Price } from '@/types'
 
 // 注册 ECharts 组件
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
+
+const { themeConfig } = useTheme()
 
 const route = useRoute()
 const router = useRouter()
@@ -30,6 +33,23 @@ const loading = ref(false)
 const trendData30 = ref<PriceTrendPoint[]>([])
 const trendData180 = ref<PriceTrendPoint[]>([])
 const trendData365 = ref<PriceTrendPoint[]>([])
+
+// 当前选中的时间范围
+const selectedTrendRange = ref<'30' | '180' | '365'>('30')
+
+// 当前走势数据（根据选中的时间范围）
+const currentTrendData = computed(() => {
+  switch (selectedTrendRange.value) {
+    case '180': return trendData180.value
+    case '365': return trendData365.value
+    default: return trendData30.value
+  }
+})
+
+// 历史价格查询
+const historyQueryDate = ref('')
+const historyQueryResult = ref<Price | null>(null)
+const historyQueryLoading = ref(false)
 
 // 解析产地和客户名称（从字典缓存）
 const originName = computed(() => {
@@ -61,38 +81,43 @@ const isPCLayout = computed(() => {
   return false
 })
 
-// 格式化走势日期（X轴标签）
-const formatTrendDate = (dateStr: string, isShort: boolean = true): string => {
+// 格式化走势日期（X轴标签）- 统一格式：MM/DD
+const formatTrendDate = (dateStr: string): string => {
   const d = new Date(dateStr)
-  if (isShort) {
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  }
+  return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+// 格式化完整日期（Tooltip）
+const formatFullDate = (dateStr: string): string => {
+  const d = new Date(dateStr)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// 生成走势图配置
-const buildTrendChartOption = (trendData: PriceTrendPoint[], _title: string, isShortPeriod: boolean = true) => {
-  const dates = trendData.map(d => formatTrendDate(d.date, isShortPeriod))
-  const fullDates = trendData.map(d => formatTrendDate(d.date, false))
+// 生成走势图配置（统一X轴格式 MM/DD）
+const buildTrendChartOption = (trendData: PriceTrendPoint[]) => {
+  const dates = trendData.map(d => formatTrendDate(d.date))
+  const fullDates = trendData.map(d => formatFullDate(d.date))
   const currentPrices = trendData.map(d => d.currentPrice)
   const budgetPrices = trendData.map(d => d.budgetPrice)
   const hasBudget = budgetPrices.some(v => v != null)
+
+  const chartPrimaryColor = themeConfig.value.chartPrimaryColor
+  const chartColors = themeConfig.value.chartColors
 
   const series: any[] = [{
     name: '售价',
     type: 'line',
     data: currentPrices,
     smooth: true,
-    symbol: isShortPeriod ? 'circle' : 'none',
-    symbolSize: 6,
-    lineStyle: { color: '#0D6E6E', width: 2 },
-    itemStyle: { color: '#0D6E6E' },
+    symbol: 'none',
+    lineStyle: { color: chartPrimaryColor, width: 2 },
+    itemStyle: { color: chartPrimaryColor },
     areaStyle: {
       color: {
         type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
         colorStops: [
-          { offset: 0, color: 'rgba(13, 110, 110, 0.2)' },
-          { offset: 1, color: 'rgba(13, 110, 110, 0.02)' }
+          { offset: 0, color: chartPrimaryColor + '33' },
+          { offset: 1, color: chartPrimaryColor + '05' }
         ]
       }
     }
@@ -105,8 +130,8 @@ const buildTrendChartOption = (trendData: PriceTrendPoint[], _title: string, isS
       data: budgetPrices,
       smooth: true,
       symbol: 'none',
-      lineStyle: { color: '#F59E0B', width: 1.5, type: 'dashed' },
-      itemStyle: { color: '#F59E0B' }
+      lineStyle: { color: chartColors[2] || '#F59E0B', width: 1.5, type: 'dashed' },
+      itemStyle: { color: chartColors[2] || '#F59E0B' }
     })
   }
 
@@ -142,7 +167,7 @@ const buildTrendChartOption = (trendData: PriceTrendPoint[], _title: string, isS
   }
 
   // 长周期图表加 dataZoom 支持滑动查看
-  if (!isShortPeriod && trendData.length > 30) {
+  if (trendData.length > 30) {
     option.dataZoom = [{
       type: 'inside',
       start: Math.max(0, 100 - (30 / trendData.length) * 100),
@@ -153,10 +178,8 @@ const buildTrendChartOption = (trendData: PriceTrendPoint[], _title: string, isS
   return option
 }
 
-// 3个走势图配置
-const trendChart30 = computed(() => buildTrendChartOption(trendData30.value, '近30天', true))
-const trendChart180 = computed(() => buildTrendChartOption(trendData180.value, '近180天', false))
-const trendChart365 = computed(() => buildTrendChartOption(trendData365.value, '近12个月', false))
+// 走势图配置（根据当前选中的时间范围）
+const trendChartConfig = computed(() => buildTrendChartOption(currentTrendData.value))
 
 const loadProduct = async () => {
   const id = route.params.id as string
@@ -196,7 +219,7 @@ const editProduct = () => {
 }
 
 const goBack = () => {
-  router.push('/products')
+  router.push('/home')
 }
 
 // 底部标签栏导航（移动端）
@@ -235,6 +258,28 @@ const handleProductUpdated = (updatedId: number | null) => {
     loadProduct()
   }
 }
+
+// 查询指定日期的历史价格
+const queryHistoryPrice = async () => {
+  if (!historyQueryDate.value || !product.value) return
+
+  historyQueryLoading.value = true
+  try {
+    const res = await getPriceByDate(product.value.id, historyQueryDate.value)
+    historyQueryResult.value = res.data || null
+  } catch (error) {
+    console.error('Failed to query history price:', error)
+    historyQueryResult.value = null
+  } finally {
+    historyQueryLoading.value = false
+  }
+}
+
+// 清除历史价格查询结果
+const clearHistoryQuery = () => {
+  historyQueryDate.value = ''
+  historyQueryResult.value = null
+}
 </script>
 
 <template>
@@ -259,50 +304,49 @@ const handleProductUpdated = (updatedId: number | null) => {
           </button>
         </div>
 
-        <!-- 第一行：3个走势图横排 -->
-        <div class="charts-row-pc" v-if="trendData30.length > 1 || trendData180.length > 1 || trendData365.length > 1">
-          <!-- 近30天走势图 -->
-          <div class="chart-card-pc" v-if="trendData30.length > 1">
-            <h3 class="chart-title-pc">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 6px; color: #0D6E6E;">
+        <!-- 价格走势区域（单一图表 + 时间范围切换） -->
+        <div class="trend-section-pc" v-if="trendData30.length > 1 || trendData180.length > 1 || trendData365.length > 1">
+          <div class="trend-header-pc">
+            <h3 class="trend-main-title-pc">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -3px; margin-right: 8px; color: #0D6E6E;">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
               </svg>
-              近30天走势
+              价格走势
             </h3>
-            <v-chart class="price-chart" :option="trendChart30" autoresize />
-          </div>
-
-          <!-- 近180天走势图 -->
-          <div class="chart-card-pc" v-if="trendData180.length > 1">
-            <h3 class="chart-title-pc">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 6px; color: #2563EB;">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              近180天走势
-            </h3>
-            <v-chart class="price-chart" :option="trendChart180" autoresize />
-          </div>
-
-          <!-- 近12个月走势图 -->
-          <div class="chart-card-pc" v-if="trendData365.length > 1">
-            <h3 class="chart-title-pc">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 6px; color: #7C3AED;">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              近12个月走势
-            </h3>
-            <v-chart class="price-chart" :option="trendChart365" autoresize />
-          </div>
-
-          <!-- 暂无走势数据提示 -->
-          <div class="chart-card-pc no-trend-tip" v-if="trendData30.length <= 1 && trendData180.length <= 1 && trendData365.length <= 1">
-            <div class="empty-trend">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              <span>暂无足够的价格走势数据</span>
+            <div class="trend-range-tabs">
+              <button
+                class="trend-tab"
+                :class="{ active: selectedTrendRange === '30' }"
+                @click="selectedTrendRange = '30'"
+                :disabled="trendData30.length <= 1"
+              >近30天</button>
+              <button
+                class="trend-tab"
+                :class="{ active: selectedTrendRange === '180' }"
+                @click="selectedTrendRange = '180'"
+                :disabled="trendData180.length <= 1"
+              >近180天</button>
+              <button
+                class="trend-tab"
+                :class="{ active: selectedTrendRange === '365' }"
+                @click="selectedTrendRange = '365'"
+                :disabled="trendData365.length <= 1"
+              >近12个月</button>
             </div>
           </div>
+          <v-chart class="price-chart-pc" :option="trendChartConfig" autoresize />
+          <div class="trend-hint" v-if="currentTrendData.length > 30">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            可拖动查看详细数据
+          </div>
+        </div>
+
+        <!-- 暂无走势数据提示 -->
+        <div class="empty-trend-pc" v-if="trendData30.length <= 1 && trendData180.length <= 1 && trendData365.length <= 1">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span>暂无足够的价格走势数据</span>
         </div>
 
         <!-- 第二行：左侧产品信息 + 右侧历史记录 -->
@@ -379,10 +423,51 @@ const handleProductUpdated = (updatedId: number | null) => {
             </div>
           </div>
 
-          <!-- 右侧价格历史记录 -->
+          <!-- 右侧：历史价格查询 + 近期价格变动 -->
           <div class="detail-sidebar-pc">
+            <!-- 历史价格查询 -->
+            <div class="history-query-card-pc">
+              <h3 class="history-title-pc">历史价格查询</h3>
+              <div class="query-form-pc">
+                <input
+                  type="date"
+                  v-model="historyQueryDate"
+                  class="query-input-pc"
+                  :max="new Date().toISOString().split('T')[0]"
+                />
+                <button class="query-btn-pc" @click="queryHistoryPrice" :disabled="!historyQueryDate || historyQueryLoading">
+                  <span v-if="historyQueryLoading">查询中...</span>
+                  <span v-else>查询</span>
+                </button>
+                <button class="query-clear-btn-pc" @click="clearHistoryQuery" v-if="historyQueryResult" title="清除">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <!-- 查询结果 -->
+              <div class="query-result-pc" v-if="historyQueryResult">
+                <div class="result-date-pc">{{ historyQueryDate }}</div>
+                <div class="result-row-pc">
+                  <span class="result-label">售价</span>
+                  <span class="result-value">{{ historyQueryResult.currentPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.currentPrice).toFixed(2) : '-' }}</span>
+                </div>
+                <div class="result-row-pc">
+                  <span class="result-label">预算价</span>
+                  <span class="result-value">{{ historyQueryResult.budgetPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.budgetPrice).toFixed(2) : '-' }}</span>
+                </div>
+              </div>
+              <div class="query-empty-pc" v-else-if="!historyQueryLoading && historyQueryDate">
+                <span>该日期无价格记录</span>
+              </div>
+              <div class="query-hint-pc" v-else>
+                <span>选择日期查询历史价格</span>
+              </div>
+            </div>
+
+            <!-- 近期价格变动 -->
             <div class="history-card-pc" v-if="priceHistory.length > 0">
-              <h3 class="history-title-pc">价格历史记录</h3>
+              <h3 class="history-title-pc">近期价格变动</h3>
               <div class="history-list-pc">
                 <div v-for="history in priceHistory.slice().reverse().slice(0, 10)" :key="history.id" class="history-item-pc">
                   <div class="history-header">
@@ -428,26 +513,71 @@ const handleProductUpdated = (updatedId: number | null) => {
 
       <!-- 主内容区 -->
       <main class="content" v-if="!loading && product">
-        <!-- 价格走势（第一行） -->
+        <!-- 价格走势（单一图表 + 时间切换） -->
         <div class="info-card trend-section" v-if="trendData30.length > 1 || trendData180.length > 1 || trendData365.length > 1">
           <div class="card-label">价格走势</div>
 
-          <!-- 近30天走势图 -->
-          <div class="trend-chart-block" v-if="trendData30.length > 1">
-            <h4 class="trend-chart-title">近30天走势</h4>
-            <v-chart class="price-chart-mobile" :option="trendChart30" autoresize />
+          <!-- 时间范围切换 -->
+          <div class="trend-range-tabs-mobile">
+            <button
+              class="trend-tab-mobile"
+              :class="{ active: selectedTrendRange === '30' }"
+              @click="selectedTrendRange = '30'"
+              :disabled="trendData30.length <= 1"
+            >近30天</button>
+            <button
+              class="trend-tab-mobile"
+              :class="{ active: selectedTrendRange === '180' }"
+              @click="selectedTrendRange = '180'"
+              :disabled="trendData180.length <= 1"
+            >近180天</button>
+            <button
+              class="trend-tab-mobile"
+              :class="{ active: selectedTrendRange === '365' }"
+              @click="selectedTrendRange = '365'"
+              :disabled="trendData365.length <= 1"
+            >近12个月</button>
           </div>
 
-          <!-- 近180天走势图 -->
-          <div class="trend-chart-block" v-if="trendData180.length > 1">
-            <h4 class="trend-chart-title">近180天走势</h4>
-            <v-chart class="price-chart-mobile" :option="trendChart180" autoresize />
+          <v-chart class="price-chart-mobile" :option="trendChartConfig" autoresize />
+          <div class="trend-hint-mobile" v-if="currentTrendData.length > 30">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            拖动查看详细
           </div>
+        </div>
 
-          <!-- 近12个月走势图 -->
-          <div class="trend-chart-block" v-if="trendData365.length > 1">
-            <h4 class="trend-chart-title">近12个月走势</h4>
-            <v-chart class="price-chart-mobile" :option="trendChart365" autoresize />
+        <!-- 历史价格查询 -->
+        <div class="info-card">
+          <div class="card-label">历史价格查询</div>
+          <div class="query-form-mobile">
+            <input
+              type="date"
+              v-model="historyQueryDate"
+              class="query-input-mobile"
+              :max="new Date().toISOString().split('T')[0]"
+            />
+            <button class="query-btn-mobile" @click="queryHistoryPrice" :disabled="!historyQueryDate || historyQueryLoading">
+              {{ historyQueryLoading ? '查询中...' : '查询' }}
+            </button>
+            <button class="query-clear-btn-mobile" @click="clearHistoryQuery" v-if="historyQueryResult" title="清除">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="query-result-mobile" v-if="historyQueryResult">
+            <div class="result-date">{{ historyQueryDate }}</div>
+            <div class="result-row">
+              <span class="result-label">售价</span>
+              <span class="result-value">{{ historyQueryResult.currentPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.currentPrice).toFixed(2) : '-' }}</span>
+            </div>
+            <div class="result-row">
+              <span class="result-label">预算价</span>
+              <span class="result-value">{{ historyQueryResult.budgetPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.budgetPrice).toFixed(2) : '-' }}</span>
+            </div>
+          </div>
+          <div class="query-empty-mobile" v-else-if="!historyQueryLoading && historyQueryDate">
+            <span>该日期无价格记录</span>
           </div>
         </div>
 
@@ -518,9 +648,9 @@ const handleProductUpdated = (updatedId: number | null) => {
           </div>
         </div>
 
-        <!-- 价格历史 -->
+        <!-- 近期价格变动 -->
         <div class="history-card" v-if="priceHistory.length > 0">
-          <div class="card-label">价格历史记录</div>
+          <div class="card-label">近期价格变动</div>
           <div class="history-list">
             <div v-for="history in priceHistory.slice().reverse().slice(0, 10)" :key="history.id" class="history-item">
               <div class="history-main">
@@ -590,52 +720,93 @@ const handleProductUpdated = (updatedId: number | null) => {
 /* ==================== PC布局 ==================== */
 .pc-detail {
   padding: 32px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
-/* 价格走势图横排 */
-.charts-row-pc {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+/* 价格走势区域 */
+.trend-section-pc {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid #E5E5E5;
   margin-bottom: 24px;
 }
 
-/* 价格图表 */
-.chart-card-pc {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #E5E5E5;
+.trend-header-pc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
 
-.chart-title-pc {
+.trend-main-title-pc {
   font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1A1A1A;
-  margin: 0 0 12px 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #F0F0F0;
+  margin: 0;
 }
 
-.price-chart {
+.trend-range-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.trend-tab {
+  padding: 6px 16px;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.trend-tab:hover:not(:disabled) {
+  border-color: #0D6E6E;
+  color: #0D6E6E;
+}
+
+.trend-tab.active {
+  background: #0D6E6E;
+  border-color: #0D6E6E;
+  color: #FFFFFF;
+}
+
+.trend-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.price-chart-pc {
   width: 100%;
-  height: 240px;
+  height: 320px;
 }
 
-.no-trend-tip {
-  text-align: center;
-  padding: 32px;
-  grid-column: 1 / -1;
+.trend-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+  justify-content: center;
 }
 
-.empty-trend {
+.empty-trend-pc {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  padding: 48px;
+  background: #FFFFFF;
+  border-radius: 12px;
+  border: 1px solid #E5E5E5;
   color: #999;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* 移动端走势图 */
@@ -643,25 +814,54 @@ const handleProductUpdated = (updatedId: number | null) => {
   padding: 16px;
 }
 
-.trend-chart-block {
-  margin-bottom: 20px;
+.trend-range-tabs-mobile {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.trend-chart-block:last-child {
-  margin-bottom: 0;
-}
-
-.trend-chart-title {
+.trend-tab-mobile {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  border-radius: 6px;
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.trend-tab-mobile:hover:not(:disabled) {
+  border-color: #0D6E6E;
+  color: #0D6E6E;
+}
+
+.trend-tab-mobile.active {
+  background: #0D6E6E;
+  border-color: #0D6E6E;
+  color: #FFFFFF;
+}
+
+.trend-tab-mobile:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .price-chart-mobile {
   width: 100%;
   height: 220px;
+}
+
+.trend-hint-mobile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #999;
+  margin-top: 8px;
+  justify-content: center;
 }
 
 .page-header-pc {
@@ -784,17 +984,17 @@ const handleProductUpdated = (updatedId: number | null) => {
 .detail-sidebar-pc {
   position: sticky;
   top: 96px;
-  align-self: stretch;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .history-card-pc {
   background: #FFFFFF;
   border-radius: 12px;
-  padding: 24px;
+  padding: 20px;
   border: 1px solid #E5E5E5;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
 }
 
 .history-title-pc {
@@ -802,8 +1002,8 @@ const handleProductUpdated = (updatedId: number | null) => {
   font-size: 15px;
   font-weight: 600;
   color: #1A1A1A;
-  margin: 0 0 16px 0;
-  padding-bottom: 12px;
+  margin: 0 0 12px 0;
+  padding-bottom: 10px;
   border-bottom: 1px solid #F0F0F0;
   flex-shrink: 0;
 }
@@ -811,10 +1011,9 @@ const handleProductUpdated = (updatedId: number | null) => {
 .history-list-pc {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  flex: 1;
+  gap: 8px;
   overflow-y: auto;
-  max-height: 600px;
+  max-height: 280px;
 }
 
 .history-item-pc {
@@ -876,6 +1075,204 @@ const handleProductUpdated = (updatedId: number | null) => {
 .new-price {
   color: #0D6E6E;
   font-weight: 600;
+}
+
+/* 历史价格查询卡片 */
+.history-query-card-pc {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #E5E5E5;
+}
+
+.query-form-pc {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.query-input-pc {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: #1A1A1A;
+  background: #FAFAFA;
+}
+
+.query-input-pc:focus {
+  outline: none;
+  border-color: #0D6E6E;
+}
+
+.query-btn-pc {
+  padding: 10px 16px;
+  background: #0D6E6E;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.query-btn-pc:hover:not(:disabled) {
+  background: #0A5A5A;
+}
+
+.query-btn-pc:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.query-clear-btn-pc {
+  padding: 8px;
+  background: transparent;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.query-clear-btn-pc:hover {
+  border-color: #EF4444;
+  color: #EF4444;
+}
+
+.query-result-pc {
+  background: #FAFAFA;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.result-date-pc {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #E5E5E5;
+}
+
+.result-row-pc {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.result-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: #888;
+}
+
+.result-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: #0D6E6E;
+  font-weight: 600;
+}
+
+.query-empty-pc {
+  text-align: center;
+  padding: 16px;
+  color: #999;
+  font-size: 13px;
+}
+
+.query-hint-pc {
+  text-align: center;
+  padding: 8px;
+  color: #aaa;
+  font-size: 12px;
+}
+
+/* 移动端查询样式 */
+.query-form-mobile {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.query-input-mobile {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: #1A1A1A;
+  background: #FAFAFA;
+}
+
+.query-input-mobile:focus {
+  outline: none;
+  border-color: #0D6E6E;
+}
+
+.query-btn-mobile {
+  padding: 10px 16px;
+  background: #0D6E6E;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.query-btn-mobile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.query-clear-btn-mobile {
+  padding: 8px;
+  background: transparent;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.query-result-mobile {
+  background: #FAFAFA;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.result-date {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #E5E5E5;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.query-empty-mobile {
+  text-align: center;
+  padding: 12px;
+  color: #999;
+  font-size: 12px;
 }
 
 /* ==================== 移动端布局 ==================== */

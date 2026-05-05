@@ -362,7 +362,7 @@ onMounted(() => {
 }
 
 .navbar-title {
-  font-family: var(--font-heading, 'Newsreader', Georgia, serif),serif;
+  font-family: var(--font-heading, 'Newsreader', Georgia, serif);
   font-size: 20px;
   font-weight: 500;
   color: var(--text-primary, #1A1A1A);
@@ -375,7 +375,7 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: var(--font-body, 'Inter', sans-serif),serif;
+  font-family: var(--font-body, 'Inter', sans-serif);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

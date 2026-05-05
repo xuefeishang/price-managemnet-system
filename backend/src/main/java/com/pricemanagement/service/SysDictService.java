@@ -5,6 +5,8 @@ import com.pricemanagement.entity.SysDict;
 import com.pricemanagement.repository.SysDictRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,18 @@ public class SysDictService {
 
     private final SysDictRepository sysDictRepository;
 
+    // 缓存分类列表（简单字符串列表，可以序列化）
+    @Cacheable(value = "dict", key = "'categories'")
+    public List<String> getCategories() {
+        return sysDictRepository.findDistinctCategoryByStatus(CommonStatus.ACTIVE);
+    }
+
+    @Cacheable(value = "dict", key = "'allCategories'")
+    public List<String> getAllCategories() {
+        return sysDictRepository.findAllDistinctCategory();
+    }
+
+    // 实体类方法不缓存（JPA实体无法正确序列化）
     public List<SysDict> getAllDicts() {
         return sysDictRepository.findAllByOrderByCategoryAscSortOrderAsc();
     }
@@ -38,15 +52,8 @@ public class SysDictService {
         return sysDictRepository.findByCategoryAndDictKey(category, dictKey);
     }
 
-    public List<String> getCategories() {
-        return sysDictRepository.findDistinctCategoryByStatus(CommonStatus.ACTIVE);
-    }
-
-    public List<String> getAllCategories() {
-        return sysDictRepository.findAllDistinctCategory();
-    }
-
     @Transactional
+    @CacheEvict(value = "dict", allEntries = true)
     public SysDict createDict(SysDict sysDict) {
         if (sysDictRepository.existsByCategoryAndDictKey(sysDict.getCategory(), sysDict.getDictKey())) {
             throw new IllegalArgumentException("字典项已存在: " + sysDict.getCategory() + " - " + sysDict.getDictKey());
@@ -57,6 +64,7 @@ public class SysDictService {
     }
 
     @Transactional
+    @CacheEvict(value = "dict", allEntries = true)
     public SysDict updateDict(Long id, SysDict sysDict) {
         SysDict existing = sysDictRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("字典项不存在: " + id));
@@ -97,6 +105,7 @@ public class SysDictService {
     }
 
     @Transactional
+    @CacheEvict(value = "dict", allEntries = true)
     public void deleteDict(Long id) {
         if (!sysDictRepository.existsById(id)) {
             throw new IllegalArgumentException("字典项不存在: " + id);
@@ -106,6 +115,7 @@ public class SysDictService {
     }
 
     @Transactional
+    @CacheEvict(value = "dict", allEntries = true)
     public void batchCreateDicts(List<SysDict> dicts) {
         for (SysDict dict : dicts) {
             if (!sysDictRepository.existsByCategoryAndDictKey(dict.getCategory(), dict.getDictKey())) {

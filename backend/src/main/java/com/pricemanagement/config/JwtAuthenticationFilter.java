@@ -72,7 +72,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private boolean isPublicPath(String path) {
-        return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
+        return PUBLIC_PATHS.stream().anyMatch(pattern -> {
+            if (pattern.endsWith("/**")) {
+                String prefix = pattern.substring(0, pattern.length() - 2);
+                return path.startsWith(prefix);
+            }
+            return path.equals(pattern);
+        });
     }
 
     private String extractToken(HttpServletRequest request) {

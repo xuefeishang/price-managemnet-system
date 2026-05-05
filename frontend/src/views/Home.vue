@@ -10,6 +10,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { getProducts } from '@/api/products'
 import { getPricesByDate, getProductPriceHistory } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
+import { useTheme } from '@/composables/useTheme'
 import type { Product, Price, PriceHistory } from '@/types'
 
 // 注册 ECharts 组件
@@ -18,6 +19,7 @@ use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 // const userStore = useUserStore()
 const router = useRouter()
 const { hasPermission } = usePermission()
+const { themeConfig } = useTheme()
 
 const products = ref<Product[]>([])
 const loading = ref(false)
@@ -83,8 +85,10 @@ const getPriceChange = (productId: number) => {
   const previousVal = previous.currentPrice
   if (currentVal == null || previousVal == null) return null
   const diff = currentVal - previousVal
-  if (diff === 0) return { direction: 'flat', diff: 0 }
-  return { direction: diff > 0 ? 'up' : 'down', diff }
+  if (diff === 0) return { direction: 'flat', diff: 0, formattedDiff: '0' }
+  // 格式化：保留2位小数，去除不必要的尾零
+  const formattedDiff = diff > 0 ? `+${diff.toFixed(2).replace(/\.?0+$/, '')}` : diff.toFixed(2).replace(/\.?0+$/, '')
+  return { direction: diff > 0 ? 'up' : 'down', diff, formattedDiff }
 }
 
 // 获取最后一次价格（当天有价格取当天，否则取继承价或最近历史）
@@ -120,13 +124,13 @@ const generateChartOption = (productId: number) => {
   const prices = recent.map(h => h.newPrice)
 
   // 判断整体趋势颜色
-  let lineColor = '#0D6E6E'
+  let lineColor = themeConfig.value.chartPrimaryColor || '#0D6E6E'
   if (prices.length >= 2) {
     const first = prices[0]
     const last = prices[prices.length - 1]
     if (first != null && last != null) {
-      if (last > first) lineColor = '#EF4444'
-      else if (last < first) lineColor = '#10B981'
+      if (last > first) lineColor = themeConfig.value.priceRiseColor
+      else if (last < first) lineColor = themeConfig.value.priceFallColor
     }
   }
 
@@ -316,7 +320,7 @@ onMounted(() => {
                   <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
                   <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
                   <span class="change-arrow" v-else>—</span>
-                  {{ (getPriceChange(product.id)?.diff ?? 0) > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                  {{ getPriceChange(product.id)?.formattedDiff }}
                 </span>
                 <span class="price-change-badge none" v-else>—</span>
               </div>
@@ -324,9 +328,6 @@ onMounted(() => {
               <div class="product-price" v-if="getLastPrice(product.id)">
                 <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
                 <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
-              </div>
-              <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
-                <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
               </div>
               <div class="product-price empty" v-if="!getLastPrice(product.id)">
                 暂无价格
@@ -374,7 +375,7 @@ onMounted(() => {
                   <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
                 </div>
                 <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
-                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.formattedDiff }}</span>
                 </div>
                 <div class="product-price empty" v-if="!getLastPrice(product.id)">
                   暂无价格
@@ -440,7 +441,7 @@ onMounted(() => {
                   <span class="change-arrow" v-if="getPriceChange(product.id)?.direction === 'up'">↑</span>
                   <span class="change-arrow" v-else-if="getPriceChange(product.id)?.direction === 'down'">↓</span>
                   <span class="change-arrow" v-else>—</span>
-                  {{ (getPriceChange(product.id)?.diff ?? 0) > 0 ? '+' : '' }}{{ getPriceChange(product.id)?.diff }}
+                  {{ getPriceChange(product.id)?.formattedDiff }}
                 </span>
                 <span class="price-change-badge none" v-else>—</span>
               </div>
@@ -448,9 +449,6 @@ onMounted(() => {
               <div class="featured-item-price" v-if="getLastPrice(product.id)">
                 <span class="price-current">{{ getCurrencySymbol(product.currency) }}{{ getLastPrice(product.id) }}</span>
                 <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
-              </div>
-              <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
-                <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
               </div>
               <div class="featured-item-price empty" v-if="!getLastPrice(product.id)">暂无价格</div>
               <div class="product-chart-area-mobile" v-if="chartOptionsMap.get(product.id)">
@@ -502,7 +500,7 @@ onMounted(() => {
                   <span class="price-unit">{{ getTodayPrice(product.id)?.unit || product.unit || '元' }}</span>
                 </div>
                 <div class="price-diff" v-if="getLastPrice(product.id) && getPriceChange(product.id)">
-                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.diff > 0 ? '+' : '' }}{{ getPriceChange(product.id)!.diff }}</span>
+                  <span class="price-diff-value" :class="getPriceChange(product.id)!.direction">{{ getPriceChange(product.id)!.formattedDiff }}</span>
                 </div>
                 <div class="product-price-mobile empty" v-if="!getLastPrice(product.id)">暂无价格</div>
               </div>
@@ -706,9 +704,9 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(13, 110, 110, 0.08);
   display: flex;
   flex-direction: column;
-  aspect-ratio: 1 / 1;
   position: relative;
   overflow: hidden;
+  min-height: 160px;
 }
 
 .product-card-pc.featured:hover {
@@ -728,17 +726,16 @@ onMounted(() => {
 }
 
 .product-card-pc.featured .product-chart-area {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  margin-top: 4px;
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 80px;
+  height: 48px;
 }
 
 .mini-chart {
-  width: 100%;
-  height: 80px;
+  width: 80px;
+  height: 48px;
 }
 
 .price-change-badge {
@@ -753,13 +750,13 @@ onMounted(() => {
 }
 
 .price-change-badge.up {
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
+  background: color-mix(in srgb, var(--price-rise-color) 10%, transparent);
+  color: var(--price-rise-color);
 }
 
 .price-change-badge.down {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
+  background: color-mix(in srgb, var(--price-fall-color) 10%, transparent);
+  color: var(--price-fall-color);
 }
 
 .price-change-badge.flat {
@@ -936,6 +933,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+  align-items: stretch;
 }
 
 .product-card-pc {
@@ -949,19 +947,24 @@ onMounted(() => {
 
 .product-card-pc.list-card {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 16px;
 }
 
 .list-card-left {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .list-card-chart {
   flex-shrink: 0;
   width: 160px;
   height: 60px;
+  display: flex;
+  align-items: center;
 }
 
 .list-chart-pc {
@@ -1051,11 +1054,11 @@ onMounted(() => {
 }
 
 .price-diff-value.up {
-  color: #10B981;
+  color: var(--price-rise-color);
 }
 
 .price-diff-value.down {
-  color: #EF4444;
+  color: var(--price-fall-color);
 }
 
 .price-diff-value.flat {

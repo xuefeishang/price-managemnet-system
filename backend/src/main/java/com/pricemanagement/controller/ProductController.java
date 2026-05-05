@@ -9,10 +9,12 @@ import com.pricemanagement.entity.Product;
 import com.pricemanagement.service.ProductService;
 import com.pricemanagement.util.OperationLogHelper;
 import com.pricemanagement.util.SecurityUtils;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
@@ -52,7 +55,7 @@ public class ProductController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public Result<Product> createProduct(@RequestBody Product product) {
+    public Result<Product> createProduct(@Valid @RequestBody Product product) {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Product savedProduct = productService.createProduct(product, userId);
@@ -71,10 +74,10 @@ public class ProductController {
         }
     }
 
-    @PutMapping("/{id}")
+@PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public Result<Product> updateProduct(@PathVariable Long id,
-                                         @RequestBody Product product) {
+                                         @Valid @RequestBody Product product) {
         try {
             Product updatedProduct = productService.updateProduct(id, product);
             operationLogHelper.logSuccess("产品管理", OperationLog.OperationType.UPDATE,

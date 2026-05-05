@@ -13,6 +13,8 @@ import com.pricemanagement.repository.ProductCategoryRepository;
 import com.pricemanagement.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanWrapper;
+import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -137,60 +140,41 @@ public class ProductService {
         Product existingProduct = productRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("产品不存在: " + id));
 
-        if (product.getName() != null) {
-            existingProduct.setName(product.getName());
-        }
-        if (product.getSellingPrice() != null) {
-            existingProduct.setSellingPrice(product.getSellingPrice());
-        }
-        if (product.getBudgetPrice() != null) {
-            existingProduct.setBudgetPrice(product.getBudgetPrice());
-        }
-        // 优先使用categoryId转换，其次使用category对象
+        // 处理分类ID转换
         if (product.getCategoryId() != null) {
             ProductCategory category = categoryRepository.findById(product.getCategoryId())
                     .orElseThrow(() -> new IllegalArgumentException("分类不存在: " + product.getCategoryId()));
             existingProduct.setCategory(category);
-        } else if (product.getCategory() != null) {
-            existingProduct.setCategory(product.getCategory());
         }
-        if (product.getStatus() != null) {
-            existingProduct.setStatus(product.getStatus());
-        }
-        if (product.getDescription() != null) {
-            existingProduct.setDescription(product.getDescription());
-        }
-        if (product.getSpecs() != null) {
-            existingProduct.setSpecs(product.getSpecs());
-        }
-        if (product.getImageUrl() != null) {
-            existingProduct.setImageUrl(product.getImageUrl());
-        }
-        if (product.getOriginIds() != null) {
-            existingProduct.setOriginIds(product.getOriginIds());
-        }
-        if (product.getCustomerIds() != null) {
-            existingProduct.setCustomerIds(product.getCustomerIds());
-        }
-        if (product.getRemark() != null) {
-            existingProduct.setRemark(product.getRemark());
-        }
-        if (product.getUnit() != null) {
-            existingProduct.setUnit(product.getUnit());
-        }
-        if (product.getShowOnHome() != null) {
-            existingProduct.setShowOnHome(product.getShowOnHome());
-        }
-        if (product.getCurrency() != null) {
-            existingProduct.setCurrency(product.getCurrency());
-        }
-        if (product.getSortOrder() != null) {
-            existingProduct.setSortOrder(product.getSortOrder());
-        }
+
+        // 复制非空属性（排除 id, version, createdTime 等系统字段）
+        copyNonNullProperties(product, existingProduct);
 
         Product savedProduct = productRepository.save(existingProduct);
         log.info("Updated product: {}", savedProduct.getName());
         return savedProduct;
+    }
+
+    /**
+     * 使用 BeanUtils 复制非 null 属性
+     */
+    private void copyNonNullProperties(Product source, Product target) {
+        BeanWrapper src = new BeanWrapperImpl(source);
+        BeanWrapper tgt = new BeanWrapperImpl(target);
+
+        // 需要排除的系统字段
+        Set<String> excludedFields = Set.of(
+            "id", "version", "createdTime", "updatedTime",
+            "category", "categoryId", "class"
+        );
+
+        for (java.beans.PropertyDescriptor pd : src.getPropertyDescriptors()) {
+            if (excludedFields.contains(pd.getName())) continue;
+            Object srcValue = src.getPropertyValue(pd.getName());
+            if (srcValue != null) {
+                tgt.setPropertyValue(pd.getName(), srcValue);
+            }
+        }
     }
 
     @Transactional

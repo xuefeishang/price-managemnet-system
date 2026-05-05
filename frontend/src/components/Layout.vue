@@ -4,12 +4,36 @@ import { useUserStore } from '@/store/useUserStore'
 import { useMenuStore } from '@/store/useMenuStore'
 import { useRouter, useRoute } from 'vue-router'
 import { loadAllDicts } from '@/composables/useDict'
+import { useTheme } from '@/composables/useTheme'
 import type { MenuItem } from '@/types'
 
 const userStore = useUserStore()
 const menuStore = useMenuStore()
 const router = useRouter()
 const route = useRoute()
+const { themeConfig, loadThemeConfig } = useTheme()
+
+// Logo完整URL
+const logoUrlFull = computed(() => {
+  if (!themeConfig.value.logoUrl) return ''
+  if (themeConfig.value.logoUrl.startsWith('http')) return themeConfig.value.logoUrl
+  return window.location.origin + themeConfig.value.logoUrl
+})
+
+// Logo尺寸样式
+const logoSizeStyle = computed(() => {
+  const sizeMap: Record<string, string> = {
+    small: '24px',
+    medium: '36px',
+    large: '48px',
+    xlarge: '64px'
+  }
+  const size = sizeMap[themeConfig.value.logoSize] || '36px'
+  return {
+    width: size,
+    height: size
+  }
+})
 
 const isMobileMenuOpen = ref(false)
 const selectedParentMenu = ref<MenuItem | null>(null)
@@ -221,6 +245,8 @@ onMounted(async () => {
   loadMenus()
   // 全局加载字典数据
   loadAllDicts()
+  // 加载主题配置（包含Logo）
+  loadThemeConfig()
   window.addEventListener('resize', handleResize)
 })
 
@@ -250,7 +276,8 @@ watch(() => menuStore.version, () => {
         <div class="sidebar-header">
           <div class="brand" @click="navigateTo('/home')">
             <div class="brand-icon">
-              <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <img v-if="logoUrlFull" :src="logoUrlFull" alt="Logo" class="brand-logo" :style="logoSizeStyle" />
+              <svg v-else viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect x="4" y="4" width="24" height="24" rx="5" fill="url(#navGradient)"/>
                 <path d="M10 16L13 19L22 10" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <defs>
@@ -261,7 +288,7 @@ watch(() => menuStore.version, () => {
                 </defs>
               </svg>
             </div>
-            <span class="brand-text">价格管理系统</span>
+            <span class="brand-text">{{ themeConfig.systemName }}</span>
           </div>
         </div>
 
@@ -425,7 +452,10 @@ watch(() => menuStore.version, () => {
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <span class="mobile-title">价格管理系统</span>
+          <span class="mobile-title">
+            <img v-if="logoUrlFull" :src="logoUrlFull" alt="Logo" class="mobile-brand-logo" :style="logoSizeStyle" />
+            <span v-else>{{ themeConfig.systemName }}</span>
+          </span>
         </div>
         <button class="mobile-logout" @click="handleLogout">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -580,6 +610,19 @@ watch(() => menuStore.version, () => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.mobile-brand-logo {
+  max-height: 32px;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .brand-text {
