@@ -1059,11 +1059,11 @@ onUnmounted(() => {
 }
 
 .price-change.positive {
-  color: #EF4444;
+  color: var(--price-rise-color);
 }
 
 .price-change.negative {
-  color: #10B981;
+  color: var(--price-fall-color);
 }
 
 .price-change:not(.positive):not(.negative) {
@@ -1360,11 +1360,11 @@ onUnmounted(() => {
 }
 
 .compare-value.positive {
-  color: #EF4444;
+  color: var(--price-rise-color);
 }
 
 .compare-value.negative {
-  color: #10B981;
+  color: var(--price-fall-color);
 }
 
 .unit-row {

@@ -1,0 +1,29 @@
+# =====================================================
+# 价格管理系统 - 后端 Dockerfile (生产环境使用预编译JAR)
+# =====================================================
+
+FROM eclipse-temurin:17-jre-alpine
+
+# 安全：创建非root用户
+RUN addgroup -g 1001 appgroup && \
+    adduser -u 1001 -G appgroup -s /bin/sh -D appuser
+
+WORKDIR /app
+
+# 创建日志目录
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
+
+# 复制预编译的 JAR 文件
+COPY price-management-backend-1.0.0.jar app.jar
+
+# 设置环境变量
+ENV JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
+
+# 暴露端口
+EXPOSE 8080
+
+# 使用非root用户运行
+USER appuser
+
+# 启动命令
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

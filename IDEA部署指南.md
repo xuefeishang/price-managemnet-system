@@ -76,7 +76,7 @@ mysql -u root -p
 CREATE DATABASE IF NOT EXISTS price_management DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 # （可选）创建专用数据库用户
-CREATE USER IF NOT EXISTS 'pricemanagement'@'localhost' IDENTIFIED BY '123abc';
+CREATE USER IF NOT EXISTS 'pricemanagement'@'localhost' IDENTIFIED BY '【敏感-已移除】';
 GRANT ALL PRIVILEGES ON price_management.* TO 'pricemanagement'@'localhost';
 FLUSH PRIVILEGES;
 
@@ -127,7 +127,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/price_management?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root  # 或您创建的专用用户
-    password: 123abc  # 修改为您的实际密码
+    password: 【敏感-已移除】  # 修改为您的实际密码
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -177,7 +177,7 @@ spring:
  \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
   '  |____| .__|_| |_|_| |_\__, | / / / /
  =========|_|==============|___/=/_/_/_/
- :: Spring Boot ::                (v3.2.0)
+ :: Spring Boot ::                (v4.0.6)
 
 ... 省略其他日志 ...
 
@@ -198,7 +198,7 @@ Started PriceManagementApplication in X.XXX seconds
 ```json
 {
   "username": "admin",
-  "password": "admin123"
+  "password": "【敏感-已移除】"
 }
 ```
 
@@ -222,7 +222,7 @@ Started PriceManagementApplication in X.XXX seconds
 - **主机**：`localhost`
 - **端口**：`3306`
 - **用户**：`root`（或您创建的用户）
-- **密码**：`123abc`
+- **密码**：`【敏感-已移除】`
 - **数据库**：`price_management`
 
 ### 5.4 测试并保存连接
@@ -289,7 +289,7 @@ npm run dev
 2. 如果没有自动打开，手动在浏览器中访问
 3. 使用默认用户登录：
    - 用户名：`admin`
-   - 密码：`admin123`
+   - 密码：`【敏感-已移除】`
 
 ---
 
@@ -597,7 +597,7 @@ EXIT;
 mysql -u root -p price_management < /path/to/backend/src/main/resources/init.sql
 ```
 
-> 注意：用户数据由 Spring Boot 应用启动时的 DataInitializer 自动初始化，密码统一为 admin123。
+> 注意：用户数据由 Spring Boot 应用启动时的 DataInitializer 自动初始化，密码统一为 【敏感-已移除】。
 
 ### 安全配置
 

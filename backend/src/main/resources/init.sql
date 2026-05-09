@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS product_category (
 CREATE TABLE IF NOT EXISTS product (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '产品ID',
     name VARCHAR(200) NOT NULL COMMENT '产品名称',
+    code VARCHAR(100) COMMENT '产品编码',
     selling_price DECIMAL(15, 4) COMMENT '售价',
     budget_price DECIMAL(15, 4) COMMENT '预算价格',
     category_id BIGINT COMMENT '分类ID',
@@ -58,12 +59,16 @@ CREATE TABLE IF NOT EXISTS product (
     remark TEXT COMMENT '备注',
     unit VARCHAR(50) COMMENT '计量单位：元/吨、万元/吨、元/克、元/千克',
     sort_order INT DEFAULT 0 COMMENT '排序顺序',
+    show_on_home BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否在首页展示',
+    currency VARCHAR(20) DEFAULT 'CNY' COMMENT '计价币种：CNY-人民币、USD-美元、EUR-欧元',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     FOREIGN KEY (category_id) REFERENCES product_category(id) ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_product_category (category_id),
     INDEX idx_product_status (status),
     INDEX idx_product_name (name),
+    INDEX idx_product_code (code),
     INDEX idx_product_sort (sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产品表';
 
@@ -113,6 +118,7 @@ CREATE TABLE IF NOT EXISTS price (
     unit VARCHAR(50) COMMENT '单位：元/吨、元/克等',
     price_spec VARCHAR(200) COMMENT '价格规格',
     created_by BIGINT COMMENT '创建人',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE ON UPDATE CASCADE,
     INDEX idx_price_product (product_id),
@@ -129,6 +135,7 @@ CREATE TABLE IF NOT EXISTS price_history (
     old_price DECIMAL(15, 4) COMMENT '旧价格',
     new_price DECIMAL(15, 4) NOT NULL COMMENT '新价格',
     change_type VARCHAR(20) NOT NULL COMMENT '变动类型：CREATE/UPDATE/DELETE',
+    changed_by BIGINT COMMENT '变更操作人ID',
     remark TEXT COMMENT '备注',
     changed_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '变动时间',
     FOREIGN KEY (price_id) REFERENCES price(id) ON DELETE SET NULL ON UPDATE CASCADE,
@@ -136,7 +143,8 @@ CREATE TABLE IF NOT EXISTS price_history (
     INDEX idx_history_product (product_id),
     INDEX idx_history_price (price_id),
     INDEX idx_history_time (changed_time),
-    INDEX idx_history_type (change_type)
+    INDEX idx_history_type (change_type),
+    INDEX idx_history_changed_by (changed_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='价格历史表';
 
 -- 1.6 数据同步日志表
@@ -155,6 +163,32 @@ CREATE TABLE IF NOT EXISTS sync_log (
     INDEX idx_sync_status (sync_status),
     INDEX idx_sync_time (started_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据同步日志表';
+
+-- =====================================================
+-- 1.7 操作日志表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS operation_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+    user_id BIGINT COMMENT '用户ID',
+    username VARCHAR(100) COMMENT '用户名',
+    operation_type VARCHAR(50) COMMENT '操作类型',
+    operation_module VARCHAR(100) COMMENT '操作模块',
+    operation_desc VARCHAR(500) COMMENT '操作描述',
+    request_method VARCHAR(10) COMMENT '请求方法',
+    request_url VARCHAR(500) COMMENT '请求URL',
+    request_params TEXT COMMENT '请求参数',
+    response_code VARCHAR(10) COMMENT '响应码',
+    response_data TEXT COMMENT '响应数据',
+    ip_address VARCHAR(50) COMMENT 'IP地址',
+    user_agent VARCHAR(500) COMMENT '用户代理',
+    operation_time DATETIME NOT NULL COMMENT '操作时间',
+    execution_time BIGINT COMMENT '执行时间(毫秒)',
+    error_message TEXT COMMENT '错误信息',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    INDEX idx_operation_user (user_id),
+    INDEX idx_operation_type (operation_type),
+    INDEX idx_operation_time (operation_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
 
 -- =====================================================
 -- 2. 初始化用户数据
@@ -339,7 +373,7 @@ CREATE TABLE IF NOT EXISTS sys_dict (
     category VARCHAR(50) NOT NULL COMMENT '分类标识',
     dict_key VARCHAR(100) NOT NULL COMMENT '字典键',
     dict_value VARCHAR(200) NOT NULL COMMENT '显示值',
-    extra_value VARCHAR(200) COMMENT '扩展值（如货币符号、图标名等）',
+    extra_value VARCHAR(500) COMMENT '扩展值（如货币符号、图标名、JSON配置等）',
     sort_order INT DEFAULT 0 COMMENT '排序顺序',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
     remark TEXT COMMENT '备注',

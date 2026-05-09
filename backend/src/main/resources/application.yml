@@ -1,4 +1,3 @@
-
 server:
   port: 8080
 
@@ -7,9 +6,9 @@ spring:
     name: price-management-system
 
   datasource:
-    url: jdbc:mysql://localhost:3306/price_management?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123abc
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:price_management}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:Root@2026}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -27,9 +26,29 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  data:
+    redis:
+      host: ${REDIS_HOST:10.7.5.175}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      password: ${REDIS_PASSWORD:123abc}
+      timeout: 5000ms
+
+  cache:
+    type: simple
+
+# 安全配置（敏感配置集中管理）
+security:
+  jwt-secret: ${JWT_SECRET:price-management-system-secret-key-2024}
+  jwt-expiration: ${JWT_EXPIRATION:86400000}
+  # 默认用户密码（重要：生产环境必须修改）
+  default-user-password: ${DEFAULT_USER_PASSWORD:admin123}
+  # 是否在启动时重置默认用户密码（生产环境建议设为false）
+  reset-password-on-startup: true
+
 jwt:
-  secret: price-management-system-secret-key-2024
-  expiration: 86400000
+  secret: ${JWT_SECRET:price-management-system-secret-key-2024}
+  expiration: ${JWT_EXPIRATION:86400000}
 
 logging:
   level:

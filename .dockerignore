@@ -1,0 +1,45 @@
+# Docker 构建忽略文件
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# 构建产物
+target/
+dist/
+node_modules/
+
+# 文档
+*.md
+!README.md
+plan/
+
+# 环境文件
+.env
+.env.*
+*.local
+
+# 日志
+logs/
+*.log
+
+# 临时文件
+*.tmp
+*.bak
+.DS_Store
+
+# 后端源码（不需要，jar已打包）
+backend/src/
+
+# 前端源码（不需要，已构建）
+frontend/src/
+frontend/public/
+frontend/index.html
+frontend/vite.config.ts
+frontend/tsconfig.json
+frontend/.eslintrc*

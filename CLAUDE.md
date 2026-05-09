@@ -19,6 +19,24 @@
 - Repository 查询方法与数据库 SQL 是否匹配
 - 新增功能需要检查 init.sql 是否需要更新
 
+**ORM 注解一致性检查（必须）：**
+
+每次修改 Entity 后，必须检查以下注解引用与数据库表结构是否一致：
+
+| 注解类型 | 检查项 |
+|----------|--------|
+| `@Table(name="xxx")` | 表名是否存在 |
+| `@Column(name="xxx")` | 列名是否存在，类型是否匹配 |
+| `@JoinColumn(name="xxx")` | 外键列是否存在 |
+| `@ManyToOne` / `@OneToMany` | 外键关系是否正确 |
+| `@JoinTable` | 中间表是否存在 |
+| `@Version` | 乐观锁列是否存在 |
+| `@Transient` | 不参与数据库映射的字段是否有此注解 |
+
+**不一致会导致：** JPA 启动时报错或列数据无法正确读写。
+
+**辅助工具：** 启动应用时设置 `jpa.show-sql: true` 观察 Hibernate 输出的 DDL 语句。
+
 **数据字典与数据库一致性检查：**
 
 - 数据字典文档中的表结构与实际数据库表是否一致
@@ -88,6 +106,29 @@ const roleName = getRoleLabel(user.role)
 - 分层：controller / service / repository / entity / dto / config / util / annotation
 - 使用 Lombok 简化代码
 - 使用 `@OperationLog` 注解记录操作日志
+
+**配置管理规范（重要）：**
+
+敏感配置必须通过环境变量管理，禁止硬编码：
+
+| 配置项 | 环境变量 | 默认值处理 |
+|--------|----------|------------|
+| 数据库密码 | `DB_PASSWORD` | 使用 `${DB_PASSWORD:默认值}` |
+| Redis密码 | `REDIS_PASSWORD` | 使用 `${REDIS_PASSWORD:默认值}` |
+| JWT密钥 | `JWT_SECRET` | 使用 `${JWT_SECRET:默认值}` |
+| 默认用户密码 | `DEFAULT_USER_PASSWORD` | 通过 `SecurityProperties` 读取 |
+
+**配置属性类规范：**
+
+- 使用 `@ConfigurationProperties` 创建类型安全的配置属性类
+- 配置类放在 `config/properties/` 目录下
+- 示例：`SecurityProperties.java` 管理所有安全相关配置
+
+**敏感信息处理：**
+
+- 默认用户密码通过 `security.default-user-password` 配置
+- 支持通过 `security.reset-password-on-startup` 控制启动时是否重置密码
+- 生产环境必须修改默认密码，禁止使用弱密码
 
 **RESTful API 规范：**
 
@@ -165,6 +206,7 @@ price-management-system/
 │       ├── entity/         # 实体类
 │       ├── dto/            # 数据传输对象
 │       ├── config/         # 配置类
+│       │   └── properties/ # 配置属性类（如 SecurityProperties）
 │       ├── util/           # 工具类
 │       └── annotation/     # 自定义注解
 ├── frontend/
@@ -192,9 +234,9 @@ price-management-system/
 
 | 用户名 | 密码 | 角色 |
 |--------|------|------|
-| admin | admin123 | ADMIN |
-| editor | editor123 | EDITOR |
-| viewer | viewer123 | VIEWER |
+| admin | 【敏感-已移除】 | ADMIN |
+| editor | 【敏感-已移除】 | EDITOR |
+| viewer | 【敏感-已移除】 | VIEWER |
 
 ---
 
@@ -220,7 +262,8 @@ price-management-system/
 系统管理
   ├── 用户管理（仅ADMIN）
   ├── 菜单配置（仅ADMIN）
-  └── 日志管理（仅ADMIN）
+  ├── 日志管理（仅ADMIN）
+  └── 样式设置（仅ADMIN）
 ```
 
 ---
@@ -245,6 +288,7 @@ price-management-system/
 |------|------|------|---------|
 | `CLAUDE.md` | 项目规范、AI助手指导原则 | Claude Code | 规范变更时 |
 | `README.md` | 项目入口文档：简介、功能列表、快速启动 | 所有访问者 | 功能变更时 |
+| `操作手册.md` | 完整操作指南：本地开发 / GitHub更新 / 生产部署 | 开发者/运维 | 操作流程变更时 |
 | `开发指南.md` | 开发流程、代码规范、Git规范、API文档、常用命令 | 开发者 | 开发流程变更时 |
 | `IDEA部署指南.md` | 本地开发环境部署 + 生产环境部署 | 开发者 | 部署方式变更时 |
 | `项目设计文档.md` | 技术选型、数据库设计、API设计、功能模块设计 | 设计师/架构师 | 技术变更时 |
@@ -255,19 +299,22 @@ price-management-system/
 
 ```
 新成员加入
-  └─ README.md → 开发指南.md → IDEA部署指南.md
+  └─ README.md → 操作手册.md → 开发指南.md
 
 开发新功能
   └─ CLAUDE.md → 项目设计文档.md → 开发指南.md
 
 部署生产环境
-  └─ IDEA部署指南.md → 生产部署章节
+  └─ 操作手册.md → 生产部署章节
 
 汇报/总结
   └─ 项目完成总结.md
 
 UI设计变更
   └─ UI设计说明.md
+
+日常操作
+  └─ 操作手册.md（本地开发 / GitHub更新 / 生产部署）
 ```
 
 ### 文档更新原则

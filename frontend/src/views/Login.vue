@@ -2,9 +2,11 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
+import { useTheme } from '@/composables/useTheme'
 
 const userStore = useUserStore()
 const router = useRouter()
+const { themeConfig, loadThemeConfig } = useTheme()
 
 const form = ref({
   username: '',
@@ -92,11 +94,14 @@ const clearError = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (userStore.isAuthenticated) {
     router.push('/home')
     return
   }
+
+  // 加载主题配置（包含系统名称）
+  await loadThemeConfig()
 
   // 恢复记住的用户名
   const savedUsername = localStorage.getItem('rememberUsername')
@@ -121,7 +126,7 @@ onUnmounted(() => {
         <!-- 左侧品牌区域 -->
         <div class="brand-section">
           <div class="brand-content">
-            <h1 class="brand-title">价格管理系统</h1>
+            <h1 class="brand-title">{{ themeConfig.systemName }}</h1>
             <p class="brand-subtitle">企业价格展示与管理平台</p>
           </div>
         </div>
@@ -135,6 +140,7 @@ onUnmounted(() => {
             </div>
 
             <div class="form-body">
+              <form @submit.prevent="handleLogin">
               <!-- 错误提示 -->
               <div v-if="errorMessage" class="error-message">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -205,7 +211,7 @@ onUnmounted(() => {
               <button
                 class="login-button"
                 :class="{ loading: loading }"
-                @click="handleLogin"
+                type="submit"
                 :disabled="loading || !form.username || !form.password"
               >
                 <span v-if="!loading">登录</span>
@@ -216,6 +222,7 @@ onUnmounted(() => {
                   登录中...
                 </span>
               </button>
+              </form>
             </div>
           </div>
         </div>
@@ -227,12 +234,12 @@ onUnmounted(() => {
       <div class="login-content">
         <!-- 标题区域 -->
         <div class="title-section">
-          <h1 class="main-title">价格管理系统</h1>
+          <h1 class="main-title">{{ themeConfig.systemName }}</h1>
           <p class="subtitle">企业价格展示与管理平台</p>
         </div>
 
         <!-- 登录表单 -->
-        <div class="form-container">
+        <form class="form-container" @submit.prevent="handleLogin">
           <!-- 错误提示 -->
           <div v-if="errorMessage" class="error-message error-message-mobile">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -303,13 +310,13 @@ onUnmounted(() => {
           <button
             class="login-button"
             :class="{ loading: loading }"
-            @click="handleLogin"
+            type="submit"
             :disabled="loading || !form.username || !form.password"
           >
             <span v-if="!loading">登录</span>
             <span v-else class="loading-text">登录中...</span>
           </button>
-        </div>
+        </form>
       </div>
     </template>
   </div>

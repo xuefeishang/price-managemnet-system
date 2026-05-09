@@ -477,7 +477,7 @@ onUnmounted(() => {
 }
 
 .page-title-pc {
-  font-family: var(--font-heading),serif;
+  font-family: var(--font-heading, 'Newsreader', Georgia, serif);
   font-size: 24px;
   font-weight: 500;
   color: var(--text-primary);

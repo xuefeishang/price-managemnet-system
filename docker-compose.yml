@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: price-management-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # 数据库配置（使用服务器上的MySQL）
+      - DB_HOST=10.7.5.175
+      - DB_PORT=3306
+      - DB_NAME=price_management
+      - DB_USERNAME=root
+      - DB_PASSWORD=${DB_PASSWORD:-admin123}
+      # Redis配置
+      - REDIS_HOST=10.7.5.175
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-123abc}
+      # 安全配置
+      - JWT_SECRET=${JWT_SECRET:-price-management-system-secret-key-2024}
+      - DEFAULT_USER_PASSWORD=${DEFAULT_USER_PASSWORD:-admin123}
+      - RESET_PASSWORD_ON_STARTUP=false
+      # Java配置
+      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:+UseG1GC
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - price-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: price-management-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - price-network
+
+networks:
+  price-network:
+    driver: bridge

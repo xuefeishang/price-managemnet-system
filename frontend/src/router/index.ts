@@ -146,6 +146,12 @@ const router = createRouter({
           name: 'DictManagement',
           component: () => import('../views/DictManagement.vue'),
           meta: { title: '数据字典', adminOnly: true }
+        },
+        {
+          path: 'style-settings',
+          name: 'StyleSettings',
+          component: () => import('../views/StyleSettings.vue'),
+          meta: { title: '样式设置', adminOnly: true }
         }
       ]
     }

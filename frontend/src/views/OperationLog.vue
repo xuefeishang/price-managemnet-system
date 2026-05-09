@@ -8,8 +8,11 @@ import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from
 import { CanvasRenderer } from 'echarts/renderers'
 import { getLogs, getLogStatistics, getMonthlyReport, getYearlyReport, type OperationLog, type LogStatistics, type MonthlyReport, type YearlyReport } from '@/api/logs'
 import { getDictOptions, getDictValue, getOperationTypeLabel, loadAllDicts } from '@/composables/useDict'
+import { useTheme } from '@/composables/useTheme'
 
 use([LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer])
+
+const { themeConfig } = useTheme()
 
 const loading = ref(false)
 const logList = ref<OperationLog[]>([])
@@ -220,13 +223,13 @@ const trendChartOptions = computed(() => {
         color: {
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: 'rgba(13, 110, 110, 0.3)' },
-            { offset: 1, color: 'rgba(13, 110, 110, 0.05)' }
+            { offset: 0, color: themeConfig.value.chartPrimaryColor + '4D' },
+            { offset: 1, color: themeConfig.value.chartPrimaryColor + '0D' }
           ]
         }
       },
-      lineStyle: { color: '#0D6E6E', width: 2 },
-      itemStyle: { color: '#0D6E6E' }
+      lineStyle: { color: themeConfig.value.chartPrimaryColor, width: 2 },
+      itemStyle: { color: themeConfig.value.chartPrimaryColor }
     }]
   }
 })
@@ -252,7 +255,7 @@ const operationTypeChartOptions = computed(() => {
         label: { show: true, fontSize: 14, fontWeight: 'bold' }
       },
       data: pieData,
-      color: ['#0D6E6E', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6', '#64748B']
+      color: themeConfig.value.chartColors
     }]
   }
 })
@@ -276,7 +279,7 @@ const moduleChartOptions = computed(() => {
     series: [{
       type: 'bar',
       data: values,
-      itemStyle: { color: '#0D6E6E', borderRadius: [4, 4, 0, 0] },
+      itemStyle: { color: themeConfig.value.chartPrimaryColor, borderRadius: [4, 4, 0, 0] },
       barWidth: '50%'
     }]
   }

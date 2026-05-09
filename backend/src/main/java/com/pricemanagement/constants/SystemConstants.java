@@ -68,7 +68,8 @@ public final class SystemConstants {
             "/api/auth/login",
             "/api/auth/register",
             "/api/menus/tree",
-            "/api/menus/visible"
+            "/api/menus/visible",
+            "/api/static/**"
     };
 
     // ==================== 角色辅助方法 ====================
