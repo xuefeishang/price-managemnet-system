@@ -7,7 +7,7 @@
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3 + TypeScript + Vant UI + Pinia + ECharts 5 |
-| 后端 | Spring Boot 4.0.6 + Java 17 |
+| 后端 | Spring Boot 4.0.6 + Java 25 |
 | 数据库 | MySQL 8.4 |
 | 认证 | JWT |
 

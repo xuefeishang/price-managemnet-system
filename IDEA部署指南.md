@@ -6,7 +6,7 @@
 在开始之前，请确保您已安装以下软件：
 
 1. **IntelliJ IDEA**（推荐使用 Ultimate 版本，Community 版本也可以）
-2. **Java JDK 17** 或更高版本
+2. **Java JDK 25** 或更高版本
 3. **MySQL 8.4** 或更高版本
 4. **Node.js 16** 或更高版本（用于前端开发）
 5. **Git**（可选，用于版本控制）
@@ -21,13 +21,13 @@
 - **文件** → **项目结构**（快捷键：`Ctrl+Alt+Shift+S`）
 
 在左侧导航栏选择 **SDKs**：
-- 如果已经看到有 Java 17 的 SDK，说明已安装
+- 如果已经看到有 Java 25 的 SDK，说明已安装
 - 如果没有，点击 **+** 号 → **添加SDK** → **下载JDK**
 
-### 1.2 下载并配置Java 17
+### 1.2 下载并配置Java 25
 
 1. 在 **下载JDK** 对话框中：
-   - 版本：选择 `17`
+   - 版本：选择 `25`
    - 供应商：选择 `Eclipse Temurin` 或 `AdoptOpenJDK`
    - 点击 **下载**
 
@@ -337,10 +337,10 @@ npm run dev
 
 **解决方法**：
 1. **文件** → **项目结构** → **项目**
-2. 确保 **SDK** 选择的是 Java 17
-3. 确保 **语言级别**（Language level）是 `17 - Sealed types, pattern matching for switch`
+2. 确保 **SDK** 选择的是 Java 25
+3. 确保 **语言级别**（Language level）是 `25 - Type Diagrams, Implicit Class Types`
 4. **文件** → **设置** → **构建、执行、部署** → **编译器** → **Java编译器**
-5. 确保 **模块字节码版本**（Project bytecode version）是 17
+5. 确保 **模块字节码版本**（Project bytecode version）是 25
 
 ### 问题2：Maven依赖下载失败
 
@@ -455,7 +455,7 @@ npm run dev
 
 #### 软件配置
 - **操作系统**: CentOS 7.6+ 或 Ubuntu 18.04+
-- **Java**: OpenJDK 17+
+- **Java**: OpenJDK 25+
 - **MySQL**: 8.0+
 - **Nginx**: 1.16+（用于部署前端）
 
