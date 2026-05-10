@@ -94,7 +94,8 @@
       "Read(//c/Program Files/Docker//**)",
       "Bash(/c/Program Files/Docker/Docker/Docker Desktop.exe *)",
       "Bash(docker compose *)",
-      "Bash(scp *)"
+      "Bash(scp *)",
+      "Bash(gh pr *)"
     ]
   }
 }

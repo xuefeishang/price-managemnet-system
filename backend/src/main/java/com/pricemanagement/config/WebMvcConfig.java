@@ -9,8 +9,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import java.nio.file.Paths;
-
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
@@ -27,10 +25,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Build absolute path to resources/static/logo directory
-        String baseDir = System.getProperty("user.dir");
-        String logoPath = Paths.get(baseDir, "src", "main", "resources", "static", "logo")
-                .toUri().toString();
+        // Logo files are stored in /app/data/logos/ (Docker volume mount)
+        String logoPath = "file:/app/data/logos/";
         registry.addResourceHandler("/api/static/logo/**")
                 .addResourceLocations(logoPath);
     }

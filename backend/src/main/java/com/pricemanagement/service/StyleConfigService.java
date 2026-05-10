@@ -10,6 +10,7 @@ import com.pricemanagement.entity.SysDict;
 import com.pricemanagement.repository.SysDictRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,9 @@ public class StyleConfigService {
 
     private static final long MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2MB
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#[0-9A-Fa-f]{6}$");
-    private static final String LOGO_DIR = "src/main/resources/static/logo/";
+
+    @Value("${style.logo.dir:#{systemProperties['java.io.tmpdir']}/logos/}")
+    private String logoDir;
 
     public static final String CATEGORY_STYLE = "style";
     public static final String CATEGORY_THEME = "theme";
@@ -201,7 +204,7 @@ public class StyleConfigService {
         }
 
         String newFilename = "logo_" + System.currentTimeMillis() + extension;
-        Path logoDir = Paths.get(LOGO_DIR);
+        Path logoDir = Paths.get(logoDir);
 
         if (!Files.exists(logoDir)) {
             Files.createDirectories(logoDir);

@@ -28,9 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final List<String> PUBLIC_PATHS = List.of(SystemConstants.PUBLIC_PATHS);
 
     // 允许未登录访问的路径（但如果带 token 会正常认证）
-    private static final List<String> OPTIONAL_AUTH_PATHS = List.of(
-            "/api/style/config"
-    );
+    private static final List<String> OPTIONAL_AUTH_PATHS = List.of();
 
     public JwtAuthenticationFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
@@ -80,7 +78,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(username, null, authorities);
                     authentication.setDetails(userId);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-                    log.info("Authenticated user: {} with role: {}", username, role);
+                    log.info("Authenticated user: {} with role: {}, authorities: {}", username, role, authorities);
                 }
             } else {
                 log.warn("Invalid JWT token for request");

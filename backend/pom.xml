@@ -19,7 +19,7 @@
     <description>Price Management System Backend</description>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>25</java.version>
         <lombok.version>1.18.30</lombok.version>
         <spring-security.version>7.0.5</spring-security.version>
         <logback.version>1.5.25</logback.version>

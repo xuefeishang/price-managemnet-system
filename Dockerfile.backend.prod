@@ -2,7 +2,7 @@
 # 价格管理系统 - 后端 Dockerfile (生产环境使用预编译JAR)
 # =====================================================
 
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # 安全：创建非root用户
 RUN addgroup -g 1001 appgroup && \
