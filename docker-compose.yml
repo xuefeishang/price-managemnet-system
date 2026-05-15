@@ -56,7 +56,7 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: price-management-frontend
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - backend
     restart: unless-stopped
