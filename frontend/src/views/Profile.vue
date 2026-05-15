@@ -216,7 +216,6 @@ const handleLogout = () => {
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
-  window.addEventListener('resize', handleResize)
   loadSettings()
 
   // 如果用户信息为空，先获取

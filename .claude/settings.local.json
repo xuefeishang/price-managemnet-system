@@ -141,7 +141,8 @@
       "Bash(wsl.exe --install Debian)",
       "Bash(wsl.exe -d Debian -- echo \"WSL works\")",
       "WebFetch(domain:spring.io)",
-      "Bash(mvn spring-boot:run -Dspring-boot.run.jvmArguments=\"-Dserver.port=8080\")"
+      "Bash(mvn spring-boot:run -Dspring-boot.run.jvmArguments=\"-Dserver.port=8080\")",
+      "Bash(ping *)"
     ]
   }
 }

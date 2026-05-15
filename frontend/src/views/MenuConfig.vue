@@ -260,11 +260,9 @@ const toggleVisible = async (menu: MenuItem) => {
 
 onMounted(() => {
   loadMenus()
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getOrigins, updateOrigin, deleteOrigin } from '@/api/origins'
-import { usePermission } from '@/composables/usePermission'
 import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
 import { useLayout } from '@/composables/useLayout'
 import type { Origin } from '@/types'
 
 const router = useRouter()
-const { hasPermission } = usePermission()
 const { isPCLayout } = useLayout()
 
 const origins = ref<Origin[]>([])

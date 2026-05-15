@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
