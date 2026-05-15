@@ -46,16 +46,19 @@ public class PriceService {
     private final ApprovalRequestRepository requestRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @Transactional(readOnly = true)
     public List<PriceHistory> getProductPriceHistory(Long productId) {
         List<PriceHistory> historyList = priceHistoryRepository.findByProductIdOrderByChangedTimeDesc(productId);
         log.debug("Found {} price history records for product id: {}", historyList.size(), productId);
         return historyList;
     }
 
+    @Transactional(readOnly = true)
     public Optional<Price> getPriceById(Long id) {
         return priceRepository.findById(id);
     }
 
+    @Transactional(readOnly = true)
     public Optional<Price> getCurrentPriceByProductId(Long productId) {
         return priceRepository.findFirstByProductIdOrderByCreatedTimeDesc(productId);
     }
@@ -509,10 +512,23 @@ public class PriceService {
 
         List<Price> prices = priceRepository.findByProductIdAndDateRange(productId, startDate, endDate);
 
-        // 去重：同一天只保留createdTime最新的一条
+        // 如果查询范围内没有找到数据，获取最近的价格记录（按 createdTime 降序）
+        if (prices.isEmpty()) {
+            prices = priceRepository.findByProductIdOrderByCreatedTimeDesc(productId);
+            // 只取最近 'days' 条记录
+            if (prices.size() > days) {
+                prices = prices.subList(0, days);
+            }
+        }
+
+        // 去重：同一天只保留createdTime最新的一条，过滤掉 effectiveDate 为 null 的记录
         Map<LocalDate, Price> latestByDate = new HashMap<>();
         for (Price p : prices) {
             LocalDate ed = p.getEffectiveDate();
+            // 跳过 effectiveDate 为 null 的记录
+            if (ed == null) {
+                continue;
+            }
             Price existing = latestByDate.get(ed);
             if (existing == null || p.getCreatedTime().isAfter(existing.getCreatedTime())) {
                 latestByDate.put(ed, p);

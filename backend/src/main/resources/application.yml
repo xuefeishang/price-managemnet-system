@@ -4,22 +4,33 @@ server:
 spring:
   application:
     name: price-management-system
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:price_management}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:price_management}?useUnicode=true&characterEncoding=utf8&useSSL=${DB_USE_SSL:true}&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:Root@2026}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
-    open-in-view: true
+    open-in-view: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+        default_batch_fetch_size: 50
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
+    encoding: UTF-8
+    validate-on-migrate: true
 
   servlet:
     multipart:
@@ -31,25 +42,54 @@ spring:
       host: ${REDIS_HOST:10.7.5.175}
       port: ${REDIS_PORT:6379}
       username: ${REDIS_USERNAME:default}
-      password: ${REDIS_PASSWORD:123abc}
+      password: ${REDIS_PASSWORD}
       timeout: 5000ms
+      # 连接池配置
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
 
   cache:
-    type: simple
+    type: redis
 
 # 安全配置（敏感配置集中管理）
 security:
-  jwt-secret: ${JWT_SECRET:price-management-system-secret-key-2024}
+  jwt-secret: ${JWT_SECRET}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
   # 默认用户密码（重要：生产环境必须修改）
-  default-user-password: ${DEFAULT_USER_PASSWORD:admin123}
+  default-user-password: ${DEFAULT_USER_PASSWORD}
   # 是否在启动时重置默认用户密码（生产环境建议设为false）
   reset-password-on-startup: true
+  # CORS允许的来源（生产环境必须配置具体域名，不配置时仅允许本地开发来源）
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}
 
 jwt:
-  secret: ${JWT_SECRET:price-management-system-secret-key-2024}
+  secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
 
 logging:
   level:
     com.pricemanagement: debug
+    org.springframework.security: debug
+
+# 告警配置
+alert:
+  enabled: ${ALERT_ENABLED:false}
+  ding-talk:
+    enabled: ${ALERT_DINGTALK_ENABLED:false}
+    webhook: ${ALERT_DINGTALK_WEBHOOK:}
+    secret: ${ALERT_DINGTALK_SECRET:}
+  we-chat:
+    enabled: ${ALERT_WECHAT_ENABLED:false}
+    webhook: ${ALERT_WECHAT_WEBHOOK:}
+  threshold:
+    memory-usage: ${ALERT_THRESHOLD_MEMORY:90.0}
+    cpu-usage: ${ALERT_THRESHOLD_CPU:80.0}
+
+# Actuator 健康检查配置
+management:
+  health:
+    redis:
+      enabled: false  # Redis 健康检查不阻止应用启动

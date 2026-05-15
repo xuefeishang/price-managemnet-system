@@ -42,10 +42,42 @@ public class Product {
     @Column(name = "budget_price", precision = 15, scale = 4)
     private BigDecimal budgetPrice;  // 预算价格
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "category_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private ProductCategory category;
+
+    /**
+     * 用于JSON序列化的分类信息（避免Hibernate代理问题）
+     */
+    @Transient
+    @com.fasterxml.jackson.annotation.JsonProperty("category")
+    private CategoryInfo categoryInfo;
+
+    /**
+     * 分类信息DTO（用于JSON序列化）
+     */
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
+    public static class CategoryInfo {
+        private Long id;
+        private String name;
+        private String code;
+
+        public static CategoryInfo from(ProductCategory category) {
+            if (category == null) return null;
+            return new CategoryInfo(category.getId(), category.getName(), category.getCode());
+        }
+    }
+
+    /**
+     * 获取用于序列化的分类信息
+     */
+    public CategoryInfo getCategoryInfo() {
+        return CategoryInfo.from(this.category);
+    }
 
     /**
      * 前端传递的分类ID，用于接收前端参数

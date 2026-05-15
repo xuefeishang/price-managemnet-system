@@ -5,18 +5,12 @@ import { showToast, showDialog } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
 import { getRoleLabel } from '@/composables/useDict'
 import { updateProfile, changePassword } from '@/api/auth'
+import { useLayout } from '@/composables/useLayout'
 import type { UpdateProfileRequest, ChangePasswordRequest } from '@/api/auth'
 
 const userStore = useUserStore()
 const router = useRouter()
-
-// 响应式布局
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const isPCLayout = computed(() => windowWidth.value >= 1024)
-
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
+const { isPCLayout } = useLayout()
 
 // 标签页状态
 const activeTab = ref('profile')

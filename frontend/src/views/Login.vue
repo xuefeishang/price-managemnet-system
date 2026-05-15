@@ -3,10 +3,12 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
+import { useLayout } from '@/composables/useLayout'
 
 const userStore = useUserStore()
 const router = useRouter()
 const { themeConfig, loadThemeConfig } = useTheme()
+const { isPCLayout } = useLayout()
 
 const form = ref({
   username: '',
@@ -14,7 +16,6 @@ const form = ref({
 })
 
 const loading = ref(false)
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 const errorMessage = ref('')
 const showPassword = ref(false)
 const rememberUsername = ref(false)
@@ -22,16 +23,6 @@ const rememberUsername = ref(false)
 // 密码可见切换
 const togglePassword = () => {
   showPassword.value = !showPassword.value
-}
-
-// 判断是否为PC布局
-const isPCLayout = computed(() => {
-  return windowWidth.value >= 1024
-})
-
-// 监听窗口大小变化
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
 }
 
 // 表单验证
@@ -95,9 +86,19 @@ const clearError = () => {
 }
 
 onMounted(async () => {
+  // 如果有 token，先验证是否有效
   if (userStore.isAuthenticated) {
-    router.push('/home')
-    return
+    try {
+      // 尝试获取用户信息验证 token 有效性
+      await userStore.fetchProfile()
+      // token 有效，跳转首页
+      router.push('/home')
+      return
+    } catch (error) {
+      // token 无效，清除状态，继续显示登录页
+      console.log('Token invalid, clearing state')
+      userStore.logoutAction()
+    }
   }
 
   // 加载主题配置（包含系统名称）
@@ -109,12 +110,6 @@ onMounted(async () => {
     form.value.username = savedUsername
     rememberUsername.value = true
   }
-
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

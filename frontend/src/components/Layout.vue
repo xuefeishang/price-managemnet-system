@@ -5,6 +5,7 @@ import { useMenuStore } from '@/store/useMenuStore'
 import { useRouter, useRoute } from 'vue-router'
 import { loadAllDicts } from '@/composables/useDict'
 import { useTheme } from '@/composables/useTheme'
+import { useLayout } from '@/composables/useLayout'
 import type { MenuItem } from '@/types'
 
 const userStore = useUserStore()
@@ -12,6 +13,7 @@ const menuStore = useMenuStore()
 const router = useRouter()
 const route = useRoute()
 const { themeConfig, loadThemeConfig } = useTheme()
+const { isPCLayout } = useLayout()
 
 // Logo完整URL
 const logoUrlFull = computed(() => {
@@ -42,10 +44,6 @@ const expandedMobileGroups = ref<Set<number>>(new Set())
 
 // 使用 menuStore 的菜单数据
 const menus = computed(() => menuStore.visibleMenus)
-
-// 响应式布局
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const isPCLayout = computed(() => windowWidth.value >= 1024)
 
 // 根据当前路由自动选中对应的一级菜单
 const updateSelectedMenuByRoute = () => {
@@ -227,11 +225,6 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-// 响应式监听
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-
 onMounted(async () => {
   if (!userStore.isAuthenticated) {
     router.push('/login')
@@ -247,7 +240,6 @@ onMounted(async () => {
   loadAllDicts()
   // 加载主题配置（包含Logo）
   loadThemeConfig()
-  window.addEventListener('resize', handleResize)
 })
 
 watch(() => userStore.isAuthenticated, (isAuth) => {

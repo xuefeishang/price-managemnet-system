@@ -319,7 +319,7 @@ const getChangeTypeClass = (changeType: string) => {
               <button class="trend-tab" :class="{ active: selectedTrendRange === '365' }" @click="selectedTrendRange = '365'" :disabled="trendData365.length <= 1">近12个月</button>
             </div>
           </div>
-          <v-chart class="price-chart-pc" :option="trendChartConfig" autoresize />
+          <v-chart class="price-chart-pc" :option="trendChartConfig" />
           <div class="trend-hint" v-if="currentTrendData.length > 30">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             可拖动查看详细数据
@@ -522,7 +522,7 @@ const getChangeTypeClass = (changeType: string) => {
             <button class="trend-tab-mobile" :class="{ active: selectedTrendRange === '180' }" @click="selectedTrendRange = '180'" :disabled="trendData180.length <= 1">近180天</button>
             <button class="trend-tab-mobile" :class="{ active: selectedTrendRange === '365' }" @click="selectedTrendRange = '365'" :disabled="trendData365.length <= 1">近12个月</button>
           </div>
-          <v-chart class="price-chart-mobile" :option="trendChartConfig" autoresize />
+          <v-chart class="price-chart-mobile" :option="trendChartConfig" />
           <div class="trend-hint-mobile" v-if="currentTrendData.length > 30">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             拖动查看详细

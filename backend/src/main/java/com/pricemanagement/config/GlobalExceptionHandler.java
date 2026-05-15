@@ -1,6 +1,8 @@
 package com.pricemanagement.config;
 
 import com.pricemanagement.dto.Result;
+import com.pricemanagement.exception.RateLimitException;
+import com.pricemanagement.exception.TokenRefreshException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -73,6 +75,26 @@ public class GlobalExceptionHandler {
     public Result<Void> handleAccessDeniedException(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());
         return Result.error(403, "权限不足，拒绝访问");
+    }
+
+    /**
+     * 处理限流异常
+     */
+    @ExceptionHandler(RateLimitException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Result<Void> handleRateLimitException(RateLimitException ex) {
+        log.warn("Rate limit exceeded: {}", ex.getMessage());
+        return Result.error(429, ex.getMessage());
+    }
+
+    /**
+     * 处理 Token 刷新异常
+     */
+    @ExceptionHandler(TokenRefreshException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Result<Void> handleTokenRefreshException(TokenRefreshException ex) {
+        log.warn("Token refresh failed: {}", ex.getMessage());
+        return Result.error(401, ex.getMessage());
     }
 
     /**

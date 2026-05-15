@@ -7,16 +7,13 @@ import { getProducts } from '@/api/products'
 import { addProductPrice, updatePrice, getPricesByDateWithStats, batchUpdateProductSort } from '@/api/products'
 import type { Product, Price } from '@/types'
 import { eventBus } from '@/utils/eventBus'
+import { useLayout } from '@/composables/useLayout'
 
 const router = useRouter()
+const { isPCLayout } = useLayout()
 
 const loading = ref(false)
 const saving = ref(false)
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-
-// 响应式布局
-const isPCLayout = computed(() => windowWidth.value >= 1024)
-defineExpose({ isPCLayout })
 
 // 格式化日期显示
 const formatDateDisplay = (dateStr: string) => {
@@ -406,18 +403,8 @@ const goToNextDate = () => {
   selectedDate.value = date.toISOString().split('T')[0]
 }
 
-// 响应式监听
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadData()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

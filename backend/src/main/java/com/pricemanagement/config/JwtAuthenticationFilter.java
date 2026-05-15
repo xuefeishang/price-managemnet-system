@@ -40,8 +40,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String token = extractToken(request);
 
-        // 公开路径：无需认证，直接放行
+        // 公开路径：无需认证，但如果提供了 token 仍然进行认证（支持权限检查）
         if (isPublicPath(path)) {
+            if (StringUtils.hasText(token)) {
+                authenticateToken(token);
+            }
             filterChain.doFilter(request, response);
             return;
         }

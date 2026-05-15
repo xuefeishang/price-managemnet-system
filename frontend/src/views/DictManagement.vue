@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { showToast, showDialog } from 'vant'
 import { getDicts, createDict, updateDict, deleteDict, getDictCategories } from '@/api/dict'
 import { getStatusLabel, getDictOptions, CATEGORY_LABELS, loadAllDicts, refreshDictCache } from '@/composables/useDict'
+import { useLayout } from '@/composables/useLayout'
 import type { SysDict } from '@/types'
 
 const dicts = ref<SysDict[]>([])
 const categories = ref<string[]>([])
 const loading = ref(false)
 const selectedCategory = ref<string>('')
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 const togglingId = ref<number | null>(null)
+const { isPCLayout } = useLayout()
 
 // 新增/编辑对话框
 const showEditDialog = ref(false)
@@ -196,19 +197,10 @@ const handleDelete = async (dict: SysDict) => {
   }).catch(() => {})
 }
 
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadAllDicts()
   loadDicts()
   loadCategories()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

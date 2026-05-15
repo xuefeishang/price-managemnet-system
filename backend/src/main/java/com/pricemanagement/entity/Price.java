@@ -2,8 +2,12 @@
 package com.pricemanagement.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
@@ -29,10 +33,48 @@ public class Price {
     @Column(name = "version")
     private Long version;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "product_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnore
     private Product product;
+
+    /**
+     * 用于JSON序列化的产品信息（避免Hibernate代理问题）
+     */
+    @Transient
+    @JsonProperty("product")
+    private ProductInfo productInfo;
+
+    /**
+     * 产品信息DTO（用于JSON序列化）
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class ProductInfo {
+        private Long id;
+        private String name;
+        private String code;
+        private Product.CategoryInfo category;
+
+        public static ProductInfo from(Product product) {
+            if (product == null) return null;
+            return new ProductInfo(
+                product.getId(),
+                product.getName(),
+                product.getCode(),
+                product.getCategoryInfo()
+            );
+        }
+    }
+
+    /**
+     * 获取用于序列化的产品信息
+     */
+    public ProductInfo getProductInfo() {
+        return ProductInfo.from(this.product);
+    }
 
     @Column(name = "original_price", precision = 15, scale = 4)
     private BigDecimal originalPrice;

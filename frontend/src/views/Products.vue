@@ -1,31 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
 import { getCustomerName, loadAllDicts, getCurrencySymbol, getStatusLabel, getDictOptions } from '@/composables/useDict'
+import { useLayout } from '@/composables/useLayout'
 import EmptyState from '@/components/EmptyState.vue'
 import { eventBus } from '@/utils/eventBus'
 import type { Product, ProductCategory } from '@/types'
 
 const router = useRouter()
 const { hasPermission } = usePermission()
+const { isPCLayout } = useLayout()
 
 const products = ref<Product[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const categories = ref<ProductCategory[]>([])
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
 
 // 筛选条件
 const filterCategoryId = ref<number | undefined>()
 const filterStatus = ref<string | undefined>()
 const sortBy = ref('sortOrder')
 const sortDirection = ref<'asc' | 'desc'>('asc')
-
-// 响应式布局
-const isPCLayout = computed(() => windowWidth.value >= 1024)
 
 const activeTab = ref('products')
 
@@ -149,23 +147,12 @@ const switchTab = (tab: string) => {
   }
 }
 
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadAllDicts()
   loadCategories()
   loadProducts()
   eventBus.on('prices-updated', loadProducts)
   eventBus.on('product-sort-updated', loadProducts)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  eventBus.off('prices-updated', loadProducts)
-  eventBus.off('product-sort-updated', loadProducts)
 })
 </script>
 

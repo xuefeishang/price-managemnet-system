@@ -1,17 +1,36 @@
 
+/**
+ * Axios HTTP 客户端配置
+ * 提供统一的 API 请求封装，包含：
+ * - 请求拦截：自动添加 Authorization 头
+ * - 响应拦截：统一错误处理、Token 自动刷新
+ * - 请求重试：超时自动重试机制
+ * - 性能监控：记录慢请求日志
+ *
+ * Token 刷新机制：
+ * 1. 当请求返回 401 时，检查是否正在刷新 Token
+ * 2. 如果正在刷新，将请求加入等待队列
+ * 3. 刷新成功后，重试队列中的所有请求
+ * 4. 刷新失败，跳转登录页
+ */
 import axios, { AxiosError } from 'axios'
 import { showToast } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
 
+// API 基础路径（从环境变量读取）
 const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+
+// ==================== Axios 实例配置 ====================
 
 // 创建 axios 实例
 const instance = axios.create({
   baseURL,
-  timeout: 30000,
-  retryDelay: 1000,
-  maxRetries: 3
+  timeout: 30000,      // 请求超时时间（30秒）
+  retryDelay: 1000,    // 重试延迟（1秒）
+  maxRetries: 3        // 最大重试次数
 })
+
+// ==================== 类型扩展 ====================
 
 // 扩展 AxiosRequestConfig 类型
 declare module 'axios' {
@@ -21,8 +40,38 @@ declare module 'axios' {
     metadata?: {
       startTime?: number
     }
+    _retry?: boolean
   }
 }
+
+// ==================== Token 刷新队列 ====================
+
+/** 是否正在刷新 Token */
+let isRefreshing = false
+
+/** 等待刷新完成的请求队列 */
+let failedQueue: Array<{
+  resolve: (value?: string) => void
+  reject: (reason?: any) => void
+}> = []
+
+/**
+ * 处理等待队列
+ * @param error 刷新失败时的错误
+ * @param token 刷新成功时的新 Token
+ */
+const processQueue = (error: Error | null, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token || undefined)
+    }
+  })
+  failedQueue = []
+}
+
+// ==================== 请求拦截器 ====================
 
 // 请求拦截器
 instance.interceptors.request.use(
@@ -40,6 +89,8 @@ instance.interceptors.request.use(
     return Promise.reject(error)
   }
 )
+
+// ==================== 响应拦截器 ====================
 
 // 响应拦截器
 instance.interceptors.response.use(
@@ -65,7 +116,7 @@ instance.interceptors.response.use(
       return Promise.reject(new Error(errorMsg))
     }
   },
-  error => {
+  async error => {
     console.error('Response error:', error)
     const axiosError = error as AxiosError
     const url = error.config?.url || ''
@@ -84,10 +135,56 @@ instance.interceptors.response.use(
     }
 
     // 登录接口的401由业务逻辑处理，不弹全局弹窗
-    // 其他401错误由调用方处理（如路由守卫会自动跳转登录页）
-    if (status === 401 && !url.includes('/auth/login')) {
-      // 不弹对话框，由路由守卫统一处理登出逻辑
-      return Promise.reject(error)
+    // 刷新令牌接口的401也不需要刷新
+    if (status === 401 && !url.includes('/auth/login') && !url.includes('/auth/refresh-token')) {
+      // 如果正在刷新令牌，将请求加入队列
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          if (error.config) {
+            error.config.headers.Authorization = `Bearer ${token}`
+            return instance(error.config)
+          }
+          return Promise.reject(error)
+        }).catch(err => {
+          return Promise.reject(err)
+        })
+      }
+
+      // 标记正在刷新
+      isRefreshing = true
+      error.config._retry = true
+
+      try {
+        const userStore = useUserStore()
+        const newToken = await userStore.refreshAccessToken()
+
+        if (newToken) {
+          // 刷新成功，重试原请求
+          processQueue(null, newToken)
+          if (error.config) {
+            error.config.headers.Authorization = `Bearer ${newToken}`
+            return instance(error.config)
+          }
+          return Promise.reject(error)
+        } else {
+          // 刷新失败，清除状态并跳转登录页
+          processQueue(new Error('Token refresh failed'), null)
+          const userStore = useUserStore()
+          userStore.logoutAction()
+          window.location.href = '/login'
+          return Promise.reject(new Error('Token refresh failed'))
+        }
+      } catch (refreshError) {
+        processQueue(refreshError as Error, null)
+        const userStore = useUserStore()
+        userStore.logoutAction()
+        window.location.href = '/login'
+        return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
+      }
     }
 
     if (status === 403) {

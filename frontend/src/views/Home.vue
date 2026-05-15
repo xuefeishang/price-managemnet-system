@@ -6,12 +6,11 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { getProducts } from '@/api/products'
-import { getPricesByDate, getProductPriceHistory } from '@/api/products'
+import { getProducts, getPricesByDate, getPriceTrend } from '@/api/products'
 import { usePermission, Permission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
-import type { Product, Price, PriceHistory } from '@/types'
+import type { Product, Price } from '@/types'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -35,7 +34,7 @@ const selectedDate = ref(getYesterday())
 
 const priceMap = ref<Map<number, Price>>(new Map())
 const previousPriceMap = ref<Map<number, Price>>(new Map())
-const priceHistoryMap = ref<Map<number, PriceHistory[]>>(new Map())
+const priceHistoryMap = ref<Map<number, any[]>>(new Map())
 const chartOptionsMap = ref<Map<number, any>>(new Map())
 
 const homeProducts = computed(() =>
@@ -83,10 +82,8 @@ const getLastPriceInfo = (productId: number): string | null => {
   }
   const history = priceHistoryMap.value.get(productId)
   if (history && history.length > 0) {
-    const sorted = [...history].sort(
-      (a, b) => new Date(b.changedTime).getTime() - new Date(a.changedTime).getTime()
-    )
-    if (sorted[0].newPrice != null) return String(sorted[0].newPrice)
+    const latest = history[history.length - 1]
+    if (latest && latest.currentPrice != null) return String(latest.currentPrice)
   }
   return null
 }
@@ -97,15 +94,12 @@ const generateChartOption = (productId: number) => {
   const history = priceHistoryMap.value.get(productId) || []
   if (history.length === 0) return null
 
-  const sorted = [...history].sort(
-    (a, b) => new Date(a.changedTime).getTime() - new Date(b.changedTime).getTime()
-  )
-  const recent = sorted.slice(-30)
+  const recent = history.slice(-30)
   const dates = recent.map(h => {
-    const d = new Date(h.changedTime)
+    const d = new Date(h.date)
     return `${d.getMonth() + 1}/${d.getDate()}`
   })
-  const prices = recent.map(h => h.newPrice)
+  const prices = recent.map(h => h.currentPrice)
 
   let lineColor = themeConfig.value.chartPrimaryColor || '#0D6E6E'
   if (prices.length >= 2) {
@@ -195,13 +189,13 @@ const loadData = async () => {
       const batch = allProducts.slice(i, i + batchSize)
       await Promise.all(batch.map(async (product) => {
         try {
-          const historyRes = await getProductPriceHistory(product.id)
-          const historyData = historyRes.data || []
-          priceHistoryMap.value.set(product.id, historyData)
+          const trendRes = await getPriceTrend(product.id, 30)
+          const trendData = trendRes.data || []
+          priceHistoryMap.value.set(product.id, trendData)
           const option = generateChartOption(product.id)
           if (option) chartOptionsMap.value.set(product.id, option)
         } catch (e) {
-          console.error(`Failed to load price history for product ${product.id}:`, e)
+          console.error(`Failed to load price trend for product ${product.id}:`, e)
         }
       }))
       if (i + batchSize < allProducts.length) await delay(50)
@@ -331,7 +325,7 @@ onMounted(() => {
                     </span>
                   </div>
                   <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" />
                   </div>
                 </div>
               </div>
@@ -387,7 +381,7 @@ onMounted(() => {
                     </span>
                   </div>
                   <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" />
                   </div>
                 </div>
               </div>
@@ -520,7 +514,7 @@ onMounted(() => {
                     </span>
                   </div>
                   <div class="chart-area-sm" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" autoresize />
+                    <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" />
                   </div>
                 </div>
               </div>

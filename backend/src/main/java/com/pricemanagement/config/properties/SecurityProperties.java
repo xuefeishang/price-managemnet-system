@@ -4,6 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 安全配置属性类
  * 集中管理所有敏感配置，包括数据库、Redis、JWT和默认用户密码
@@ -35,4 +38,10 @@ public class SecurityProperties {
      * 建议生产环境设为 false，避免每次启动都重置密码
      */
     private boolean resetPasswordOnStartup = true;
+
+    /**
+     * CORS允许的来源列表
+     * 生产环境应配置为具体域名，禁止使用通配符
+     */
+    private List<String> corsAllowedOrigins = new ArrayList<>();
 }

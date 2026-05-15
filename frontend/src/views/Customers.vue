@@ -1,21 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { getCustomers, updateCustomer, deleteCustomer } from '@/api/customers'
-//import { usePermission } from '@/composables/usePermission'
+import { usePermission } from '@/composables/usePermission'
 import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
+import { useLayout } from '@/composables/useLayout'
 import type { Customer } from '@/types'
 
 const router = useRouter()
-// const { hasPermission } = usePermission()
+const { hasPermission } = usePermission()
+const { isPCLayout } = useLayout()
 
 const customers = ref<Customer[]>([])
 const loading = ref(false)
 const togglingId = ref<number | null>(null)
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-
-const isPCLayout = computed(() => windowWidth.value >= 1024)
 
 const loadCustomers = async () => {
   loading.value = true
@@ -97,18 +96,9 @@ const switchTab = (tab: string) => {
   }
 }
 
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   loadAllDicts()
   loadCustomers()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 

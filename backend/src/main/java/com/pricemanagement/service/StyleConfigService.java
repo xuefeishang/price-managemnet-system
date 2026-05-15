@@ -204,7 +204,7 @@ public class StyleConfigService {
         }
 
         String newFilename = "logo_" + System.currentTimeMillis() + extension;
-        Path logoDir = Paths.get(logoDir);
+        Path logoDir = Paths.get(this.logoDir);
 
         if (!Files.exists(logoDir)) {
             Files.createDirectories(logoDir);

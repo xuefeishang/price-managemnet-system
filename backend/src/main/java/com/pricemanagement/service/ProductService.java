@@ -42,6 +42,7 @@ public class ProductService {
     private final ApprovalRequestRepository requestRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @Transactional(readOnly = true)
     public Page<Product> getProducts(int page, int size, String keyword, Long categoryId,
                                      CommonStatus status, String sortBy, String sortDirection) {
         Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
@@ -70,10 +71,12 @@ public class ProductService {
         return products;
     }
 
+    @Transactional(readOnly = true)
     public Optional<Product> getProductById(Long id) {
         return productRepository.findById(id);
     }
 
+    @Transactional(readOnly = true)
     public List<Product> getActiveProducts() {
         return productRepository.findByStatus(CommonStatus.ACTIVE);
     }

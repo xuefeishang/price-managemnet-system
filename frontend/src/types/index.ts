@@ -1,3 +1,15 @@
+/**
+ * TypeScript 类型定义文件
+ * 统一管理前端所有接口类型定义，与后端 Entity 保持一致
+ *
+ * 类型命名规范：
+ * - 类型别名（Type）：如 Role, UserStatus 等
+ * - 接口（Interface）：如 User, Product 等
+ * - 请求类型：xxxRequest
+ * - 响应类型：xxxResponse
+ */
+
+// ==================== 枚举类型 ====================
 
 // 用户角色类型
 export type Role = 'ADMIN' | 'EDITOR' | 'VIEWER'

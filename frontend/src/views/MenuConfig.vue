@@ -1,19 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
 import { VueDraggable } from 'vue-draggable-plus'
 import { getAllMenus, createMenu, updateMenu, deleteMenu, batchUpdateMenuSort } from '@/api/menu'
 import { useMenuStore } from '@/store/useMenuStore'
+import { useLayout } from '@/composables/useLayout'
 import type { MenuItem, Role } from '@/types'
 
 const menuStore = useMenuStore()
-
-// 响应式布局
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
-}
-const isPCLayout = computed(() => windowWidth.value >= 768)
+const { windowWidth, isPCLayout } = useLayout()
 
 const loading = ref(false)
 const menus = ref<MenuItem[]>([])

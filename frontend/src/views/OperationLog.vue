@@ -583,25 +583,25 @@ onMounted(() => {
         <!-- 趋势图 -->
         <div class="chart-card">
           <h3 class="chart-title">操作趋势</h3>
-          <v-chart class="chart" :option="trendChartOptions" autoresize />
+          <v-chart class="chart" :option="trendChartOptions" />
         </div>
 
         <!-- 操作类型分布 -->
         <div class="chart-card">
           <h3 class="chart-title">操作类型分布</h3>
-          <v-chart class="chart" :option="operationTypeChartOptions" autoresize />
+          <v-chart class="chart" :option="operationTypeChartOptions" />
         </div>
 
         <!-- 模块分布 -->
         <div class="chart-card">
           <h3 class="chart-title">模块分布</h3>
-          <v-chart class="chart" :option="moduleChartOptions" autoresize />
+          <v-chart class="chart" :option="moduleChartOptions" />
         </div>
 
         <!-- 用户活跃排行 -->
         <div class="chart-card">
           <h3 class="chart-title">用户活跃排行 TOP10</h3>
-          <v-chart class="chart" :option="userActivityChartOptions" autoresize />
+          <v-chart class="chart" :option="userActivityChartOptions" />
         </div>
       </div>
     </div>
@@ -705,7 +705,7 @@ onMounted(() => {
         <!-- 月度趋势 -->
         <div class="chart-card full-width">
           <h3 class="chart-title">月度操作趋势</h3>
-          <v-chart class="chart tall" :option="yearlyTrendChartOptions" autoresize />
+          <v-chart class="chart tall" :option="yearlyTrendChartOptions" />
         </div>
 
         <!-- 用户排名 -->

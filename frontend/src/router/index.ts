@@ -1,9 +1,19 @@
-
+/**
+ * Vue Router 路由配置
+ * 定义应用的所有路由规则、路由元信息、路由守卫
+ *
+ * 路由元信息说明：
+ * - requiresAuth: 是否需要登录认证
+ * - title: 页面标题（显示在浏览器标签）
+ * - adminOnly: 仅管理员可访问
+ * - editorOnly: 仅编辑者及以上角色可访问
+ * - permission: 具体权限标识（用于细粒度权限控制）
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/store/useUserStore'
 import { showToast } from 'vant'
 
-// 路由配置扩展
+// 路由配置扩展：定义路由元信息类型
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
@@ -183,9 +193,10 @@ router.beforeEach(async (to, _from, next) => {
     try {
       await userStore.fetchProfile()
     } catch (error: any) {
-      // fetchProfile失败（401等），说明token无效，直接跳转登录页
-      // 不需要显示额外提示，因为后端会返回合适的错误信息
+      // fetchProfile失败（401等），说明token无效
+      // 清除状态后跳转登录页，避免无限循环
       userStore.logoutAction()
+      showToast('登录已过期，请重新登录')
       return next('/login')
     }
   }

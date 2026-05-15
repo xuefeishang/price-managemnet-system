@@ -1,15 +1,15 @@
 
 package com.pricemanagement.controller;
 
+import com.pricemanagement.annotation.RateLimiter;
 import com.pricemanagement.constants.CommonStatus;
-import com.pricemanagement.dto.ChangePasswordRequest;
-import com.pricemanagement.dto.LoginRequest;
-import com.pricemanagement.dto.LoginResponse;
-import com.pricemanagement.dto.Result;
-import com.pricemanagement.dto.UpdateProfileRequest;
+import com.pricemanagement.dto.*;
 import com.pricemanagement.entity.OperationLog;
+import com.pricemanagement.entity.RefreshToken;
 import com.pricemanagement.entity.User;
+import com.pricemanagement.exception.TokenRefreshException;
 import com.pricemanagement.repository.UserRepository;
+import com.pricemanagement.service.RefreshTokenService;
 import com.pricemanagement.util.JwtUtil;
 import com.pricemanagement.util.OperationLogHelper;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -32,9 +33,12 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final OperationLogHelper operationLogHelper;
+    private final RefreshTokenService refreshTokenService;
 
     @PostMapping("/login")
-    public Result<LoginResponse> login(@Validated @RequestBody LoginRequest loginRequest) {
+    @RateLimiter(time = 60, count = 5, limitType = RateLimiter.LimitType.IP,
+            message = "登录尝试次数过多，请1分钟后再试")
+    public Result<?> login(@Validated @RequestBody LoginRequest loginRequest) {
         log.debug("Attempting login for user: {}", loginRequest.getUsername());
 
         try {
@@ -64,6 +68,9 @@ public class AuthController {
             String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
             log.debug("User logged in successfully: {}", loginRequest.getUsername());
 
+            // 创建刷新令牌
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getUsername());
+
             // 记录登录成功日志
             operationLogHelper.logSuccess("用户认证", OperationLog.OperationType.LOGIN,
                     "用户登录成功", loginRequest.getUsername());
@@ -71,7 +78,13 @@ public class AuthController {
             LoginResponse response = new LoginResponse(token, user.getId(), user.getUsername(),
                     user.getNickname(), user.getRole().name());
 
-            return Result.success("登录成功", response);
+            // 返回包含刷新令牌的响应
+            return Result.success("登录成功", Map.of(
+                    "accessToken", token,
+                    "refreshToken", refreshToken.getToken(),
+                    "tokenType", "Bearer",
+                    "user", response
+            ));
         } catch (Exception e) {
             log.error("Login error: {}", e.getMessage());
             operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
@@ -83,8 +96,43 @@ public class AuthController {
     @PostMapping("/logout")
     public Result<Void> logout(@RequestHeader(value = "Authorization", required = false) String token) {
         log.debug("Logout request received");
-        // JWT令牌是无状态的，此处可以记录日志或做一些清理工作
+
+        // 获取当前用户并撤销其刷新令牌
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            String username = authentication.getName();
+            userRepository.findByUsername(username).ifPresent(user -> {
+                refreshTokenService.revokeUserTokens(user.getId());
+                log.debug("Revoked refresh tokens for user: {}", username);
+            });
+        }
+
         return Result.success("退出成功");
+    }
+
+    /**
+     * 刷新访问令牌
+     */
+    @PostMapping("/refresh-token")
+    @RateLimiter(time = 60, count = 10, limitType = RateLimiter.LimitType.IP,
+            message = "令牌刷新次数过多，请1分钟后再试")
+    public Result<TokenRefreshResponse> refreshToken(@Validated @RequestBody TokenRefreshRequest request) {
+        try {
+            String refreshToken = request.getRefreshToken();
+            String newAccessToken = refreshTokenService.refreshAccessToken(refreshToken);
+
+            TokenRefreshResponse response = TokenRefreshResponse.builder()
+                    .accessToken(newAccessToken)
+                    .refreshToken(refreshToken)
+                    .tokenType("Bearer")
+                    .expiresIn(86400L) // 24小时
+                    .build();
+
+            return Result.success("令牌刷新成功", response);
+        } catch (TokenRefreshException e) {
+            log.warn("Token refresh failed: {}", e.getMessage());
+            return Result.error(401, e.getMessage());
+        }
     }
 
     @GetMapping("/profile")

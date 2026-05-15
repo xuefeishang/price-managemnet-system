@@ -3,8 +3,10 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showDialog } from 'vant'
 import { downloadTemplate, importProducts, exportProducts } from '@/api/import'
+import { useLayout } from '@/composables/useLayout'
 
 const router = useRouter()
+const { isPCLayout } = useLayout()
 
 const importing = ref(false)
 const exporting = ref(false)
@@ -15,14 +17,6 @@ const importResult = ref<{
   message: string
   errorDetails?: string[]
 } | null>(null)
-
-// 响应式布局
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const isPCLayout = computed(() => windowWidth.value >= 1024)
-
-// const handleResize = () => {
-//   windowWidth.value = window.innerWidth
-// }
 
 const handleDownloadTemplate = async () => {
   try {

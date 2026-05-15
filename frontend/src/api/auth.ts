@@ -12,6 +12,22 @@ export const logout = async (): Promise<ApiResponse<void>> => {
   return await http.post('/api/auth/logout')
 }
 
+// 刷新令牌
+export interface TokenRefreshRequest {
+  refreshToken: string
+}
+
+export interface TokenRefreshResponse {
+  accessToken: string
+  refreshToken: string
+  tokenType: string
+  expiresIn: number
+}
+
+export const refreshToken = async (data: TokenRefreshRequest): Promise<ApiResponse<TokenRefreshResponse>> => {
+  return await http.post('/api/auth/refresh-token', data)
+}
+
 // 获取用户信息
 export const getProfile = async (): Promise<ApiResponse<User>> => {
   return await http.get('/api/auth/profile')

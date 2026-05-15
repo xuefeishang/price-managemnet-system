@@ -3,6 +3,7 @@ package com.pricemanagement.service;
 
 import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.Product;
+import com.pricemanagement.repository.ApprovalWorkflowRepository;
 import com.pricemanagement.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,9 @@ class ProductServiceTests {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private ApprovalWorkflowRepository workflowRepository;
 
     @InjectMocks
     private ProductService productService;

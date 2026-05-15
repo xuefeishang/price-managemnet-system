@@ -1,6 +1,7 @@
 package com.pricemanagement.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.util.JwtUtil;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,12 +22,19 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private final SecurityProperties securityProperties;
+
+    public SecurityConfig(SecurityProperties securityProperties) {
+        this.securityProperties = securityProperties;
+    }
 
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(JwtUtil jwtUtil) {
@@ -77,7 +85,18 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+
+        List<String> allowedOrigins = securityProperties.getCorsAllowedOrigins();
+        if (allowedOrigins.isEmpty()) {
+            // 无配置时仅允许本地开发来源
+            allowedOrigins = List.of(
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:80",
+                    "http://127.0.0.1:80"
+            );
+        }
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
