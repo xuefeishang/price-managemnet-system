@@ -32,14 +32,3 @@ logs/
 *.tmp
 *.bak
 .DS_Store
-
-# 后端源码（不需要，jar已打包）
-backend/src/
-
-# 前端源码（不需要，已构建）
-frontend/src/
-frontend/public/
-frontend/index.html
-frontend/vite.config.ts
-frontend/tsconfig.json
-frontend/.eslintrc*
