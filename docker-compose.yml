@@ -9,16 +9,17 @@ services:
     container_name: price-management-backend
     ports:
       - "8080:8080"
+    network_mode: host
     environment:
       # 数据库配置（使用服务器上的MySQL）
-      - DB_HOST=10.7.5.175
+      - DB_HOST=127.0.0.1
       - DB_PORT=3306
       - DB_NAME=price_management
       - DB_USERNAME=root
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_USE_SSL=true
       # Redis配置
-      - REDIS_HOST=10.7.5.175
+      - REDIS_HOST=127.0.0.1
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       # 安全配置
@@ -46,8 +47,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    networks:
-      - price-network
 
   # 前端服务
   frontend:
