@@ -13,6 +13,24 @@ const selectedCategory = ref<string>('')
 const togglingId = ref<number | null>(null)
 const { isPCLayout } = useLayout()
 
+// 新增/编辑对话框
+const showEditDialog = ref(false)
+const editForm = ref<{
+  id: number | null
+  category: string
+  dictKey: string
+  dictValue: string
+  extraValue: string
+  sortOrder: number
+  status: string
+  remark: string
+}>({
+  id: null, category: '', dictKey: '', dictValue: '', extraValue: '',
+  sortOrder: 0, status: 'ACTIVE', remark: ''
+})
+const isEditing = ref(false)
+const newCategory = ref('')
+
 // 获取分类中文标签
 const getCategoryLabel = (category: string): string => {
   return CATEGORY_LABELS[category] || category
