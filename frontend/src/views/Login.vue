@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useRouter } from 'vue-router'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
+import { getCaptcha } from '@/api/auth'
+import type { CaptchaResponse } from '@/api/auth'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -12,13 +14,71 @@ const { isPCLayout } = useLayout()
 
 const form = ref({
   username: '',
-  password: ''
+  password: '',
+  captchaCode: ''
 })
 
 const loading = ref(false)
 const errorMessage = ref('')
 const showPassword = ref(false)
 const rememberUsername = ref(false)
+
+// 验证码相关
+const captchaData = ref<CaptchaResponse | null>(null)
+const captchaLoading = ref(false)
+const captchaCountdown = ref(0)
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+// 倒计时显示文本
+const countdownText = computed(() => {
+  if (captchaCountdown.value > 0) {
+    return `${captchaCountdown.value}s`
+  }
+  return ''
+})
+
+// 获取验证码
+const refreshCaptcha = async () => {
+  if (captchaLoading.value) return
+
+  captchaLoading.value = true
+  try {
+    const response = await getCaptcha()
+    if (response.data) {
+      captchaData.value = response.data
+      // 开始60秒倒计时
+      startCountdown()
+    }
+  } catch (error) {
+    console.error('Failed to get captcha:', error)
+    // 加载失败，3秒后自动重试
+    setTimeout(() => {
+      if (!captchaData.value) {
+        refreshCaptcha()
+      }
+    }, 3000)
+  } finally {
+    captchaLoading.value = false
+  }
+}
+
+// 开始倒计时
+const startCountdown = () => {
+  // 清除之前的计时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+  }
+  captchaCountdown.value = 60
+  countdownTimer = setInterval(() => {
+    captchaCountdown.value--
+    if (captchaCountdown.value <= 0) {
+      clearInterval(countdownTimer!)
+      countdownTimer = null
+      // 倒计时结束自动刷新
+      refreshCaptcha()
+    }
+  }, 1000)
+}
 
 // 密码可见切换
 const togglePassword = () => {
@@ -50,9 +110,20 @@ const handleLogin = async () => {
     return
   }
 
+  // 验证码校验
+  if (!form.value.captchaCode) {
+    errorMessage.value = '请输入验证码'
+    return
+  }
+
   loading.value = true
   try {
-    const success = await userStore.loginAction(form.value)
+    const success = await userStore.loginAction({
+      username: form.value.username,
+      password: form.value.password,
+      captchaKey: captchaData.value?.captchaKey,
+      captchaCode: form.value.captchaCode
+    })
     if (success) {
       // 保存用户名记忆
       if (rememberUsername.value) {
@@ -63,10 +134,14 @@ const handleLogin = async () => {
       router.push('/home')
     } else {
       errorMessage.value = '用户名或密码错误'
+      // 刷新验证码
+      refreshCaptcha()
     }
   } catch (error: any) {
     console.error('Login error:', error)
     errorMessage.value = error?.response?.data?.message || '登录失败，请稍后重试'
+    // 刷新验证码
+    refreshCaptcha()
   } finally {
     loading.value = false
   }
@@ -86,29 +161,44 @@ const clearError = () => {
 }
 
 onMounted(async () => {
+  // 重置验证码状态（处理组件复用的情况）
+  captchaData.value = null
+  form.value.captchaCode = ''
+
   // 如果有 token，先验证是否有效
   if (userStore.isAuthenticated) {
     try {
       // 尝试获取用户信息验证 token 有效性
       await userStore.fetchProfile()
-      // token 有效，跳转首页
-      router.push('/home')
+      // token 有效，使用 replace 跳转首页（不添加新 history 条目）
+      router.replace('/home')
       return
     } catch (error) {
-      // token 无效，清除状态，继续显示登录页
+      // token 无效，清除本地状态（不调用API）
       console.log('Token invalid, clearing state')
-      userStore.logoutAction()
+      userStore.logoutAction(false)
     }
   }
 
   // 加载主题配置（包含系统名称）
   await loadThemeConfig()
 
+  // 获取验证码
+  await refreshCaptcha()
+
   // 恢复记住的用户名
   const savedUsername = localStorage.getItem('rememberUsername')
   if (savedUsername) {
     form.value.username = savedUsername
     rememberUsername.value = true
+  }
+})
+
+// 组件卸载时清理计时器
+onUnmounted(() => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
   }
 })
 </script>
@@ -147,10 +237,12 @@ onMounted(async () => {
               </div>
 
               <div class="form-group">
-                <label class="form-label">用户名</label>
+                <label class="form-label" for="username-pc">用户名</label>
                 <input
+                  id="username-pc"
                   v-model="form.username"
                   type="text"
+                  name="username"
                   class="form-input"
                   placeholder="请输入用户名"
                   :disabled="loading"
@@ -161,11 +253,13 @@ onMounted(async () => {
               </div>
 
               <div class="form-group">
-                <label class="form-label">密码</label>
+                <label class="form-label" for="password-pc">密码</label>
                 <div class="password-input-wrapper">
                   <input
+                    id="password-pc"
                     v-model="form.password"
                     :type="showPassword ? 'text' : 'password'"
+                    name="password"
                     class="form-input password-input"
                     placeholder="请输入密码"
                     :disabled="loading"
@@ -191,6 +285,42 @@ onMounted(async () => {
                 </div>
               </div>
 
+              <!-- 验证码 -->
+              <div class="form-group">
+                <label class="form-label" for="captcha-pc">验证码</label>
+                <div class="captcha-input-wrapper">
+                  <input
+                    id="captcha-pc"
+                    v-model="form.captchaCode"
+                    type="text"
+                    name="captcha"
+                    class="form-input captcha-input"
+                    placeholder="请输入验证码"
+                    :disabled="loading"
+                    maxlength="4"
+                    autocomplete="off"
+                    @input="clearError"
+                    @keypress="handleKeyPress"
+                  />
+                  <div class="captcha-image-wrapper" @click="refreshCaptcha">
+                    <img
+                      v-if="captchaData?.captchaImage"
+                      :src="captchaData.captchaImage"
+                      alt="验证码"
+                      class="captcha-image"
+                      :class="{ loading: captchaLoading }"
+                    />
+                    <div v-else class="captcha-placeholder">
+                      <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="20"/>
+                      </svg>
+                    </div>
+                    <!-- 倒计时遮罩 -->
+                    <div v-if="countdownText" class="captcha-countdown">{{ countdownText }}</div>
+                  </div>
+                </div>
+              </div>
+
               <!-- 记住用户名 -->
               <div class="remember-row">
                 <label class="remember-label">
@@ -207,7 +337,7 @@ onMounted(async () => {
                 class="login-button"
                 :class="{ loading: loading }"
                 type="submit"
-                :disabled="loading || !form.username || !form.password"
+                :disabled="loading || !form.username || !form.password || !form.captchaCode"
               >
                 <span v-if="!loading">登录</span>
                 <span v-else class="loading-text">
@@ -246,10 +376,12 @@ onMounted(async () => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">用户名</label>
+            <label class="form-label" for="username-mobile">用户名</label>
             <input
+              id="username-mobile"
               v-model="form.username"
               type="text"
+              name="username"
               class="form-input"
               placeholder="请输入用户名"
               :disabled="loading"
@@ -260,11 +392,13 @@ onMounted(async () => {
           </div>
 
           <div class="form-group">
-            <label class="form-label">密码</label>
+            <label class="form-label" for="password-mobile">密码</label>
             <div class="password-input-wrapper">
               <input
+                id="password-mobile"
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
+                name="password"
                 class="form-input password-input"
                 placeholder="请输入密码"
                 :disabled="loading"
@@ -290,6 +424,39 @@ onMounted(async () => {
             </div>
           </div>
 
+          <!-- 验证码 -->
+          <div class="form-group">
+            <label class="form-label" for="captcha-mobile">验证码</label>
+            <div class="captcha-input-wrapper">
+              <input
+                id="captcha-mobile"
+                v-model="form.captchaCode"
+                type="text"
+                name="captcha"
+                class="form-input captcha-input"
+                placeholder="请输入验证码"
+                :disabled="loading"
+                maxlength="4"
+                autocomplete="off"
+                @input="clearError"
+                @keypress="handleKeyPress"
+              />
+              <div class="captcha-image-wrapper" @click="refreshCaptcha">
+                <img
+                  v-if="captchaData?.captchaImage"
+                  :src="captchaData.captchaImage"
+                  alt="验证码"
+                  class="captcha-image"
+                  :class="{ loading: captchaLoading }"
+                />
+                <div v-else class="captcha-placeholder">
+                  <span v-if="captchaLoading">加载中...</span>
+                  <span v-else>点击获取</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 记住用户名 -->
           <div class="remember-row">
             <label class="remember-label">
@@ -306,7 +473,7 @@ onMounted(async () => {
             class="login-button"
             :class="{ loading: loading }"
             type="submit"
-            :disabled="loading || !form.username || !form.password"
+            :disabled="loading || !form.username || !form.password || !form.captchaCode"
           >
             <span v-if="!loading">登录</span>
             <span v-else class="loading-text">登录中...</span>
@@ -373,8 +540,8 @@ onMounted(async () => {
 }
 
 .brand-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 32px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-3xl);
   font-weight: 500;
   color: #FFFFFF;
   line-height: 1.1;
@@ -382,8 +549,8 @@ onMounted(async () => {
 }
 
 .brand-subtitle {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: rgba(255, 255, 255, 0.9);
   line-height: 1.4;
 }
@@ -408,16 +575,16 @@ onMounted(async () => {
 }
 
 .form-header h2 {
-  font-family: 'Inter', sans-serif;
-  font-size: 24px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-2xl);
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 8px;
 }
 
 .form-header p {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
 }
 
@@ -431,8 +598,8 @@ onMounted(async () => {
 
 .form-label {
   display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
   margin-bottom: 8px;
@@ -445,8 +612,8 @@ onMounted(async () => {
   border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   transition: border-color 150ms;
   box-sizing: border-box;
@@ -461,6 +628,64 @@ onMounted(async () => {
   padding-right: 48px;
 }
 
+.form-input.captcha-input {
+  width: 60%;
+  flex: 1;
+}
+
+/* 验证码输入容器 */
+.captcha-input-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.captcha-image-wrapper {
+  width: 120px;
+  height: 48px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #F5F5F5;
+  transition: border-color 150ms;
+  position: relative;
+}
+
+.captcha-image-wrapper:hover {
+  border-color: #0D6E6E;
+}
+
+.captcha-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.captcha-image.loading {
+  opacity: 0.5;
+}
+
+.captcha-placeholder {
+  font-size: var(--font-size-xs);
+  color: #888888;
+}
+
+.captcha-countdown {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 0.625rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
 /* 错误提示 */
 .error-message {
   display: flex;
@@ -471,8 +696,8 @@ onMounted(async () => {
   border: 1px solid rgba(255, 77, 79, 0.3);
   border-radius: 8px;
   color: #E03B3B;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   margin-bottom: 20px;
 }
 
@@ -532,8 +757,8 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
 }
 
@@ -574,8 +799,8 @@ onMounted(async () => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -619,8 +844,8 @@ onMounted(async () => {
 }
 
 .main-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 40px;
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
   font-weight: 500;
   color: #1A1A1A;
   line-height: 1.05;
@@ -629,8 +854,8 @@ onMounted(async () => {
 }
 
 .subtitle {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   line-height: 1.4;
   margin: 0;
@@ -666,7 +891,7 @@ onMounted(async () => {
   }
 
   .main-title {
-    font-size: 32px;
+    font-size: var(--font-size-3xl);
   }
 
   .title-section {

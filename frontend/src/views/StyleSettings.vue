@@ -3,8 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { showToast, showConfirmDialog } from 'vant'
 import { useTheme } from '@/composables/useTheme'
 import { uploadLogo, getStyleConfig } from '@/api/style'
-import { PRESET_THEMES, AVAILABLE_FONTS, AVAILABLE_LOGO_SIZES } from '@/types/theme'
-import type { StyleConfig } from '@/types/theme'
+import { PRESET_THEMES, AVAILABLE_FONTS, AVAILABLE_LOGO_SIZES, FONT_SIZE_PRESETS, FONT_SIZE_FIELDS } from '@/types/theme'
+import type { StyleConfig, FontSizePreset } from '@/types/theme'
 
 const { themeConfig, saveThemeConfig, forceReloadThemeConfig } = useTheme()
 const saving = ref(false)
@@ -23,8 +23,50 @@ const editingConfig = ref<StyleConfig>({
   numberFont: themeConfig.value.numberFont,
   logoUrl: themeConfig.value.logoUrl,
   logoSize: themeConfig.value.logoSize || 'medium',
-  activeTheme: themeConfig.value.activeTheme
+  activeTheme: themeConfig.value.activeTheme,
+  // 字体大小
+  fontSizeXs: themeConfig.value.fontSizeXs,
+  fontSizeSm: themeConfig.value.fontSizeSm,
+  fontSizeBase: themeConfig.value.fontSizeBase,
+  fontSizeLg: themeConfig.value.fontSizeLg,
+  fontSizeXl: themeConfig.value.fontSizeXl,
+  fontSize2xl: themeConfig.value.fontSize2xl,
+  fontSize3xl: themeConfig.value.fontSize3xl
 })
+
+// 字体大小预设选择
+const selectedFontSizePreset = ref('standard')
+
+// 应用字体大小预设
+const applyFontSizePreset = (preset: FontSizePreset) => {
+  selectedFontSizePreset.value = preset.key
+  editingConfig.value.fontSizeXs = preset.sizes.xs
+  editingConfig.value.fontSizeSm = preset.sizes.sm
+  editingConfig.value.fontSizeBase = preset.sizes.base
+  editingConfig.value.fontSizeLg = preset.sizes.lg
+  editingConfig.value.fontSizeXl = preset.sizes.xl
+  editingConfig.value.fontSize2xl = preset.sizes['2xl']
+  editingConfig.value.fontSize3xl = preset.sizes['3xl']
+}
+
+// rem 转 px 显示
+const toPx = (rem: string): string => {
+  const match = rem.match(/^([\d.]+)rem$/)
+  if (!match) return rem
+  return `${parseFloat(match[1]) * 16}px`
+}
+
+// 字体大小字段类型安全的 getter/setter
+const fontSizeKeys = ['fontSizeXs', 'fontSizeSm', 'fontSizeBase', 'fontSizeLg', 'fontSizeXl', 'fontSize2xl', 'fontSize3xl'] as const
+type FontSizeKey = typeof fontSizeKeys[number]
+
+const getFontSizeValue = (key: string): string => {
+  return editingConfig.value[key as FontSizeKey] || ''
+}
+
+const setFontSizeValue = (key: string, value: string): void => {
+  editingConfig.value[key as FontSizeKey] = value
+}
 
 // 实时预览用的涨跌颜色
 const previewPriceRiseColor = computed(() => editingConfig.value.priceRiseColor)
@@ -66,10 +108,18 @@ const saveConfig = async () => {
   saving.value = true
   try {
     await saveThemeConfig(editingConfig.value)
-    showToast('保存成功')
+    showToast({
+      message: '保存成功',
+      position: 'top',
+      duration: 2000
+    })
   } catch (error) {
     console.error('Failed to save config:', error)
-    showToast('保存失败')
+    showToast({
+      message: '保存失败',
+      position: 'top',
+      duration: 2000
+    })
   } finally {
     saving.value = false
   }
@@ -95,9 +145,17 @@ const resetConfig = async () => {
       numberFont: 'JetBrains Mono',
       logoUrl: '',
       logoSize: 'medium',
-      activeTheme: 'theme_red_green'
+      activeTheme: 'theme_red_green',
+      fontSizeXs: '0.75rem',
+      fontSizeSm: '0.875rem',
+      fontSizeBase: '1rem',
+      fontSizeLg: '1.125rem',
+      fontSizeXl: '1.25rem',
+      fontSize2xl: '1.5rem',
+      fontSize3xl: '1.875rem'
     }
     selectedTheme.value = 'theme_red_green'
+    selectedFontSizePreset.value = 'standard'
     await saveConfig()
     showToast('已重置为默认配置')
   } catch {
@@ -158,7 +216,15 @@ onMounted(async () => {
     numberFont: config.numberFont || 'JetBrains Mono',
     logoUrl: config.logoUrl || '',
     logoSize: config.logoSize || 'medium',
-    activeTheme: config.activeTheme || 'theme_red_green'
+    activeTheme: config.activeTheme || 'theme_red_green',
+    // 字体大小
+    fontSizeXs: config.fontSizeXs || '0.75rem',
+    fontSizeSm: config.fontSizeSm || '0.875rem',
+    fontSizeBase: config.fontSizeBase || '1rem',
+    fontSizeLg: config.fontSizeLg || '1.125rem',
+    fontSizeXl: config.fontSizeXl || '1.25rem',
+    fontSize2xl: config.fontSize2xl || '1.5rem',
+    fontSize3xl: config.fontSize3xl || '1.875rem'
   }
   selectedTheme.value = config.activeTheme || 'theme_red_green'
 })
@@ -367,6 +433,49 @@ onMounted(async () => {
           </div>
         </section>
 
+        <!-- 字体大小配置 -->
+        <section class="settings-section">
+          <h2 class="section-title">字体大小</h2>
+
+          <!-- 预设方案 -->
+          <div class="font-preset-grid">
+            <div
+              v-for="preset in FONT_SIZE_PRESETS"
+              :key="preset.key"
+              class="font-preset-card"
+              :class="{ active: selectedFontSizePreset === preset.key }"
+              @click="applyFontSizePreset(preset)"
+            >
+              <div class="preset-name">{{ preset.name }}</div>
+              <div class="preset-desc">{{ preset.description }}</div>
+              <div v-if="preset.wcagCompliant" class="wcag-badge">WCAG ✓</div>
+            </div>
+          </div>
+
+          <!-- 自定义配置 -->
+          <div class="font-size-grid">
+            <div v-for="field in FONT_SIZE_FIELDS" :key="field.key" class="font-size-item">
+              <label class="font-size-label">{{ field.label }}</label>
+              <div class="font-size-inputs">
+                <input :value="getFontSizeValue(field.key)" @input="setFontSizeValue(field.key, ($event.target as HTMLInputElement).value)" class="font-size-input" :placeholder="field.default" />
+                <span class="font-size-px">{{ toPx(getFontSizeValue(field.key)) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 实时预览 -->
+          <div class="font-preview-panel">
+            <h3 class="preview-title">预览</h3>
+            <div class="preview-content">
+              <p class="preview-hero" :style="{ fontSize: editingConfig.fontSize3xl }">特大标题</p>
+              <h2 class="preview-heading" :style="{ fontSize: editingConfig.fontSize2xl }">页面标题</h2>
+              <h3 class="preview-title-text" :style="{ fontSize: editingConfig.fontSizeXl }">副标题</h3>
+              <p class="preview-body" :style="{ fontSize: editingConfig.fontSizeBase }">正文内容示例，展示标准字体大小效果。</p>
+              <span class="preview-caption" :style="{ fontSize: editingConfig.fontSizeXs }">辅助信息</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Logo 配置 -->
         <section class="settings-section">
           <h2 class="section-title">Logo 设置</h2>
@@ -544,7 +653,7 @@ onMounted(async () => {
 <style scoped>
 .style-settings-page {
   padding: 32px;
-  min-height: 100vh;
+  
   background-color: #FAFAFA;
 }
 
@@ -553,16 +662,16 @@ onMounted(async () => {
 }
 
 .page-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0 0 8px 0;
 }
 
 .page-desc {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   margin: 0;
 }
@@ -587,8 +696,8 @@ onMounted(async () => {
 }
 
 .section-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 20px 0;
@@ -607,8 +716,8 @@ onMounted(async () => {
   padding: 0 16px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   outline: none;
   transition: border-color 150ms;
@@ -620,7 +729,7 @@ onMounted(async () => {
 }
 
 .form-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #888888;
   margin-top: 8px;
   margin-bottom: 0;
@@ -668,16 +777,16 @@ onMounted(async () => {
 }
 
 .theme-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 4px;
 }
 
 .theme-desc {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   text-align: center;
 }
@@ -696,8 +805,8 @@ onMounted(async () => {
 }
 
 .color-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
 }
@@ -732,8 +841,8 @@ onMounted(async () => {
   padding: 0 12px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   outline: none;
 }
@@ -749,14 +858,14 @@ onMounted(async () => {
 }
 
 .preview-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
 .preview-badge {
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
@@ -793,8 +902,8 @@ onMounted(async () => {
 }
 
 .font-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
 }
@@ -804,8 +913,8 @@ onMounted(async () => {
   padding: 0 12px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   background: white;
   cursor: pointer;
@@ -820,22 +929,152 @@ onMounted(async () => {
   padding: 12px;
   background: #FAFAFA;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .font-preview.heading {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 500;
 }
 
 .font-preview.body {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
 .font-preview.number {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
+}
+
+/* 字体大小配置 */
+.font-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.font-preset-card {
+  padding: 16px;
+  border: 2px solid #E5E5E5;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.font-preset-card:hover {
+  border-color: #0D6E6E;
+}
+
+.font-preset-card.active {
+  border-color: #0D6E6E;
+  background: rgba(13, 110, 110, 0.05);
+}
+
+.preset-name {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.preset-desc {
+  font-size: var(--font-size-xs);
+  color: #888888;
+}
+
+.wcag-badge {
+  margin-top: 8px;
+  font-size: 0.6875rem;
+  color: #10B981;
+  font-weight: 500;
+}
+
+.font-size-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.font-size-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.font-size-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: #1A1A1A;
+}
+
+.font-size-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.font-size-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.font-size-input:focus {
+  border-color: #0D6E6E;
+}
+
+.font-size-px {
+  font-size: var(--font-size-xs);
+  color: #888888;
+  font-family: var(--font-mono);
+}
+
+.font-preview-panel {
+  padding: 20px;
+  background: #FAFAFA;
+  border-radius: 12px;
+}
+
+.preview-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-hero {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.preview-heading {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.preview-title-text {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.preview-body {
+  margin-bottom: 8px;
+}
+
+.preview-caption {
+  color: #888888;
 }
 
 /* Logo 配置 */
@@ -869,7 +1108,7 @@ onMounted(async () => {
   align-items: center;
   gap: 4px;
   color: #888888;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .logo-actions {
@@ -885,8 +1124,8 @@ onMounted(async () => {
   color: white;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: background 200ms ease;
 }
@@ -901,7 +1140,7 @@ onMounted(async () => {
 }
 
 .logo-tip {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
@@ -913,7 +1152,7 @@ onMounted(async () => {
 }
 
 .logo-size-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #333333;
 }
 
@@ -927,7 +1166,7 @@ onMounted(async () => {
   background: #F5F5F5;
   border: 1px solid #E5E5E5;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666666;
   cursor: pointer;
   transition: all 150ms;
@@ -958,8 +1197,8 @@ onMounted(async () => {
   color: #666666;
   border: 1px solid #E5E5E5;
   border-radius: 10px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 200ms ease;
@@ -976,8 +1215,8 @@ onMounted(async () => {
   color: white;
   border: none;
   border-radius: 10px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 200ms ease;
@@ -1005,8 +1244,8 @@ onMounted(async () => {
 }
 
 .preview-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 4px 0;
@@ -1020,8 +1259,8 @@ onMounted(async () => {
 }
 
 .preview-card-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 16px 0;
@@ -1041,13 +1280,13 @@ onMounted(async () => {
 
 .preview-price-label {
   width: 48px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
 .preview-price-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
@@ -1077,7 +1316,7 @@ onMounted(async () => {
 
 .preview-color-label {
   width: 64px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
@@ -1089,8 +1328,8 @@ onMounted(async () => {
 }
 
 .preview-color-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   color: #1A1A1A;
 }
 
@@ -1107,22 +1346,22 @@ onMounted(async () => {
 }
 
 .preview-font-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
 .preview-font-heading {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 500;
 }
 
 .preview-font-body {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
 }
 
 .preview-font-number {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 

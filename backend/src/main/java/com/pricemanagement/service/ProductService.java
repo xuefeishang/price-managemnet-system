@@ -191,15 +191,31 @@ public class ProductService {
 
     @Transactional
     public void batchUpdateSort(List<java.util.Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        // 批量查询
+        List<Long> ids = items.stream()
+                .map(item -> ((Number) item.get("id")).longValue())
+                .collect(java.util.stream.Collectors.toList());
+        List<Product> products = productRepository.findAllById(ids);
+        Map<Long, Product> productMap = products.stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+
+        // 批量更新
+        List<Product> toSave = new java.util.ArrayList<>();
         for (java.util.Map<String, Object> item : items) {
             Long id = ((Number) item.get("id")).longValue();
             Integer sortOrder = ((Number) item.get("sortOrder")).intValue();
-            productRepository.findById(id).ifPresent(product -> {
+            Product product = productMap.get(id);
+            if (product != null) {
                 product.setSortOrder(sortOrder);
-                productRepository.save(product);
-            });
+                toSave.add(product);
+            }
         }
-        log.info("Batch updated sort order for {} products", items.size());
+        productRepository.saveAll(toSave);
+        log.info("Batch updated sort order for {} products", toSave.size());
     }
 
     private Map<String, Object> buildProductChangeData(Product product, String action) {

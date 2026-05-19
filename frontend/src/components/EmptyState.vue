@@ -139,16 +139,16 @@ const handleAction = () => {
 }
 
 .empty-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 8px 0;
 }
 
 .empty-description {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #888888;
   margin: 0 0 24px 0;
   max-width: 280px;
@@ -160,8 +160,8 @@ const handleAction = () => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background 150ms;

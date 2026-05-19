@@ -18,7 +18,9 @@ import com.pricemanagement.dto.MenuSortDTO;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.pricemanagement.constants.SystemConstants.toJsonRoles;
 
@@ -240,14 +242,30 @@ public class MenuItemService {
 
     @Transactional
     public void batchUpdateSort(List<MenuSortDTO> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        // 批量查询
+        List<Long> ids = items.stream()
+                .map(MenuSortDTO::getId)
+                .collect(Collectors.toList());
+        List<MenuItem> menus = menuItemRepository.findAllById(ids);
+        Map<Long, MenuItem> menuMap = menus.stream()
+                .collect(Collectors.toMap(MenuItem::getId, m -> m));
+
+        // 批量更新
+        List<MenuItem> toSave = new ArrayList<>();
         for (MenuSortDTO item : items) {
-            menuItemRepository.findById(item.getId()).ifPresent(menu -> {
+            MenuItem menu = menuMap.get(item.getId());
+            if (menu != null) {
                 menu.setParentId(item.getParentId());
                 menu.setSortOrder(item.getSortOrder() != null ? item.getSortOrder() : 0);
-                menuItemRepository.save(menu);
-            });
+                toSave.add(menu);
+            }
         }
-        log.info("Batch updated sort for {} menu items", items.size());
+        menuItemRepository.saveAll(toSave);
+        log.info("Batch updated sort for {} menu items", toSave.size());
     }
 
     private MenuItem createMenuItem(MenuItem parent, String name, String path, String icon, int sortOrder, boolean visible, String roles) {

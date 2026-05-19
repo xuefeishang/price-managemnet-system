@@ -20,12 +20,20 @@ export const CATEGORY_LABELS: Record<string, string> = {
   approval_action: '审批操作',
   change_type: '变更类型',
   unit: '计量单位',
+  dept_type: '部门类型',
   operation_type: '操作类型',
   operation_module: '操作模块',
   menu_icon: '菜单图标',
   origin: '产地',
   customer: '客户',
   sync_status: '同步状态',
+  theme: '样式主题',
+  style: '样式配置',
+  home_layout: '首页布局',
+  home_widget: '首页组件',
+  price_alert: '价格预警',
+  chart_range: '图表时间范围',
+  category_visual_config: '分类视觉配置',
 }
 
 // 加载所有字典数据到缓存
@@ -112,6 +120,16 @@ export const getStatusLabel = (status: string): string => {
 // 获取角色显示名称（便捷方法）
 export const getRoleLabel = (role: string): string => {
   return getDictValue('user_role', role)
+}
+
+// 获取部门类型显示名称（便捷方法）
+export const getDeptTypeLabel = (type: string): string => {
+  return getDictValue('dept_type', type)
+}
+
+// 获取部门类型下拉选项
+export const getDeptTypeOptions = (): { value: string; label: string; extra?: string }[] => {
+  return getDictOptions('dept_type')
 }
 
 // 获取操作类型显示名称（便捷方法）
@@ -209,6 +227,8 @@ export function useDict() {
     getCurrencySymbol,
     getStatusLabel,
     getRoleLabel,
+    getDeptTypeLabel,
+    getDeptTypeOptions,
     getOperationTypeLabel,
     getOperationModuleLabel,
     getDictOptions,

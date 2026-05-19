@@ -116,6 +116,18 @@ const router = createRouter({
           meta: { title: '用户管理', adminOnly: true }
         },
         {
+          path: 'departments',
+          name: 'DepartmentManagement',
+          component: () => import('../views/DepartmentManagement.vue'),
+          meta: { title: '部门管理', adminOnly: true }
+        },
+        {
+          path: 'roles',
+          name: 'RoleManagement',
+          component: () => import('../views/RoleManagement.vue'),
+          meta: { title: '角色管理', adminOnly: true }
+        },
+        {
           path: 'menu-config',
           name: 'MenuConfig',
           component: () => import('../views/MenuConfig.vue'),
@@ -194,8 +206,8 @@ router.beforeEach(async (to, _from, next) => {
       await userStore.fetchProfile()
     } catch (error: any) {
       // fetchProfile失败（401等），说明token无效
-      // 清除状态后跳转登录页，避免无限循环
-      userStore.logoutAction()
+      // 清除本地状态后跳转登录页，避免无限循环（不调用API）
+      userStore.logoutAction(false)
       showToast('登录已过期，请重新登录')
       return next('/login')
     }

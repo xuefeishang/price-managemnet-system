@@ -978,16 +978,16 @@ onUnmounted(() => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 28px;
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
 }
 
 .page-subtitle {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   margin: 0;
 }
@@ -1020,8 +1020,8 @@ onUnmounted(() => {
   gap: 10px;
   padding: 10px 14px;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   cursor: pointer;
   transition: all 150ms;
@@ -1102,8 +1102,8 @@ onUnmounted(() => {
 }
 
 .card-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -1126,8 +1126,8 @@ onUnmounted(() => {
 
 .form-label {
   display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #374151;
   margin-bottom: 8px;
@@ -1152,8 +1152,8 @@ onUnmounted(() => {
   border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   transition: all 150ms;
   box-sizing: border-box;
@@ -1204,8 +1204,8 @@ onUnmounted(() => {
   border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #666666;
   cursor: pointer;
   transition: all 150ms;
@@ -1277,8 +1277,8 @@ onUnmounted(() => {
 
 .multi-select-placeholder {
   color: #9CA3AF;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 .multi-select-tags {
@@ -1296,13 +1296,13 @@ onUnmounted(() => {
   background: rgba(13, 110, 110, 0.1);
   color: #0D6E6E;
   border-radius: 4px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
 }
 
 .tag-remove {
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1;
   color: #0D6E6E;
 }
@@ -1341,8 +1341,8 @@ onUnmounted(() => {
   gap: 8px;
   padding: 10px 12px;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
@@ -1409,8 +1409,8 @@ onUnmounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -1434,8 +1434,8 @@ onUnmounted(() => {
   color: #666666;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -1468,8 +1468,8 @@ onUnmounted(() => {
   padding: 80px;
   gap: 16px;
   color: #666666;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 .loading-spinner {
@@ -1531,8 +1531,8 @@ onUnmounted(() => {
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -1544,8 +1544,8 @@ onUnmounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -1596,8 +1596,8 @@ onUnmounted(() => {
 }
 
 .card-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -1612,8 +1612,8 @@ onUnmounted(() => {
 
 .form-label {
   display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #374151;
   margin-bottom: 8px;
@@ -1638,8 +1638,8 @@ onUnmounted(() => {
   border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   transition: all 150ms;
   box-sizing: border-box;
@@ -1688,8 +1688,8 @@ onUnmounted(() => {
   border: 1px solid #E5E5E5;
   border-radius: 8px;
   background: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #666666;
   cursor: pointer;
   transition: all 150ms;
@@ -1726,7 +1726,7 @@ onUnmounted(() => {
   }
 
   .form-label {
-    font-size: 13px;
+    font-size: var(--font-size-xs);
     margin-bottom: 6px;
   }
 }

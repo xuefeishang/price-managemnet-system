@@ -8,8 +8,8 @@
 }
 
 html, body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   color: var(--gray-800);
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
@@ -53,6 +53,15 @@ button:focus-visible {
 .text-right {
   text-align: right;
 }
+
+// 字体大小工具类
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-base { font-size: var(--font-size-base); }
+.text-lg { font-size: var(--font-size-lg); }
+.text-xl { font-size: var(--font-size-xl); }
+.text-2xl { font-size: var(--font-size-2xl); }
+.text-3xl { font-size: var(--font-size-3xl); }
 
 .text-primary {
   color: var(--primary-color);
@@ -311,6 +320,71 @@ button:focus-visible {
   font-weight: 500;
 }
 
+// ==================== 表格样式 ====================
+
+// 表格容器
+.table-container {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+// 表格基础样式
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+
+  // 表头样式
+  thead {
+    background: var(--gray-50);
+    border-bottom: 2px solid var(--gray-200);
+
+    th {
+      padding: 0.875rem 1rem;
+      font-size: var(--font-size-base);
+      font-weight: 600;
+      color: var(--gray-700);
+      text-align: left;
+      white-space: nowrap;
+    }
+  }
+
+  // 表格内容
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--gray-100);
+      transition: background-color var(--transition-fast);
+
+      &:hover {
+        background-color: var(--gray-50);
+      }
+
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+
+    td {
+      padding: 0.75rem 1rem;
+      color: var(--gray-800);
+      vertical-align: middle;
+    }
+  }
+}
+
+// Vant 组件表格样式覆盖
+.van-table {
+  font-size: var(--font-size-sm);
+
+  .van-table__header {
+    th {
+      font-size: var(--font-size-base);
+      font-weight: 600;
+    }
+  }
+}
+
 .tag-primary {
   background-color: rgba(99, 102, 241, 0.1);
   color: var(--primary-color);
@@ -347,4 +421,27 @@ button:focus-visible {
   .hidden-desktop {
     display: none !important;
   }
+}
+
+// ==================== Vant Toast 样式覆盖 ====================
+.van-toast {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+  color: #FFFFFF !important;
+  border-radius: 8px !important;
+  padding: 12px 20px !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  max-width: 80% !important;
+}
+
+.van-toast__text {
+  color: #FFFFFF !important;
+}
+
+.van-toast--fail {
+  background-color: rgba(239, 68, 68, 0.9) !important;
+}
+
+.van-toast--success {
+  background-color: rgba(16, 185, 129, 0.9) !important;
 }

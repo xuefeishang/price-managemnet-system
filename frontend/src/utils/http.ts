@@ -77,7 +77,11 @@ const processQueue = (error: Error | null, token: string | null = null) => {
 instance.interceptors.request.use(
   config => {
     const userStore = useUserStore()
-    if (userStore.token) {
+    // 公开接口不需要Authorization头（仅GET请求）
+    const publicUrls = ['/auth/login', '/auth/refresh-token', '/auth/captcha']
+    const isPublicUrl = publicUrls.some(u => config.url?.includes(u))
+
+    if (userStore.token && !isPublicUrl) {
       config.headers.Authorization = `Bearer ${userStore.token}`
     }
     // 设置请求开始时间
@@ -101,6 +105,11 @@ instance.interceptors.response.use(
       : 0
     if (duration > 3000) {
       console.debug(`请求耗时: ${duration}ms - ${response.config.url}`)
+    }
+
+    // blob 类型响应直接返回（用于文件下载）
+    if (response.config.responseType === 'blob') {
+      return response
     }
 
     const data = response.data
@@ -136,7 +145,11 @@ instance.interceptors.response.use(
 
     // 登录接口的401由业务逻辑处理，不弹全局弹窗
     // 刷新令牌接口的401也不需要刷新
-    if (status === 401 && !url.includes('/auth/login') && !url.includes('/auth/refresh-token')) {
+    // 公开接口（captcha、style等）也不需要刷新
+    const publicUrls = ['/auth/login', '/auth/refresh-token', '/auth/captcha', '/style/config']
+    const isPublicUrl = publicUrls.some(u => url.includes(u))
+
+    if (status === 401 && !isPublicUrl) {
       // 如果正在刷新令牌，将请求加入队列
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -169,17 +182,17 @@ instance.interceptors.response.use(
           }
           return Promise.reject(error)
         } else {
-          // 刷新失败，清除状态并跳转登录页
+          // 刷新失败，清除状态并跳转登录页（不调用API）
           processQueue(new Error('Token refresh failed'), null)
           const userStore = useUserStore()
-          userStore.logoutAction()
+          userStore.logoutAction(false)
           window.location.href = '/login'
           return Promise.reject(new Error('Token refresh failed'))
         }
       } catch (refreshError) {
         processQueue(refreshError as Error, null)
         const userStore = useUserStore()
-        userStore.logoutAction()
+        userStore.logoutAction(false)
         window.location.href = '/login'
         return Promise.reject(refreshError)
       } finally {

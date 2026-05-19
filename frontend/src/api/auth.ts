@@ -2,6 +2,17 @@
 import http from '@/utils/http'
 import type { LoginRequest, LoginResponse, ApiResponse, User } from '@/types'
 
+// 验证码响应
+export interface CaptchaResponse {
+  captchaKey: string
+  captchaImage: string
+}
+
+// 获取验证码
+export const getCaptcha = async (): Promise<ApiResponse<CaptchaResponse>> => {
+  return await http.get('/api/auth/captcha')
+}
+
 // 登录
 export const login = async (data: LoginRequest): Promise<ApiResponse<LoginResponse>> => {
   return await http.post('/api/auth/login', data)

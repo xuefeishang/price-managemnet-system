@@ -1,11 +1,16 @@
 /**
  * 权限控制Composable
  * 提供细粒度的按钮级权限控制
+ *
+ * 权限判断方式：
+ * - 登录时从后端获取用户权限列表
+ * - 存入 userStore.permissions
+ * - hasPermission 从 store 中动态读取
  */
 import { computed } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 
-// 权限定义
+// 权限定义（与后端 permission_code 对齐）
 export const Permission = {
   // 产品相关
   PRODUCT_VIEW: 'product:view',
@@ -38,6 +43,10 @@ export const Permission = {
   APPROVAL_CREATE: 'approval:create',
   APPROVAL_PROCESS: 'approval:process',
 
+  // 部门相关
+  DEPT_VIEW: 'dept:view',
+  DEPT_EDIT: 'dept:edit',
+
   // 日志相关
   LOG_VIEW: 'log:view',
   LOG_EXPORT: 'log:export',
@@ -48,85 +57,14 @@ export const Permission = {
 
 export type PermissionKey = keyof typeof Permission
 
-// 角色-权限映射
-const rolePermissions: Record<string, string[]> = {
-  ADMIN: [
-    // 产品
-    Permission.PRODUCT_VIEW,
-    Permission.PRODUCT_CREATE,
-    Permission.PRODUCT_EDIT,
-    Permission.PRODUCT_DELETE,
-    Permission.PRODUCT_IMPORT,
-    Permission.PRODUCT_EXPORT,
-    // 分类
-    Permission.CATEGORY_VIEW,
-    Permission.CATEGORY_CREATE,
-    Permission.CATEGORY_EDIT,
-    Permission.CATEGORY_DELETE,
-    // 价格
-    Permission.PRICE_VIEW,
-    Permission.PRICE_EDIT,
-    Permission.PRICE_APPROVE,
-    // 用户
-    Permission.USER_VIEW,
-    Permission.USER_CREATE,
-    Permission.USER_EDIT,
-    Permission.USER_DELETE,
-    Permission.USER_PASSWORD_RESET,
-    // 审批
-    Permission.APPROVAL_VIEW,
-    Permission.APPROVAL_CREATE,
-    Permission.APPROVAL_PROCESS,
-    // 日志
-    Permission.LOG_VIEW,
-    Permission.LOG_EXPORT,
-    // 系统
-    Permission.SYSTEM_SETTING,
-  ],
-  EDITOR: [
-    // 产品
-    Permission.PRODUCT_VIEW,
-    Permission.PRODUCT_CREATE,
-    Permission.PRODUCT_EDIT,
-    Permission.PRODUCT_IMPORT,
-    Permission.PRODUCT_EXPORT,
-    // 分类
-    Permission.CATEGORY_VIEW,
-    Permission.CATEGORY_CREATE,
-    Permission.CATEGORY_EDIT,
-    // 价格
-    Permission.PRICE_VIEW,
-    Permission.PRICE_EDIT,
-    // 审批
-    Permission.APPROVAL_VIEW,
-    Permission.APPROVAL_CREATE,
-    Permission.APPROVAL_PROCESS,
-    // 日志
-    Permission.LOG_VIEW,
-  ],
-  VIEWER: [
-    // 产品
-    Permission.PRODUCT_VIEW,
-    Permission.PRODUCT_EXPORT,
-    // 分类
-    Permission.CATEGORY_VIEW,
-    // 价格
-    Permission.PRICE_VIEW,
-    // 审批
-    Permission.APPROVAL_VIEW,
-  ],
-}
-
 export function usePermission() {
   const userStore = useUserStore()
 
   /**
-   * 检查当前用户是否拥有指定权限
+   * 检查当前用户是否拥有指定权限（动态）
    */
   const hasPermission = (permission: string): boolean => {
-    if (!userStore.user?.role) return false
-    const permissions = rolePermissions[userStore.user.role] || []
-    return permissions.includes(permission)
+    return userStore.hasPermission(permission)
   }
 
   /**
@@ -146,7 +84,7 @@ export function usePermission() {
   /**
    * 检查是否是管理员
    */
-  const isAdmin = computed(() => userStore.user?.role === 'ADMIN')
+  const isAdmin = computed(() => userStore.isAdmin)
 
   /**
    * 检查是否是编辑者
@@ -161,15 +99,12 @@ export function usePermission() {
   /**
    * 获取当前用户的权限列表
    */
-  const permissions = computed(() => {
-    if (!userStore.user?.role) return []
-    return rolePermissions[userStore.user.role] || []
-  })
+  const permissions = computed(() => Array.from(userStore.permissions))
 
   /**
    * 检查是否可以执行某操作（基于操作类型）
    */
-  const canDo = (action: 'create' | 'edit' | 'delete' | 'view' | 'import' | 'export', resource: 'product' | 'category' | 'user' | 'price' | 'log'): boolean => {
+  const canDo = (action: 'create' | 'edit' | 'delete' | 'view' | 'import' | 'export', resource: 'product' | 'category' | 'user' | 'price' | 'log' | 'dept'): boolean => {
     const actionMap: Record<string, string> = {
       'create': `${resource}:create`,
       'edit': `${resource}:edit`,

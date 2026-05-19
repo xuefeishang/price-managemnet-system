@@ -10,21 +10,52 @@ USE price_management;
 -- 1. 创建表结构
 -- =====================================================
 
+-- 1.0 验证码表
+CREATE TABLE IF NOT EXISTS sys_captcha (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '验证码ID',
+    captcha_key VARCHAR(100) NOT NULL UNIQUE COMMENT '验证码Key（UUID）',
+    captcha_code VARCHAR(4) NOT NULL COMMENT '验证码（4位数字）',
+    captcha_image VARCHAR(500) COMMENT '验证码图片Base64',
+    ip_address VARCHAR(50) COMMENT '请求IP',
+    expire_time DATETIME NOT NULL COMMENT '过期时间',
+    used BOOLEAN DEFAULT FALSE COMMENT '是否已使用',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    INDEX idx_captcha_key (captcha_key),
+    INDEX idx_captcha_expire (expire_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='验证码表';
+
 -- 1.1 用户表
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
+    employee_id VARCHAR(6) UNIQUE COMMENT '工号（6位数字）',
     password VARCHAR(200) NOT NULL COMMENT '密码（BCrypt加密）',
     role VARCHAR(20) NOT NULL COMMENT '角色：ADMIN/EDITOR/VIEWER',
+    dept_id BIGINT COMMENT '部门ID',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
     nickname VARCHAR(50) COMMENT '昵称',
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '电话',
+    department VARCHAR(100) COMMENT '部门（旧字段，保留兼容）',
+    login_type VARCHAR(20) DEFAULT 'PASSWORD' COMMENT '登录方式：PASSWORD密码, WECHAT微信, BOTH双方式',
+    wechat_openid VARCHAR(100) UNIQUE COMMENT '微信OpenID',
+    wechat_unionid VARCHAR(100) COMMENT '微信UnionID',
+    wechat_nickname VARCHAR(100) COMMENT '微信昵称',
+    wechat_avatar VARCHAR(500) COMMENT '微信头像URL',
+    last_login_time DATETIME COMMENT '最后登录时间',
+    last_login_ip VARCHAR(50) COMMENT '最后登录IP',
+    login_count INT DEFAULT 0 COMMENT '登录次数',
+    password_updated_time DATETIME COMMENT '密码更新时间',
+    is_locked BOOLEAN DEFAULT FALSE COMMENT '是否锁定',
+    locked_time DATETIME COMMENT '锁定时间',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_user_username (username),
+    INDEX idx_user_employee_id (employee_id),
     INDEX idx_user_status (status),
-    INDEX idx_user_role (role)
+    INDEX idx_user_role (role),
+    INDEX idx_user_dept (dept_id),
+    INDEX idx_user_wechat_openid (wechat_openid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
 -- 1.2 产品分类表
@@ -322,9 +353,11 @@ SELECT * FROM (
     UNION ALL SELECT 23, 3, '审批管理', '/approval', 'check-circle', 4, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 24, 3, '字典管理', NULL, 'dict', 5, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 30, 4, '用户管理', '/users', 'users', 1, TRUE, '["ADMIN"]', NOW(), NOW()
-    UNION ALL SELECT 31, 4, '菜单配置', '/menu-config', 'menu', 2, TRUE, '["ADMIN"]', NOW(), NOW()
-    UNION ALL SELECT 32, 4, '日志管理', '/operation-log', 'log', 3, TRUE, '["ADMIN"]', NOW(), NOW()
-    UNION ALL SELECT 33, 4, '审批流配置', '/approval-config', 'workflow', 4, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 34, 4, '部门管理', '/departments', 'building', 2, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 31, 4, '菜单配置', '/menu-config', 'menu', 3, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 32, 4, '日志管理', '/operation-log', 'log', 4, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 33, 4, '审批流配置', '/approval-config', 'workflow', 5, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 35, 4, '样式设置', '/style-settings', 'palette', 6, TRUE, '["ADMIN"]', NOW(), NOW()
     UNION ALL SELECT 40, 24, '产地管理', '/origins', NULL, 1, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 41, 24, '客户管理', '/customers', NULL, 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 42, 24, '数据字典', '/dict-management', NULL, 3, TRUE, '["ADMIN"]', NOW(), NOW()
@@ -480,7 +513,32 @@ SELECT * FROM (
 ) AS tmp
 WHERE @has_dict = 0;
 
-SELECT CONCAT('字典数据: ', IF(@has_dict > 0, '已存在，跳过', '初始化完成（8个分类）')) AS status;
+-- 部门类型字典
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'dept_type' AS category, 'HEADQUARTERS' AS dict_key, '总部' AS dict_value, '#6366f1' AS extra_value, 1 AS sort_order, 'ACTIVE' AS status, '总部/集团' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'dept_type', 'COMPANY', '子公司', '#f59e0b', 2, 'ACTIVE', '子公司/分公司', NOW(), NOW()
+    UNION ALL SELECT 'dept_type', 'DEPARTMENT', '部门', '#10b981', 3, 'ACTIVE', '普通部门', NOW(), NOW()
+) AS tmp
+WHERE @has_dict = 0;
+
+-- 字体大小字典（style 分类）- 独立条件检查
+SET @has_font_size_dict = 0;
+SELECT COUNT(*) INTO @has_font_size_dict FROM sys_dict WHERE category='style' AND dict_key='font_size_xs';
+
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'style' AS category, 'font_size_xs' AS dict_key, 'auxiliary' AS dict_value, '0.75rem' AS extra_value, 20 AS sort_order, 'ACTIVE' AS status, 'caption, badge' AS remark, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'style', 'font_size_sm', 'table-cell', '0.875rem', 21, 'ACTIVE', 'table-cell', NOW(), NOW()
+    UNION ALL SELECT 'style', 'font_size_base', 'body-header', '1rem', 22, 'ACTIVE', 'body, header', NOW(), NOW()
+    UNION ALL SELECT 'style', 'font_size_lg', 'subtitle', '1.125rem', 23, 'ACTIVE', 'subtitle', NOW(), NOW()
+    UNION ALL SELECT 'style', 'font_size_xl', 'section-title', '1.25rem', 24, 'ACTIVE', 'section-title', NOW(), NOW()
+    UNION ALL SELECT 'style', 'font_size_2xl', 'page-title', '1.5rem', 25, 'ACTIVE', 'page-title', NOW(), NOW()
+    UNION ALL SELECT 'style', 'font_size_3xl', 'hero-title', '1.875rem', 26, 'ACTIVE', 'hero-title', NOW(), NOW()
+) AS tmp
+WHERE @has_font_size_dict = 0;
+
+SELECT CONCAT('字典数据: ', IF(@has_dict > 0, '已存在，跳过', '初始化完成（10个分类）')) AS status;
 
 -- =====================================================
 -- 8. 审批流程定义表
@@ -585,6 +643,212 @@ SELECT * FROM (
 WHERE @has_node = 0;
 
 SELECT CONCAT('审批节点数据: ', IF(@has_node > 0, '已存在，跳过', '初始化完成（3个节点）')) AS status;
+
+-- =====================================================
+-- 11. 部门组织表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_department (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '部门ID',
+    parent_id BIGINT COMMENT '父部门ID（NULL表示顶级）',
+    dept_code VARCHAR(50) NOT NULL UNIQUE COMMENT '部门编码',
+    dept_name VARCHAR(100) NOT NULL COMMENT '部门名称',
+    dept_type VARCHAR(20) NOT NULL DEFAULT 'DEPARTMENT' COMMENT '类型：HEADQUARTERS总部/COMPANY公司/DEPARTMENT部门',
+    leader_id BIGINT COMMENT '部门负责人ID',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
+    path VARCHAR(500) COMMENT '层级路径（如：1/2/3）',
+    level INT DEFAULT 1 COMMENT '层级深度',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_dept_parent (parent_id),
+    INDEX idx_dept_code (dept_code),
+    INDEX idx_dept_path (path),
+    INDEX idx_dept_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='部门组织表';
+
+-- =====================================================
+-- 12. 系统角色表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_role (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '角色ID',
+    role_code VARCHAR(50) NOT NULL UNIQUE COMMENT '角色编码',
+    role_name VARCHAR(100) NOT NULL COMMENT '角色名称',
+    description VARCHAR(500) COMMENT '角色描述',
+    dept_id BIGINT COMMENT '所属部门（NULL表示全局角色）',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
+    is_system BOOLEAN DEFAULT FALSE COMMENT '是否系统内置角色',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_role_code (role_code),
+    INDEX idx_role_status (status),
+    INDEX idx_role_dept (dept_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统角色表';
+
+-- =====================================================
+-- 13. 系统权限表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_permission (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '权限ID',
+    permission_code VARCHAR(100) NOT NULL UNIQUE COMMENT '权限编码',
+    permission_name VARCHAR(100) NOT NULL COMMENT '权限名称',
+    permission_type VARCHAR(20) NOT NULL COMMENT '权限类型：MENU菜单, BUTTON按钮, API接口',
+    parent_id BIGINT COMMENT '父权限ID',
+    resource_url VARCHAR(200) COMMENT '资源路径',
+    icon VARCHAR(50) COMMENT '图标',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_permission_code (permission_code),
+    INDEX idx_permission_type (permission_type),
+    INDEX idx_permission_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统权限表';
+
+-- =====================================================
+-- 14. 用户角色关联表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_user_role (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    role_id BIGINT NOT NULL COMMENT '角色ID',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    UNIQUE KEY uk_user_role (user_id, role_id),
+    INDEX idx_user_role_user (user_id),
+    INDEX idx_user_role_role (role_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户角色关联表';
+
+-- =====================================================
+-- 15. 角色权限关联表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sys_role_permission (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联ID',
+    role_id BIGINT NOT NULL COMMENT '角色ID',
+    permission_id BIGINT NOT NULL COMMENT '权限ID',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    UNIQUE KEY uk_role_permission (role_id, permission_id),
+    INDEX idx_role_permission_role (role_id),
+    INDEX idx_role_permission_permission (permission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限关联表';
+
+-- =====================================================
+-- 16. 初始化部门数据
+-- =====================================================
+SET @has_dept = 0;
+SELECT COUNT(*) INTO @has_dept FROM sys_department;
+
+INSERT INTO sys_department (id, parent_id, dept_code, dept_name, dept_type, sort_order, status, path, level, created_time, updated_time)
+SELECT * FROM (
+    SELECT 1 AS id, NULL AS parent_id, 'HQ' AS dept_code, '总部' AS dept_name, 'HEADQUARTERS' AS dept_type, 1 AS sort_order, 'ACTIVE' AS status, '1' AS path, 1 AS level, NOW() AS created_time, NOW() AS updated_time
+) AS tmp
+WHERE @has_dept = 0;
+
+SELECT CONCAT('部门数据: ', IF(@has_dept > 0, '已存在，跳过', '初始化完成（1个总部）')) AS status;
+
+-- =====================================================
+-- 17. 初始化角色数据
+-- =====================================================
+SET @has_sys_role = 0;
+SELECT COUNT(*) INTO @has_sys_role FROM sys_role;
+
+INSERT INTO sys_role (id, role_code, role_name, description, sort_order, status, is_system, created_time, updated_time)
+SELECT * FROM (
+    SELECT 1 AS id, 'ADMIN' AS role_code, '系统管理员' AS role_name, '拥有所有权限' AS description, 1 AS sort_order, 'ACTIVE' AS status, TRUE AS is_system, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 2, 'EDITOR', '编辑用户', '可编辑产品价格数据', 2, 'ACTIVE', TRUE, NOW(), NOW()
+    UNION ALL SELECT 3, 'VIEWER', '普通用户', '仅可查看数据', 3, 'ACTIVE', TRUE, NOW(), NOW()
+) AS tmp
+WHERE @has_sys_role = 0;
+
+SELECT CONCAT('角色数据: ', IF(@has_sys_role > 0, '已存在，跳过', '初始化完成（3个角色）')) AS status;
+
+-- =====================================================
+-- 18. 初始化权限数据
+-- =====================================================
+SET @has_sys_permission = 0;
+SELECT COUNT(*) INTO @has_sys_permission FROM sys_permission;
+
+INSERT INTO sys_permission (id, permission_code, permission_name, permission_type, parent_id, resource_url, sort_order, status, created_time, updated_time)
+SELECT * FROM (
+    SELECT 1 AS id, 'home:view' AS permission_code, '首页查看' AS permission_name, 'MENU' AS permission_type, NULL AS parent_id, '/home' AS resource_url, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 2, 'product:view', '产品列表查看', 'MENU', NULL, '/products', 10, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 3, 'product:create', '产品创建', 'BUTTON', 2, NULL, 11, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 4, 'product:edit', '产品编辑', 'BUTTON', 2, NULL, 12, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 5, 'product:delete', '产品删除', 'BUTTON', 2, NULL, 13, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 6, 'product:import', '产品导入', 'BUTTON', 2, NULL, 14, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 7, 'product:export', '产品导出', 'BUTTON', 2, NULL, 15, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 8, 'price:view', '价格查看', 'MENU', NULL, '/price-maintenance', 20, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 9, 'price:edit', '价格编辑', 'BUTTON', 8, NULL, 21, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 10, 'price:approve', '价格审批', 'BUTTON', 8, NULL, 22, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 11, 'category:view', '分类管理查看', 'MENU', NULL, '/categories', 30, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 12, 'category:edit', '分类编辑', 'BUTTON', 11, NULL, 31, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 13, 'origin:view', '产地管理查看', 'MENU', NULL, '/origins', 40, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 14, 'origin:edit', '产地编辑', 'BUTTON', 13, NULL, 41, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 15, 'customer:view', '客户管理查看', 'MENU', NULL, '/customers', 50, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 16, 'customer:edit', '客户编辑', 'BUTTON', 15, NULL, 51, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 17, 'approval:view', '审批查看', 'MENU', NULL, '/approval', 60, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 18, 'approval:create', '审批创建', 'BUTTON', 17, NULL, 61, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 19, 'approval:process', '审批处理', 'BUTTON', 17, NULL, 62, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 20, 'user:view', '用户管理查看', 'MENU', NULL, '/users', 100, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 21, 'user:create', '用户创建', 'BUTTON', 20, NULL, 101, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 22, 'user:edit', '用户编辑', 'BUTTON', 20, NULL, 102, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 23, 'user:delete', '用户删除', 'BUTTON', 20, NULL, 103, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 24, 'user:password:reset', '用户密码重置', 'BUTTON', 20, NULL, 104, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 25, 'role:view', '角色管理查看', 'MENU', NULL, '/roles', 110, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 26, 'role:edit', '角色编辑', 'BUTTON', 25, NULL, 111, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 27, 'dept:view', '部门管理查看', 'MENU', NULL, '/departments', 120, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 28, 'dept:edit', '部门编辑', 'BUTTON', 27, NULL, 121, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 29, 'log:view', '日志查看', 'MENU', NULL, '/operation-log', 130, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 30, 'log:export', '日志导出', 'BUTTON', 29, NULL, 131, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 31, 'system:setting', '系统设置', 'MENU', NULL, '/system-settings', 140, 'ACTIVE', NOW(), NOW()
+) AS tmp
+WHERE @has_sys_permission = 0;
+
+SELECT CONCAT('权限数据: ', IF(@has_sys_permission > 0, '已存在，跳过', '初始化完成（31个权限）')) AS status;
+
+-- =====================================================
+-- 19. 初始化角色权限关联
+-- =====================================================
+SET @has_role_permission = 0;
+SELECT COUNT(*) INTO @has_role_permission FROM sys_role_permission;
+
+-- ADMIN拥有所有权限
+INSERT INTO sys_role_permission (role_id, permission_id, created_time)
+SELECT 1 AS role_id, p.id AS permission_id, NOW() AS created_time
+FROM sys_permission p
+WHERE @has_role_permission = 0;
+
+-- EDITOR拥有产品、价格、分类、产地、客户、审批相关权限
+INSERT INTO sys_role_permission (role_id, permission_id, created_time)
+SELECT 2 AS role_id, p.id AS permission_id, NOW() AS created_time
+FROM sys_permission p
+WHERE p.permission_code IN ('home:view', 'product:view', 'product:create', 'product:edit', 'product:import', 'product:export', 'price:view', 'price:edit', 'category:view', 'category:edit', 'origin:view', 'origin:edit', 'customer:view', 'customer:edit', 'approval:view', 'approval:create', 'approval:process', 'log:view')
+AND @has_role_permission = 0;
+
+-- VIEWER仅拥有查看权限
+INSERT INTO sys_role_permission (role_id, permission_id, created_time)
+SELECT 3 AS role_id, p.id AS permission_id, NOW() AS created_time
+FROM sys_permission p
+WHERE p.permission_code LIKE '%:view'
+AND @has_role_permission = 0;
+
+SELECT CONCAT('角色权限关联: ', IF(@has_role_permission > 0, '已存在，跳过', '初始化完成')) AS status;
+
+-- =====================================================
+-- 20. 初始化用户角色关联
+-- =====================================================
+SET @has_user_role = 0;
+SELECT COUNT(*) INTO @has_user_role FROM sys_user_role;
+
+-- 为默认用户分配角色（user_id: 1=admin, 2=editor, 3=viewer; role_id: 1=ADMIN, 2=EDITOR, 3=VIEWER）
+INSERT INTO sys_user_role (user_id, role_id, created_time)
+SELECT * FROM (
+    SELECT 1 AS user_id, 1 AS role_id, NOW() AS created_time
+    UNION ALL SELECT 2, 2, NOW()
+    UNION ALL SELECT 3, 3, NOW()
+) AS tmp
+WHERE @has_user_role = 0;
+
+SELECT CONCAT('用户角色关联: ', IF(@has_user_role > 0, '已存在，跳过', '初始化完成（3个关联）')) AS status;
 
 -- =====================================================
 -- 初始化完成提示

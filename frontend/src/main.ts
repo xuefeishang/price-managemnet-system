@@ -6,8 +6,16 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+
+// UnoCSS（必须在自定义样式之前引入）
+import 'virtual:uno.css'
+
+// Vant 样式
 import 'vant/lib/index.css'
+
+// 自定义样式（可以覆盖默认值）
 import './assets/style.scss'
+
 import { useTheme } from '@/composables/useTheme'
 
 // 创建 Vue 应用实例

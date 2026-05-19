@@ -1,0 +1,114 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/products/list",
+      "style": {
+        "navigationBarTitleText": "产品列表",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/products/detail",
+      "style": {
+        "navigationBarTitleText": "产品详情"
+      }
+    },
+    {
+      "path": "pages/products/edit",
+      "style": {
+        "navigationBarTitleText": "产品编辑"
+      }
+    },
+    {
+      "path": "pages/price-maintenance/index",
+      "style": {
+        "navigationBarTitleText": "价格维护"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "个人中心"
+      }
+    }
+  ],
+
+  "subPackages": [
+    {
+      "root": "pages-sub/basic",
+      "pages": [
+        {
+          "path": "categories/index",
+          "style": { "navigationBarTitleText": "分类管理" }
+        },
+        {
+          "path": "origins/index",
+          "style": { "navigationBarTitleText": "产地管理" }
+        },
+        {
+          "path": "customers/index",
+          "style": { "navigationBarTitleText": "客户管理" }
+        }
+      ]
+    },
+    {
+      "root": "pages-sub/approval",
+      "pages": [
+        {
+          "path": "index",
+          "style": { "navigationBarTitleText": "审批管理" }
+        }
+      ]
+    }
+  ],
+
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#0D6E6E",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "fontSize": "16px",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/products/list",
+        "text": "产品"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的"
+      }
+    ]
+  },
+
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "价格管理系统",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F5F5F5"
+  },
+
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "mini-trend-chart": "@/components/mini-trend-chart/index",
+      "price-trend-chart": "@/components/price-trend-chart/index"
+    }
+  }
+}

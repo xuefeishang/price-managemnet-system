@@ -12,4 +12,10 @@ public class LoginRequest {
 
     @NotBlank(message = "密码不能为空")
     private String password;
+
+    private String captchaKey;
+
+    private String captchaCode;
+
+    private String loginType;
 }

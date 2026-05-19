@@ -34,6 +34,7 @@ public class StyleConfigService {
 
     private static final long MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2MB
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#[0-9A-Fa-f]{6}$");
+    private static final Pattern FONT_SIZE_PATTERN = Pattern.compile("^(\\d+(\\.\\d+)?)(rem|px|em)$");
 
     @Value("${style.logo.dir:#{systemProperties['java.io.tmpdir']}/logos/}")
     private String logoDir;
@@ -59,6 +60,15 @@ public class StyleConfigService {
         getDictValue(CATEGORY_STYLE, "logo_url").ifPresent(config::setLogoUrl);
         getDictValue(CATEGORY_STYLE, "logo_size").ifPresent(config::setLogoSize);
         getDictValue(CATEGORY_STYLE, "active_theme").ifPresent(config::setActiveTheme);
+
+        // 字体大小配置
+        getDictValue(CATEGORY_STYLE, "font_size_xs").ifPresent(config::setFontSizeXs);
+        getDictValue(CATEGORY_STYLE, "font_size_sm").ifPresent(config::setFontSizeSm);
+        getDictValue(CATEGORY_STYLE, "font_size_base").ifPresent(config::setFontSizeBase);
+        getDictValue(CATEGORY_STYLE, "font_size_lg").ifPresent(config::setFontSizeLg);
+        getDictValue(CATEGORY_STYLE, "font_size_xl").ifPresent(config::setFontSizeXl);
+        getDictValue(CATEGORY_STYLE, "font_size_2xl").ifPresent(config::setFontSize2xl);
+        getDictValue(CATEGORY_STYLE, "font_size_3xl").ifPresent(config::setFontSize3xl);
 
         return config;
     }
@@ -139,6 +149,36 @@ public class StyleConfigService {
         }
         if (config.getActiveTheme() != null) {
             updateDict(CATEGORY_STYLE, "active_theme", config.getActiveTheme());
+        }
+
+        // 字体大小配置
+        if (config.getFontSizeXs() != null) {
+            validateFontSize(config.getFontSizeXs());
+            updateDict(CATEGORY_STYLE, "font_size_xs", config.getFontSizeXs());
+        }
+        if (config.getFontSizeSm() != null) {
+            validateFontSize(config.getFontSizeSm());
+            updateDict(CATEGORY_STYLE, "font_size_sm", config.getFontSizeSm());
+        }
+        if (config.getFontSizeBase() != null) {
+            validateFontSize(config.getFontSizeBase());
+            updateDict(CATEGORY_STYLE, "font_size_base", config.getFontSizeBase());
+        }
+        if (config.getFontSizeLg() != null) {
+            validateFontSize(config.getFontSizeLg());
+            updateDict(CATEGORY_STYLE, "font_size_lg", config.getFontSizeLg());
+        }
+        if (config.getFontSizeXl() != null) {
+            validateFontSize(config.getFontSizeXl());
+            updateDict(CATEGORY_STYLE, "font_size_xl", config.getFontSizeXl());
+        }
+        if (config.getFontSize2xl() != null) {
+            validateFontSize(config.getFontSize2xl());
+            updateDict(CATEGORY_STYLE, "font_size_2xl", config.getFontSize2xl());
+        }
+        if (config.getFontSize3xl() != null) {
+            validateFontSize(config.getFontSize3xl());
+            updateDict(CATEGORY_STYLE, "font_size_3xl", config.getFontSize3xl());
         }
     }
 
@@ -225,6 +265,12 @@ public class StyleConfigService {
     private void validateHexColor(String color) {
         if (color != null && !HEX_COLOR_PATTERN.matcher(color).matches()) {
             throw new IllegalArgumentException("无效的颜色格式: " + color + "，应为 #RRGGBB 格式");
+        }
+    }
+
+    private void validateFontSize(String fontSize) {
+        if (fontSize != null && !FONT_SIZE_PATTERN.matcher(fontSize).matches()) {
+            throw new IllegalArgumentException("无效的字体大小格式: " + fontSize + "，应为数字+单位(rem/px/em)");
         }
     }
 

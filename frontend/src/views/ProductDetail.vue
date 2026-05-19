@@ -696,7 +696,7 @@ const getChangeTypeClass = (changeType: string) => {
 
 <style scoped>
 .product-detail-page {
-  min-height: 100vh;
+  
   background-color: var(--bg-page);
 }
 

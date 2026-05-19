@@ -24,6 +24,9 @@ public class User {
     @Column(unique = true, nullable = false, length = 50)
     private String username;
 
+    @Column(name = "employee_id", unique = true, length = 6)
+    private String employeeId;
+
     @JsonIgnore
     @Column(nullable = false)
     private String password;
@@ -44,6 +47,45 @@ public class User {
 
     @Column(length = 20)
     private String phone;
+
+    @Column(length = 100)
+    private String department;
+
+    @Column(name = "dept_id")
+    private Long deptId;
+
+    @Column(name = "login_type", length = 20)
+    private String loginType = "PASSWORD";
+
+    @Column(name = "wechat_openid", unique = true, length = 100)
+    private String wechatOpenid;
+
+    @Column(name = "wechat_unionid", length = 100)
+    private String wechatUnionid;
+
+    @Column(name = "wechat_nickname", length = 100)
+    private String wechatNickname;
+
+    @Column(name = "wechat_avatar", length = 500)
+    private String wechatAvatar;
+
+    @Column(name = "last_login_time")
+    private LocalDateTime lastLoginTime;
+
+    @Column(name = "last_login_ip", length = 50)
+    private String lastLoginIp;
+
+    @Column(name = "login_count")
+    private Integer loginCount = 0;
+
+    @Column(name = "password_updated_time")
+    private LocalDateTime passwordUpdatedTime;
+
+    @Column(name = "is_locked")
+    private Boolean isLocked = false;
+
+    @Column(name = "locked_time")
+    private LocalDateTime lockedTime;
 
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)

@@ -1,12 +1,12 @@
 /**
  * 用户状态管理 Store
- * 管理用户登录状态、Token、用户信息等
+ * 管理用户登录状态、Token、用户信息、权限等
  *
  * 功能说明：
  * - 登录/登出：loginAction, logoutAction
  * - Token 管理：token, refreshTokenValue, refreshAccessToken
  * - 用户信息：user, fetchProfile
- * - 权限判断：isAdmin, canEdit, getUserRole
+ * - 权限判断：isAdmin, canEdit, getUserRole, hasPermission
  *
  * Token 存储策略：
  * - Access Token：短期有效（默认2小时），存储在 localStorage
@@ -31,6 +31,8 @@ export const useUserStore = defineStore('user', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   /** Refresh Token（用于刷新 Access Token） */
   const refreshTokenValue = ref<string | null>(localStorage.getItem('refreshToken'))
+  /** 用户权限列表（从后端动态获取） */
+  const permissions = ref<Set<string>>(new Set())
   /** 是否已认证（基于 token 是否存在） */
   const isAuthenticated = computed(() => !!token.value)
 
@@ -56,12 +58,17 @@ export const useUserStore = defineStore('user', () => {
         id: userData.id || userData.userId,
         username: userData.username,
         nickname: userData.nickname,
-        role: userData.role,
+        role: userData.role,  // 主角色
+        roles: userData.roles || [userData.role],  // 角色列表
         status: 'ACTIVE',
         email: '',
         phone: '',
         createdTime: '',
         updatedTime: ''
+      }
+      // 设置权限列表
+      if (responseData.permissions) {
+        permissions.value = new Set(responseData.permissions)
       }
       return true
     } catch (error) {
@@ -73,17 +80,21 @@ export const useUserStore = defineStore('user', () => {
   /**
    * 用户登出
    * 调用后端登出接口并清除本地状态
+   * @param callApi 是否调用后端登出API（默认true）
    */
-  const logoutAction = async () => {
-    try {
-      await logoutApi()
-    } catch (error) {
-      console.error('Logout API failed:', error)
+  const logoutAction = async (callApi: boolean = true) => {
+    if (callApi) {
+      try {
+        await logoutApi()
+      } catch (error) {
+        console.error('Logout API failed:', error)
+      }
     }
     // 清除本地状态
     user.value = null
     token.value = null
     refreshTokenValue.value = null
+    permissions.value = new Set()
     localStorage.removeItem('token')
     localStorage.removeItem('refreshToken')
   }
@@ -110,8 +121,8 @@ export const useUserStore = defineStore('user', () => {
       return accessToken
     } catch (error) {
       console.error('Token refresh failed:', error)
-      // 刷新失败，清除状态
-      await logoutAction()
+      // 刷新失败，清除本地状态（不调用API，避免循环）
+      await logoutAction(false)
       return null
     }
   }
@@ -132,11 +143,38 @@ export const useUserStore = defineStore('user', () => {
   /** 获取用户角色 */
   const getUserRole = computed(() => user.value?.role)
 
+  /** 获取用户所有角色 */
+  const getUserRoles = computed(() => user.value?.roles || [user.value?.role])
+
   /** 判断用户是否是管理员 */
-  const isAdmin = computed(() => user.value?.role === 'ADMIN')
+  const isAdmin = computed(() => user.value?.role === 'ADMIN' || user.value?.roles?.includes('ADMIN'))
 
   /** 判断用户是否有编辑权限（ADMIN 或 EDITOR） */
-  const canEdit = computed(() => user.value?.role === 'ADMIN' || user.value?.role === 'EDITOR')
+  const canEdit = computed(() => {
+    if (!user.value) return false
+    if (user.value.role === 'ADMIN' || user.value.role === 'EDITOR') return true
+    return user.value.roles?.some(r => r === 'ADMIN' || r === 'EDITOR') ?? false
+  })
+
+  /**
+   * 判断用户是否有指定角色
+   */
+  const hasRole = (role: string): boolean => {
+    if (!user.value) return false
+    if (user.value.role === role) return true
+    return user.value.roles?.includes(role as any) ?? false
+  }
+
+  /**
+   * 检查用户是否有指定权限（动态）
+   * @param permissionCode 权限编码
+   */
+  const hasPermission = (permissionCode: string): boolean => {
+    // 管理员拥有所有权限
+    if (user.value?.role === 'ADMIN') return true
+    // 检查权限列表
+    return permissions.value.has(permissionCode)
+  }
 
   // ==================== 导出 ====================
 
@@ -144,13 +182,17 @@ export const useUserStore = defineStore('user', () => {
     user,
     token,
     refreshTokenValue,
+    permissions,
     isAuthenticated,
     loginAction,
     logoutAction,
     refreshAccessToken,
     fetchProfile,
     getUserRole,
+    getUserRoles,
     isAdmin,
-    canEdit
+    canEdit,
+    hasPermission,
+    hasRole
   }
 })

@@ -222,12 +222,12 @@ const navigateTo = (path: string) => {
 
 const handleLogout = () => {
   userStore.logoutAction()
-  router.push('/login')
+  // 跳转由 watch(() => userStore.isAuthenticated) 统一处理
 }
 
 onMounted(async () => {
   if (!userStore.isAuthenticated) {
-    router.push('/login')
+    router.replace('/login')
     return
   }
 
@@ -618,8 +618,8 @@ watch(() => menuStore.version, () => {
 }
 
 .brand-text {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #0D6E6E;
 }
@@ -663,8 +663,8 @@ watch(() => menuStore.version, () => {
 
 .nav-label {
   flex: 1;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -689,7 +689,7 @@ watch(() => menuStore.version, () => {
 
 .nav-item.child {
   padding: 10px 16px 10px 44px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666666;
 }
 
@@ -710,7 +710,7 @@ watch(() => menuStore.version, () => {
 
 .nav-item.grandchild {
   padding: 8px 16px 8px 64px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
@@ -750,7 +750,7 @@ watch(() => menuStore.version, () => {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .user-details {
@@ -758,15 +758,15 @@ watch(() => menuStore.version, () => {
 }
 
 .user-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
 }
 
 .user-role {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
@@ -813,8 +813,8 @@ watch(() => menuStore.version, () => {
 }
 
 .sub-nav-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: #0D6E6E;
   padding-right: 24px;
@@ -831,8 +831,8 @@ watch(() => menuStore.version, () => {
   background: transparent;
   border: none;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: #666666;
   cursor: pointer;
@@ -894,8 +894,8 @@ watch(() => menuStore.version, () => {
 }
 
 .mobile-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #0D6E6E;
 }
@@ -972,8 +972,8 @@ watch(() => menuStore.version, () => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #666666;
   cursor: pointer;
@@ -1010,8 +1010,8 @@ watch(() => menuStore.version, () => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #666666;
   cursor: pointer;
@@ -1050,7 +1050,7 @@ watch(() => menuStore.version, () => {
 
 .mobile-nav-item.grandchild {
   padding-left: 48px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 

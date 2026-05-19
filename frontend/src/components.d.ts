@@ -7,12 +7,20 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    CategoryFilterPanel: typeof import('./components/CategoryFilterPanel.vue')['default']
+    CategoryIcons: typeof import('./components/icons/CategoryIcons.vue')['default']
+    DeptTreeNode: typeof import('./components/DeptTreeNode.vue')['default']
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     Layout: typeof import('./components/Layout.vue')['default']
+    MetricsCardGrid: typeof import('./components/home/MetricsCardGrid.vue')['default']
     NavBar: typeof import('./components/NavBar.vue')['default']
+    PageContainer: typeof import('./components/PageContainer.vue')['default']
+    RiskAlertsPanel: typeof import('./components/home/RiskAlertsPanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Skeleton: typeof import('./components/Skeleton.vue')['default']
+    SummarySection: typeof import('./components/home/SummarySection.vue')['default']
+    TrendAnalysisChart: typeof import('./components/home/TrendAnalysisChart.vue')['default']
     VanPopup: typeof import('vant/es')['Popup']
     VanStepper: typeof import('vant/es')['Stepper']
     VanSwitch: typeof import('vant/es')['Switch']

@@ -766,7 +766,7 @@ onMounted(() => {
 <style scoped>
 .approval-page {
   padding: 16px;
-  min-height: 100vh;
+  
   background: #f5f5f5;
 }
 
@@ -775,14 +775,14 @@ onMounted(() => {
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: #333;
   margin: 0;
 }
 
 .page-subtitle {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #999;
   margin: 4px 0 0 0;
 }
@@ -809,7 +809,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
   cursor: pointer;
   transition: all 0.2s;
@@ -823,7 +823,7 @@ onMounted(() => {
 .tab-btn .badge {
   background: #EF4444;
   color: #fff;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   padding: 2px 6px;
   border-radius: 10px;
 }
@@ -900,13 +900,13 @@ onMounted(() => {
 }
 
 .request-type {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #333;
 }
 
 .request-status {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -933,7 +933,7 @@ onMounted(() => {
 
 .request-info p {
   margin: 4px 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666;
 }
 
@@ -949,14 +949,14 @@ onMounted(() => {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-sm {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .btn-primary {
@@ -996,7 +996,7 @@ onMounted(() => {
 
 .text-gray-500 {
   color: #999;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .pagination {
@@ -1009,7 +1009,7 @@ onMounted(() => {
   border: 1px solid #ddd;
   background: #fff;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
 }
 
@@ -1041,7 +1041,7 @@ onMounted(() => {
 }
 
 .sidebar-header h3 {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   margin: 0;
 }
@@ -1079,13 +1079,13 @@ onMounted(() => {
 }
 
 .workflow-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: #333;
 }
 
 .workflow-type {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: #999;
 }
 
@@ -1145,7 +1145,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -1156,7 +1156,7 @@ onMounted(() => {
 
 .node-info p {
   margin: 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: #666;
 }
 
@@ -1170,7 +1170,7 @@ onMounted(() => {
 }
 
 .dialog-title {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   margin: 0 0 16px 0;
   text-align: center;
@@ -1186,7 +1186,7 @@ onMounted(() => {
 
 .form-group label {
   display: block;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666;
   margin-bottom: 4px;
 }
@@ -1196,7 +1196,7 @@ onMounted(() => {
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
 }
 

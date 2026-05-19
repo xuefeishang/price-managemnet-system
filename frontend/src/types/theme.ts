@@ -12,6 +12,14 @@ export interface StyleConfig {
   logoUrl: string
   logoSize: string
   activeTheme: string
+  // 字体大小配置
+  fontSizeXs: string
+  fontSizeSm: string
+  fontSizeBase: string
+  fontSizeLg: string
+  fontSizeXl: string
+  fontSize2xl: string
+  fontSize3xl: string
 }
 
 export interface StyleTheme {
@@ -114,4 +122,95 @@ export const AVAILABLE_LOGO_SIZES = [
   { value: 'medium', label: '中', size: '36px' },
   { value: 'large', label: '大', size: '48px' },
   { value: 'xlarge', label: '特大', size: '64px' }
+]
+
+// 字体大小预设方案
+export interface FontSizePreset {
+  key: string
+  name: string
+  description: string
+  wcagCompliant: boolean
+  sizes: {
+    xs: string
+    sm: string
+    base: string
+    lg: string
+    xl: string
+    '2xl': string
+    '3xl': string
+  }
+}
+
+export const FONT_SIZE_PRESETS: FontSizePreset[] = [
+  {
+    key: 'compact',
+    name: '紧凑',
+    description: '数据密集型后台',
+    wcagCompliant: false,
+    sizes: {
+      xs: '0.625rem',
+      sm: '0.75rem',
+      base: '0.875rem',
+      lg: '1rem',
+      xl: '1.125rem',
+      '2xl': '1.25rem',
+      '3xl': '1.5rem'
+    }
+  },
+  {
+    key: 'standard',
+    name: '标准',
+    description: '通用场景',
+    wcagCompliant: false,
+    sizes: {
+      xs: '0.75rem',
+      sm: '0.875rem',
+      base: '1rem',
+      lg: '1.125rem',
+      xl: '1.25rem',
+      '2xl': '1.5rem',
+      '3xl': '1.875rem'
+    }
+  },
+  {
+    key: 'large',
+    name: '大字体',
+    description: '比标准略大',
+    wcagCompliant: false,
+    sizes: {
+      xs: '0.8125rem',
+      sm: '0.9375rem',
+      base: '1.0625rem',
+      lg: '1.1875rem',
+      xl: '1.375rem',
+      '2xl': '1.625rem',
+      '3xl': '1.9375rem'
+    }
+  },
+  {
+    key: 'xlarge',
+    name: '特大字体',
+    description: '演示/投影/无障碍',
+    wcagCompliant: true,
+    sizes: {
+      xs: '0.875rem',
+      sm: '1rem',
+      base: '1.125rem',
+      lg: '1.25rem',
+      xl: '1.5rem',
+      '2xl': '1.75rem',
+      '3xl': '2rem'
+    }
+  }
+]
+
+// 字体大小字段定义
+export const FONT_SIZE_FIELDS = [
+  { key: 'fontSizeXs', label: '辅助信息', default: '0.75rem' },
+  { key: 'fontSizeSm', label: '表格内容', default: '0.875rem' },
+  { key: 'fontSizeBase', label: '正文表头', default: '1rem' },
+  { key: 'fontSizeLg', label: '小节标题', default: '1.125rem' },
+  { key: 'fontSizeXl', label: '页面副标题', default: '1.25rem' },
+  { key: 'fontSize2xl', label: '页面主标题', default: '1.5rem' },
+  { key: 'fontSize3xl', label: '特大标题', default: '1.875rem' }
 ]

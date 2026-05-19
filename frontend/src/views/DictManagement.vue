@@ -86,7 +86,7 @@ const handleToggleStatus = async (dict: SysDict) => {
     await updateDict(dict.id, { status: newStatus } as Partial<SysDict>)
     dict.status = newStatus as any
     showToast(`字典项已${actionText}`)
-    refreshDictCache()
+    // 不刷新全局缓存，避免全屏刷新。页面刷新时自然更新。
   } catch (error) {
     console.error('Failed to toggle status:', error)
     showToast('操作失败')
@@ -104,6 +104,7 @@ const handleCreate = (category?: string) => {
     sortOrder: 0, status: 'ACTIVE', remark: ''
   }
   newCategory.value = ''
+  validationErrors.value.clear()  // 清除验证错误
   showEditDialog.value = true
 }
 
@@ -120,23 +121,44 @@ const handleEdit = (dict: SysDict) => {
     remark: dict.remark || ''
   }
   newCategory.value = ''
+  validationErrors.value.clear()  // 清除验证错误
   showEditDialog.value = true
 }
+
+// 表单验证错误字段
+const validationErrors = ref<Set<string>>(new Set())
 
 const handleSave = async () => {
   const form = editForm.value
   const category = form.category === '__new__' ? newCategory.value.trim() : form.category
 
+  // 清除之前的验证错误
+  validationErrors.value.clear()
+
+  // 收集所有验证错误
+  const errors: string[] = []
+
   if (!category) {
-    showToast('请选择或输入分类')
-    return
+    errors.push('请选择或输入分类')
+    validationErrors.value.add('category')
+  }
+  // 如果选择新建分类，检查新分类名称
+  if (form.category === '__new__' && !newCategory.value.trim()) {
+    errors.push('请输入新分类名称')
+    validationErrors.value.add('newCategory')
   }
   if (!form.dictKey.trim()) {
-    showToast('请输入字典键')
-    return
+    errors.push('请输入字典键')
+    validationErrors.value.add('dictKey')
   }
   if (!form.dictValue.trim()) {
-    showToast('请输入显示值')
+    errors.push('请输入显示值')
+    validationErrors.value.add('dictValue')
+  }
+
+  // 如果有验证错误，显示所有错误提示
+  if (errors.length > 0) {
+    showToast(errors.join('、'))
     return
   }
 
@@ -167,6 +189,7 @@ const handleSave = async () => {
     showEditDialog.value = false
     loadDicts()
     loadCategories()
+    // 异步刷新缓存，不阻塞UI
     refreshDictCache()
   } catch (error: any) {
     console.error('Failed to save dict:', error)
@@ -187,6 +210,7 @@ const handleDelete = async (dict: SysDict) => {
       showToast('删除成功')
       loadDicts()
       loadCategories()
+      // 删除操作需要刷新缓存，确保其他页面不引用已删除的字典项
       refreshDictCache()
     } catch (error) {
       console.error('Failed to delete dict:', error)
@@ -252,10 +276,10 @@ onMounted(() => {
 
             <div class="dict-table">
               <div class="table-header">
+                <div class="table-cell sort-col">排序</div>
                 <div class="table-cell key-col">字典键</div>
                 <div class="table-cell value-col">显示值</div>
                 <div class="table-cell extra-col">扩展值</div>
-                <div class="table-cell sort-col">排序</div>
                 <div class="table-cell status-col">状态</div>
                 <div class="table-cell remark-col">备注</div>
                 <div class="table-cell actions-col">操作</div>
@@ -267,6 +291,7 @@ onMounted(() => {
                 class="table-row"
                 :class="{ inactive: dict.status === 'INACTIVE' }"
               >
+                <div class="table-cell sort-col">{{ dict.sortOrder }}</div>
                 <div class="table-cell key-col">
                   <code class="dict-key-code">{{ dict.dictKey }}</code>
                 </div>
@@ -277,7 +302,6 @@ onMounted(() => {
                   <span v-if="dict.extraValue" class="dict-extra-badge">{{ dict.extraValue }}</span>
                   <span v-else class="dict-extra-empty">-</span>
                 </div>
-                <div class="table-cell sort-col">{{ dict.sortOrder }}</div>
                 <div class="table-cell status-col">
                   <div
                     class="toggle-switch"
@@ -431,8 +455,10 @@ onMounted(() => {
         </div>
         <div class="dialog-body">
           <div class="form-group">
-            <label class="form-label">分类</label>
-            <select v-if="!isEditing" v-model="editForm.category" class="form-select">
+            <label class="form-label"><span class="required">*</span>分类</label>
+            <select v-if="!isEditing" v-model="editForm.category"
+                    class="form-select"
+                    :class="{ 'is-error': validationErrors.has('category') }">
               <option value="">请选择分类</option>
               <option v-for="cat in categories" :key="cat" :value="cat">
                 {{ getCategoryLabel(cat) }} ({{ cat }})
@@ -440,18 +466,31 @@ onMounted(() => {
               <option value="__new__">+ 新建分类</option>
             </select>
             <input v-else :value="editForm.category" class="form-input" disabled />
+            <span v-if="validationErrors.has('category')" class="error-hint">请选择分类</span>
           </div>
           <div v-if="editForm.category === '__new__'" class="form-group">
-            <label class="form-label">新分类名称</label>
-            <input v-model="newCategory" class="form-input" placeholder="输入新分类标识，如 payment_type" />
+            <label class="form-label"><span class="required">*</span>新分类名称</label>
+            <input v-model="newCategory"
+                   class="form-input"
+                   :class="{ 'is-error': validationErrors.has('newCategory') }"
+                   placeholder="输入新分类标识，如 payment_type" />
+            <span v-if="validationErrors.has('newCategory')" class="error-hint">请输入新分类名称</span>
           </div>
           <div class="form-group">
-            <label class="form-label">字典键 (Key)</label>
-            <input v-model="editForm.dictKey" class="form-input" placeholder="如 CNY、ACTIVE" />
+            <label class="form-label"><span class="required">*</span>字典键 (Key)</label>
+            <input v-model="editForm.dictKey"
+                   class="form-input"
+                   :class="{ 'is-error': validationErrors.has('dictKey') }"
+                   placeholder="如 CNY、ACTIVE" />
+            <span v-if="validationErrors.has('dictKey')" class="error-hint">请输入字典键</span>
           </div>
           <div class="form-group">
-            <label class="form-label">显示值</label>
-            <input v-model="editForm.dictValue" class="form-input" placeholder="如 人民币、启用" />
+            <label class="form-label"><span class="required">*</span>显示值</label>
+            <input v-model="editForm.dictValue"
+                   class="form-input"
+                   :class="{ 'is-error': validationErrors.has('dictValue') }"
+                   placeholder="如 人民币、启用" />
+            <span v-if="validationErrors.has('dictValue')" class="error-hint">请输入显示值</span>
           </div>
           <div class="form-group">
             <label class="form-label">扩展值</label>
@@ -484,36 +523,39 @@ onMounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+.dict-page { background-color: var(--bg-page, #FAFAFA); }
 
-.dict-page { min-height: 100vh; background-color: #FAFAFA; }
-
-.pc-dict { padding: 32px; max-width: 1200px; margin: 0 auto; }
+/* PC布局：填满主内容区域，与UserManagement一致 */
+.pc-dict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
 
 .page-header-pc { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.page-title-pc { font-family: 'Newsreader', Georgia, serif; font-size: 24px; font-weight: 500; color: #1A1A1A; margin: 0; }
+.page-title-pc { font-family: var(--font-heading); font-size: var(--font-size-2xl); font-weight: 500; color: var(--text-primary, #1A1A1A); margin: 0; }
 .header-actions { display: flex; gap: 12px; align-items: center; }
 
 .category-select {
-  padding: 8px 12px; border: 1px solid #E5E5E5; border-radius: 8px;
-  font-family: 'Inter', sans-serif; font-size: 13px; color: #1A1A1A;
-  background: #FFFFFF; cursor: pointer; min-width: 180px;
+  padding: 8px 12px; border: 1px solid var(--border-color, #E5E5E5); border-radius: var(--radius, 8px);
+  font-family: var(--font-body); font-size: var(--font-size-sm); color: var(--text-primary, #1A1A1A);
+  background: var(--bg-card, #FFFFFF); cursor: pointer; min-width: 180px;
 }
-.category-select:focus { outline: none; border-color: #0D6E6E; }
+.category-select:focus { outline: none; border-color: var(--primary-color, #0D6E6E); }
 
 .btn-primary-pc {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; background: #0D6E6E; color: #FFFFFF;
-  border: none; border-radius: 8px; font-family: 'Inter', sans-serif;
-  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 150ms;
+  padding: 8px 16px; background: var(--primary-color, #0D6E6E); color: var(--text-on-primary, #FFFFFF);
+  border: none; border-radius: var(--radius, 8px); font-family: var(--font-body);
+  font-size: var(--font-size-sm); font-weight: 500; cursor: pointer; transition: all 150ms;
 }
-.btn-primary-pc:hover { background: #0A5C5C; }
+.btn-primary-pc:hover { background: var(--primary-hover, #0A5C5C); }
 
 .btn-add-pc {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 12px; background: rgba(13,110,110,0.08); color: #0D6E6E;
-  border: none; border-radius: 6px; font-family: 'Inter', sans-serif;
-  font-size: 12px; font-weight: 500; cursor: pointer; transition: all 150ms;
+  padding: 6px 12px; background: rgba(13,110,110,0.08); color: var(--primary-color, #0D6E6E);
+  border: none; border-radius: var(--radius-sm, 6px); font-family: var(--font-body);
+  font-size: var(--font-size-sm); font-weight: 500; cursor: pointer; transition: all 150ms;
 }
 .btn-add-pc:hover { background: rgba(13,110,110,0.15); }
 
@@ -523,31 +565,39 @@ onMounted(() => {
   margin-bottom: 12px; padding: 0 4px;
 }
 .category-info { display: flex; align-items: center; gap: 10px; }
-.category-icon { width: 32px; height: 32px; border-radius: 8px; background: rgba(13,110,110,0.1); color: #0D6E6E; display: flex; align-items: center; justify-content: center; }
-.category-name { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; color: #1A1A1A; margin: 0; }
-.category-code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #888; background: #F3F4F6; padding: 2px 8px; border-radius: 4px; }
-.category-count { font-size: 12px; color: #888; }
+.category-icon { width: 32px; height: 32px; border-radius: var(--radius, 8px); background: rgba(13,110,110,0.1); color: var(--primary-color, #0D6E6E); display: flex; align-items: center; justify-content: center; }
+.category-name { font-family: var(--font-body); font-size: var(--font-size-base); font-weight: 600; color: var(--text-primary, #1A1A1A); margin: 0; }
+.category-code { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--text-secondary, #888); background: var(--bg-secondary, #F3F4F6); padding: 2px 8px; border-radius: var(--radius-sm, 4px); }
+.category-count { font-size: var(--font-size-xs); color: var(--text-secondary, #888); }
 
-.dict-table { background: #FFFFFF; border-radius: 12px; border: 1px solid #E5E5E5; overflow: hidden; }
-.table-header { display: flex; align-items: center; background: #FAFAFA; border-bottom: 1px solid #E5E5E5; padding: 0 20px; }
-.table-row { display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #F3F4F6; transition: background-color 150ms; }
+.dict-table { background: var(--bg-card, #FFFFFF); border-radius: var(--radius-lg, 12px); border: 1px solid var(--border-color, #E5E5E5); overflow-x: auto; }
+.table-header { display: flex; align-items: center; background: var(--bg-secondary, #FAFAFA); border-bottom: 1px solid var(--border-color, #E5E5E5); padding: 0 20px; min-width: 800px; }
+.table-row { display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border-light, #F3F4F6); transition: background-color 150ms; min-width: 800px; }
 .table-row:last-child { border-bottom: none; }
-.table-row:hover { background: #FAFAFA; }
-.table-row.inactive { background: #FDFCFB; }
-.table-row.inactive .dict-value-text { color: #9CA3AF; }
+.table-row:hover { background: var(--bg-hover, #FAFAFA); }
+.table-row.inactive { background: var(--bg-inactive, #FDFCFB); }
+.table-row.inactive .dict-value-text { color: var(--text-disabled, #9CA3AF); }
 
-.table-cell { padding: 14px 8px; font-family: 'Inter', sans-serif; font-size: 14px; color: #1A1A1A; }
-.table-cell.key-col { flex: 1; min-width: 100px; }
-.table-cell.value-col { flex: 1; min-width: 100px; }
-.table-cell.extra-col { flex: 0.7; min-width: 80px; }
-.table-cell.sort-col { flex: 0.4; min-width: 50px; color: #666; font-size: 13px; }
-.table-cell.status-col { flex: 1; min-width: 130px; display: flex; align-items: center; gap: 8px; }
-.table-cell.remark-col { flex: 1.2; min-width: 100px; color: #888; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.table-cell.actions-col { flex: 0; min-width: 80px; display: flex; gap: 6px; justify-content: flex-end; }
+/* 表头单元格：使用CSS变量字体体系 */
+.table-header .table-cell {
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary, #1A1A1A);
+}
 
-.dict-key-code { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: #F3F4F6; padding: 2px 6px; border-radius: 4px; color: #0D6E6E; }
+.table-cell { padding: 14px 8px; font-family: var(--font-body); font-size: var(--font-size-sm); color: var(--text-primary, #1A1A1A); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-cell.sort-col { width: 8%; text-align: center; }
+.table-cell.key-col { width: 15%; }
+.table-cell.value-col { width: 15%; }
+.table-cell.extra-col { width: 20%; max-width: 200px; }
+.table-cell.status-col { width: 15%; display: flex; align-items: center; gap: 8px; }
+.table-cell.remark-col { width: 17%; }
+.table-cell.actions-col { width: 10%; display: flex; gap: 6px; justify-content: flex-end; }
+
+.dict-key-code { font-family: var(--font-mono); font-size: var(--font-size-xs); background: #F3F4F6; padding: 2px 6px; border-radius: 4px; color: #0D6E6E; }
 .dict-value-text { font-weight: 500; }
-.dict-extra-badge { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: #FFF7ED; color: #C2410C; padding: 2px 8px; border-radius: 4px; }
+.dict-extra-badge { font-family: var(--font-mono); font-size: var(--font-size-xs); background: #FFF7ED; color: #C2410C; padding: 2px 8px; border-radius: 4px; }
 .dict-extra-empty { color: #D1D5DB; }
 
 .toggle-switch { width: 40px; height: 22px; border-radius: 11px; background: #E5E7EB; position: relative; cursor: pointer; transition: all 200ms; flex-shrink: 0; }
@@ -559,7 +609,7 @@ onMounted(() => {
 .toggle-switch.small .toggle-slider { width: 16px; height: 16px; }
 .toggle-switch.small.active .toggle-slider { left: 18px; }
 
-.status-text { font-size: 13px; font-weight: 500; }
+.status-text { font-size: var(--font-size-xs); font-weight: 500; }
 .status-text.ACTIVE { color: #0D6E6E; }
 .status-text.INACTIVE { color: #9CA3AF; }
 
@@ -572,22 +622,22 @@ onMounted(() => {
 
 .empty-state-pc { display: flex; flex-direction: column; align-items: center; padding: 80px 24px; text-align: center; }
 .empty-icon { width: 80px; height: 80px; border-radius: 20px; background: #F3F4F6; color: #9CA3AF; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
-.empty-text { font-family: 'Inter', sans-serif; font-size: 14px; color: #9CA3AF; margin: 0 0 20px 0; }
-.empty-btn { padding: 10px 20px; background: #0D6E6E; color: #FFFFFF; border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; }
+.empty-text { font-family: var(--font-body); font-size: var(--font-size-sm); color: #9CA3AF; margin: 0 0 20px 0; }
+.empty-btn { padding: 10px 20px; background: #0D6E6E; color: #FFFFFF; border: none; border-radius: 8px; font-family: var(--font-body); font-size: var(--font-size-xs); font-weight: 500; cursor: pointer; }
 .loading-state-pc { display: flex; align-items: center; justify-content: center; padding: 120px; background: #FFFFFF; border-radius: 12px; border: 1px solid #E5E5E5; }
 .loading-spinner { width: 32px; height: 32px; border: 3px solid #E5E5E5; border-top-color: #0D6E6E; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ========== 移动端样式 ========== */
 .navbar { height: 56px; background: #FFFFFF; border-bottom: 1px solid #E5E5E5; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; position: sticky; top: 0; z-index: 100; }
-.navbar-title { font-family: 'Newsreader', Georgia, serif; font-size: 18px; font-weight: 500; color: #1A1A1A; margin: 0; }
+.navbar-title { font-family: var(--font-heading); font-size: var(--font-size-lg); font-weight: 500; color: #1A1A1A; margin: 0; }
 .add-btn { width: 32px; height: 32px; border: none; background: #0D6E6E; color: #FFFFFF; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
 .content { flex: 1; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; padding-bottom: 40px; }
 
 .category-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
 .category-tabs::-webkit-scrollbar { display: none; }
-.tab-btn { padding: 6px 14px; border: 1px solid #E5E5E5; border-radius: 20px; background: #FFFFFF; font-family: 'Inter', sans-serif; font-size: 12px; color: #666; cursor: pointer; white-space: nowrap; transition: all 150ms; }
+.tab-btn { padding: 6px 14px; border: 1px solid #E5E5E5; border-radius: 20px; background: #FFFFFF; font-family: var(--font-body); font-size: var(--font-size-xs); color: #666; cursor: pointer; white-space: nowrap; transition: all 150ms; }
 .tab-btn.active { background: #0D6E6E; color: #FFFFFF; border-color: #0D6E6E; }
 
 .dict-list { display: flex; flex-direction: column; gap: 10px; }
@@ -597,15 +647,15 @@ onMounted(() => {
 
 .card-main { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
 .card-info { flex: 1; }
-.card-value { font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600; color: #1A1A1A; margin-bottom: 4px; }
-.card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
-.card-key { font-family: 'JetBrains Mono', monospace; background: #F3F4F6; padding: 1px 6px; border-radius: 3px; font-size: 11px; color: #0D6E6E; }
-.card-category { font-size: 11px; }
+.card-value { font-family: var(--font-body); font-size: var(--font-size-base); font-weight: 600; color: #1A1A1A; margin-bottom: 4px; }
+.card-meta { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-xs); color: #888; }
+.card-key { font-family: var(--font-mono); background: #F3F4F6; padding: 1px 6px; border-radius: 3px; font-size: var(--font-size-xs); color: #0D6E6E; }
+.card-category { font-size: var(--font-size-xs); }
 .separator { color: #D1D5DB; }
 
 .card-detail { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #FFF7ED; border-radius: 6px; margin-bottom: 8px; }
-.detail-label { font-size: 11px; color: #888; }
-.detail-extra { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #C2410C; font-weight: 500; }
+.detail-label { font-size: var(--font-size-xs); color: #888; }
+.detail-extra { font-family: var(--font-mono); font-size: var(--font-size-xs); color: #C2410C; font-weight: 500; }
 
 .card-control { display: flex; align-items: center; justify-content: space-between; }
 .card-actions { display: flex; gap: 8px; }
@@ -620,26 +670,31 @@ onMounted(() => {
 .dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .dialog-content { background: #FFFFFF; border-radius: 16px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
 .dialog-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 0; }
-.dialog-header h3 { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600; color: #1A1A1A; margin: 0; }
+.dialog-header h3 { font-family: var(--font-body); font-size: var(--font-size-lg); font-weight: 600; color: #1A1A1A; margin: 0; }
 .dialog-close { width: 32px; height: 32px; border: none; background: #F3F4F6; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; }
 
 .dialog-body { padding: 20px 24px; }
 .form-group { margin-bottom: 16px; }
 .form-group.half { flex: 1; }
-.form-label { display: block; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+.form-label { display: block; font-family: var(--font-body); font-size: var(--font-size-xs); font-weight: 500; color: #374151; margin-bottom: 6px; }
+.form-label .required { color: #EF4444; margin-right: 4px; font-weight: 600; }
 .form-input, .form-select, .form-textarea {
   width: 100%; padding: 10px 12px; border: 1px solid #E5E5E5; border-radius: 8px;
-  font-family: 'Inter', sans-serif; font-size: 14px; color: #1A1A1A;
+  font-family: var(--font-body); font-size: var(--font-size-sm); color: #1A1A1A;
   background: #FFFFFF; box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #0D6E6E; }
 .form-input:disabled { background: #F9FAFB; color: #9CA3AF; }
+.form-input.is-error, .form-select.is-error { border-color: #EF4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.1); }
+.form-input.is-error:focus, .form-select.is-error:focus { border-color: #EF4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+.error-hint { display: block; font-size: var(--font-size-xs); color: #EF4444; margin-top: 4px; }
 .form-textarea { resize: vertical; }
 .form-row { display: flex; gap: 12px; }
 
 .dialog-footer { display: flex; gap: 12px; justify-content: flex-end; padding: 0 24px 20px; }
-.btn-cancel { padding: 10px 20px; background: #F3F4F6; color: #374151; border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 14px; cursor: pointer; }
-.btn-save { padding: 10px 20px; background: #0D6E6E; color: #FFFFFF; border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; }
+.btn-cancel { padding: 10px 20px; background: #F3F4F6; color: #374151; border: none; border-radius: 8px; font-family: var(--font-body); font-size: var(--font-size-sm); cursor: pointer; }
+.btn-save { padding: 10px 20px; background: #0D6E6E; color: #FFFFFF; border: none; border-radius: 8px; font-family: var(--font-body); font-size: var(--font-size-sm); font-weight: 500; cursor: pointer; }
 .btn-save:hover { background: #0A5C5C; }
 
 @media (max-width: 1024px) {

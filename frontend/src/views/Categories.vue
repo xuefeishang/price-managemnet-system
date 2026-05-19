@@ -352,11 +352,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
-
 .categories-page {
-  min-height: 100vh;
-  background-color: #FAFAFA;
+  background-color: var(--bg-page, #FAFAFA);
 }
 
 /* ==================== PC布局 ==================== */
@@ -372,8 +369,8 @@ onMounted(() => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -388,8 +385,8 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;
@@ -441,8 +438,8 @@ onMounted(() => {
 
 .table-cell {
   padding: 16px 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
@@ -454,8 +451,8 @@ onMounted(() => {
 .table-cell.code {
   flex: 1;
   min-width: 120px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   color: #666666;
 }
 
@@ -471,14 +468,14 @@ onMounted(() => {
   flex: 0.5;
   min-width: 60px;
   color: #666666;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .table-cell.remark {
   flex: 1.5;
   min-width: 150px;
   color: #888888;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -575,7 +572,7 @@ onMounted(() => {
 }
 
 .status-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -595,8 +592,8 @@ onMounted(() => {
   padding: 6px 10px;
   border: none;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -643,8 +640,8 @@ onMounted(() => {
 }
 
 .empty-text {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #9CA3AF;
   margin: 0 0 20px 0;
 }
@@ -655,8 +652,8 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
 }
@@ -717,8 +714,8 @@ onMounted(() => {
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -798,8 +795,8 @@ onMounted(() => {
 }
 
 .card-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 4px;
@@ -809,13 +806,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
   color: #888888;
 }
 
 .card-code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .separator {
@@ -864,8 +861,8 @@ onMounted(() => {
 }
 
 .card-remark {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   padding: 10px 12px;
   background: #F9FAFB;
@@ -897,8 +894,8 @@ onMounted(() => {
 }
 
 .empty-text {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #9CA3AF;
   margin: 0 0 16px 0;
 }
@@ -909,8 +906,8 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
 }
@@ -960,8 +957,8 @@ onMounted(() => {
 }
 
 .tab-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 0.625rem;
   font-weight: 500;
 }
 </style>

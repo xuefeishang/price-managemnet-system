@@ -276,7 +276,7 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .category-edit-page {
-  min-height: 100vh;
+  
   background-color: var(--gray-50, #FAFAFA);
 }
 
@@ -291,8 +291,8 @@ onMounted(() => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -363,7 +363,7 @@ onMounted(() => {
 
 .navbar-title {
   font-family: var(--font-heading, 'Newsreader', Georgia, serif);
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 500;
   color: var(--text-primary, #1A1A1A);
   margin: 0;
@@ -376,7 +376,7 @@ onMounted(() => {
   border: none;
   border-radius: 8px;
   font-family: var(--font-body, 'Inter', sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -416,7 +416,7 @@ onMounted(() => {
 .form-label {
   display: block;
   font-family: var(--font-body, 'Inter', sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary, #1A1A1A);
   margin-bottom: 4px;
@@ -430,7 +430,7 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--bg-card, #FFFFFF);
   font-family: var(--font-body, 'Inter', sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary, #1A1A1A);
   transition: border-color var(--transition-fast, 150ms);
   box-sizing: border-box;
@@ -464,7 +464,7 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--bg-card, #FFFFFF);
   font-family: var(--font-body, 'Inter', sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #666666);
   cursor: pointer;
   transition: all var(--transition-fast, 150ms);

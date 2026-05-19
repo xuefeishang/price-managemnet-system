@@ -7,46 +7,80 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { getProducts, getPricesByDate, getPriceTrend } from '@/api/products'
+import { getCategories } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
+import { useHomeConfig } from '@/composables/useHomeConfig'
+import { loadAllDicts, getCurrencySymbol } from '@/composables/useDict'
+import { getCategoryVisual, getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
+import CategoryFilterPanel from '@/components/CategoryFilterPanel.vue'
+import CategoryIcons from '@/components/icons/CategoryIcons.vue'
 import type { Product, Price } from '@/types'
 
+// ECharts 注册
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const router = useRouter()
 const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
 const { isPCLayout, windowWidth } = useLayout()
+const { layoutConfig, loadHomeConfig } = useHomeConfig()
 
-const products = ref<Product[]>([])
+// 状态
 const loading = ref(false)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 const searchQueryDebounced = ref('')
+const selectedCategoryIds = ref<number[]>([])
 
+// 产品数据
+const products = ref<Product[]>([])
+const priceMap = ref<Map<number, Price>>(new Map())
+const previousPriceMap = ref<Map<number, Price>>(new Map())
+const priceHistoryMap = ref<Map<number, any[]>>(new Map())
+const chartOptionsMap = ref<Map<number, any>>(new Map())
+
+// 日期选择
 const getYesterday = () => {
   const date = new Date()
   date.setDate(date.getDate() - 1)
   return date.toISOString().split('T')[0]
 }
 const selectedDate = ref(getYesterday())
+const trendDays = ref(30)
 
-const priceMap = ref<Map<number, Price>>(new Map())
-const previousPriceMap = ref<Map<number, Price>>(new Map())
-const priceHistoryMap = ref<Map<number, any[]>>(new Map())
-const chartOptionsMap = ref<Map<number, any>>(new Map())
-
-const homeProducts = computed(() =>
-  products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
-)
+// 计算属性
+const gridCols = computed(() => {
+  if (windowWidth.value >= 1400) return layoutConfig.value.cardColumns
+  if (windowWidth.value >= 1024) return Math.min(layoutConfig.value.cardColumns, 3)
+  return layoutConfig.value.cardColumnsMobile
+})
 
 const filteredProducts = computed(() => {
   const active = products.value.filter(p => p.status === 'ACTIVE')
+
+  // 分类筛选
+  if (selectedCategoryIds.value.length > 0) {
+    const filtered = active.filter(p =>
+      p.categoryId && selectedCategoryIds.value.includes(p.categoryId)
+    )
+    if (filtered.length === 0 && !searchQueryDebounced.value) return active
+    if (filtered.length === 0) return []
+    if (!searchQueryDebounced.value) return filtered
+    const q = searchQueryDebounced.value.toLowerCase()
+    return filtered.filter(p => p.name.toLowerCase().includes(q))
+  }
+
+  // 名称搜索
   if (!searchQueryDebounced.value) return active
   const q = searchQueryDebounced.value.toLowerCase()
   return active.filter(p => p.name.toLowerCase().includes(q))
 })
+
+const homeProducts = computed(() =>
+  products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
+)
 
 const priceChangeCache = computed(() => {
   const cache = new Map<number, ReturnType<typeof getPriceChangeInfo>>()
@@ -60,6 +94,7 @@ const lastPriceCache = computed(() => {
   return cache
 })
 
+// 方法
 const getPriceChangeInfo = (productId: number) => {
   const current = priceMap.value.get(productId)
   const previous = previousPriceMap.value.get(productId)
@@ -181,6 +216,7 @@ const loadData = async () => {
       if (price.product?.id) previousPriceMap.value.set(price.product.id, price)
     })
 
+    // 加载价格历史（批量）
     const allProducts = products.value
     const batchSize = 5
     const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -211,6 +247,22 @@ const loadData = async () => {
 const onRefresh = () => loadData()
 const onDateChange = () => loadData()
 
+const onTrendRangeChange = async (days: number) => {
+  trendDays.value = days
+  // 重新加载趋势数据
+  for (const product of homeProducts.value.slice(0, 6)) {
+    try {
+      const trendRes = await getPriceTrend(product.id, days)
+      const trendData = trendRes.data || []
+      priceHistoryMap.value.set(product.id, trendData)
+      const option = generateChartOption(product.id)
+      if (option) chartOptionsMap.value.set(product.id, option)
+    } catch (e) {
+      console.error(`Failed to load trend for ${product.id}:`, e)
+    }
+  }
+}
+
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(searchQuery, (val) => {
   if (searchTimer) clearTimeout(searchTimer)
@@ -230,34 +282,57 @@ const switchTab = (tab: string) => {
 const viewProduct = (product: Product) => router.push(`/product-detail/${product.id}`)
 const goToPriceMaintenance = () => router.push('/price-maintenance')
 
-const activeTab = ref('home')
-const gridCols = computed(() => {
-  if (windowWidth.value >= 1400) return 4
-  if (windowWidth.value >= 1024) return 3
-  return 2
-})
+// 分类筛选处理
+const handleCategorySelect = (ids: number[]) => {
+  selectedCategoryIds.value = ids
+}
 
-import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+const clearCategoryFilter = () => {
+  selectedCategoryIds.value = []
+}
+
+// 获取产品卡片分类样式
+const getCardStyle = (product: Product) => {
+  if (!product.categoryId) return {}
+  return getCategoryCardStyle(product.categoryId)
+}
+
+const getCardClass = (product: Product) => {
+  return product.categoryId ? 'has-category' : ''
+}
+
+const activeTab = ref('home')
 const getCurrencySymbolLocal = getCurrencySymbol
 
-onMounted(() => {
-  loadAllDicts()
+onMounted(async () => {
+  // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
+  try {
+    const catRes = await getCategories('ACTIVE')
+    registerCategoryCodes((catRes.data || []).map(c => ({ id: c.id, code: c.code })))
+  } catch (e) {
+    console.error('Failed to load categories:', e)
+  }
+
+  await Promise.all([
+    loadAllDicts(),
+    loadHomeConfig()
+  ])
   loadData()
 })
 </script>
 
 <template>
   <div class="home-page">
-    <!-- ==================== PC布局 ==================== -->
+    <!-- ==================== PC布局 - 驾驶舱模式 ==================== -->
     <template v-if="isPCLayout">
       <div class="pc-home">
-        <!-- 页面标题 -->
+        <!-- 页面标题区 -->
         <div class="page-header-pc">
           <div class="header-left-pc">
-            <h1 class="page-title-pc">{{ formatDateDisplay(selectedDate) }} 价格概览</h1>
             <div class="date-picker-wrapper">
               <input type="date" v-model="selectedDate" @change="onDateChange" class="date-input-pc" />
             </div>
+            <h1 class="page-title-pc">价格概览</h1>
           </div>
           <div class="header-actions-pc">
             <button class="btn-icon-pc" @click="onRefresh" :disabled="loading" title="刷新">
@@ -286,19 +361,40 @@ onMounted(() => {
         </div>
 
         <!-- 骨架屏 -->
-        <div v-if="loading" class="product-grid-pc" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
-          <div v-for="i in 8" :key="i" class="skeleton-card-pc"></div>
-        </div>
+        <template v-if="loading">
+          <div class="skeleton-summary">
+            <div v-for="i in 4" :key="i" class="skeleton-stat"></div>
+          </div>
+          <div class="product-grid-pc" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
+            <div v-for="i in 8" :key="i" class="skeleton-card-pc"></div>
+          </div>
+        </template>
 
         <template v-else>
-          <!-- 首页展示产品 -->
+          <!-- 重点关注指标区 - 大卡片 -->
           <div class="home-featured-pc" v-if="homeProducts.length > 0">
             <div class="section-header-pc">
-              <h2 class="section-title-pc">重点关注指标</h2>
+              <h2 class="section-title-pc">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                重点关注指标
+              </h2>
+              <div class="trend-range-tabs">
+                <button
+                  v-for="range in [{ key: '7d', label: '7日', days: 7 }, { key: '30d', label: '30日', days: 30 }, { key: '90d', label: '90日', days: 90 }]"
+                  :key="range.key"
+                  class="range-tab"
+                  :class="{ active: trendDays === range.days }"
+                  @click="onTrendRangeChange(range.days)"
+                >
+                  {{ range.label }}
+                </button>
+              </div>
             </div>
-            <div class="product-grid-pc" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
+            <div class="product-grid-pc featured" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
               <div
-                v-for="product in homeProducts"
+                v-for="product in homeProducts.slice(0, layoutConfig.featuredProductCount)"
                 :key="product.id"
                 class="product-card-pc featured"
                 @click="viewProduct(product)"
@@ -332,15 +428,25 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 产品列表 -->
+          <!-- 产品列表区 -->
           <div class="product-section-pc">
             <div class="section-header-pc">
               <h2 class="section-title-pc">产品列表</h2>
-              <div class="search-box-pc">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input v-model="searchQuery" type="text" placeholder="搜索产品..." class="search-input-pc" />
+              <div class="search-area-pc">
+                <!-- 分类筛选按钮 -->
+                <CategoryFilterPanel
+                  :selected-ids="selectedCategoryIds"
+                  :multi-select="true"
+                  @select="handleCategorySelect"
+                  @clear="clearCategoryFilter"
+                />
+                <!-- 搜索框 -->
+                <div class="search-box-pc">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input v-model="searchQuery" type="text" placeholder="搜索产品..." class="search-input-pc" />
+                </div>
               </div>
             </div>
 
@@ -358,11 +464,21 @@ onMounted(() => {
                 v-for="product in filteredProducts"
                 :key="product.id"
                 class="product-card-pc"
+                :class="getCardClass(product)"
+                :style="getCardStyle(product)"
                 @click="viewProduct(product)"
               >
+                <!-- 分类图标 -->
+                <div class="card-category-icon" v-if="product.categoryId">
+                  <CategoryIcons
+                    :icon="getCategoryVisual(product.categoryId).icon"
+                    :size="16"
+                    :color="getCategoryVisual(product.categoryId).primaryColor"
+                  />
+                </div>
                 <div class="card-top">
                   <div class="card-title-row">
-                    <span class="product-name">{{ product.name }}</span>
+                    <span class="product-name" :class="{ 'category-name': product.categoryId }">{{ product.name }}</span>
                     <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
                       {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
                       {{ priceChangeCache.get(product.id)?.formattedDiff }}
@@ -556,7 +672,6 @@ onMounted(() => {
 
 <style scoped>
 .home-page {
-  min-height: 100vh;
   background-color: var(--bg-page);
 }
 
@@ -585,16 +700,14 @@ onMounted(() => {
 
 .page-title-pc {
   font-family: var(--font-heading);
-  font-size: 1.5rem;
-  font-weight: 500;
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
 
-.header-actions-pc {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+.date-picker-wrapper {
+  flex-shrink: 0;
 }
 
 .date-input-pc {
@@ -602,7 +715,7 @@ onMounted(() => {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   background: var(--bg-card);
   cursor: pointer;
@@ -611,6 +724,12 @@ onMounted(() => {
 }
 
 .date-input-pc:focus { border-color: var(--primary-color); }
+
+.header-actions-pc {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
 
 .btn-primary-pc {
   display: inline-flex;
@@ -622,7 +741,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -635,8 +754,8 @@ onMounted(() => {
 }
 
 .btn-icon-pc {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -666,7 +785,7 @@ onMounted(() => {
   background: var(--error-bg);
   color: var(--error-color);
   border-radius: var(--radius);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   margin-bottom: var(--spacing-lg);
 }
 
@@ -678,16 +797,31 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
 }
 
 /* 骨架屏 */
-.skeleton-card-pc {
-  height: 140px;
+.skeleton-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.skeleton-stat {
+  height: 80px;
   background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 50%, var(--gray-100) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+}
+
+.skeleton-card-pc {
+  height: 160px;
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 50%, var(--gray-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-lg);
 }
 
 @keyframes shimmer {
@@ -701,27 +835,56 @@ onMounted(() => {
   gap: var(--spacing-md);
 }
 
+.product-grid-pc.featured {
+  margin-bottom: var(--spacing-xl);
+}
+
 .product-card-pc {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-md);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
   display: flex;
   flex-direction: column;
-  min-height: 140px;
+  min-height: 160px;
   overflow: hidden;
+  position: relative;
 }
 
 .product-card-pc:hover {
   border-color: var(--primary-color);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
 }
 
 .product-card-pc.featured {
   border-color: var(--primary-color);
-  border-width: 1.5px;
+  border-width: 2px;
+  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(13, 110, 110, 0.02) 100%);
+}
+
+/* 有分类的产品卡片 - 分类视觉样式 */
+.product-card-pc.has-category {
+  border-color: var(--category-border);
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--category-secondary)08 100%);
+}
+
+.product-card-pc.has-category:hover {
+  border-color: var(--category-primary);
+  box-shadow: 0 0 16px var(--category-glow), var(--shadow-lg);
+}
+
+.product-card-pc.has-category .product-name.category-name {
+  color: var(--category-primary);
+}
+
+.card-category-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0.7;
 }
 
 /* 卡片内部结构 */
@@ -742,7 +905,7 @@ onMounted(() => {
 
 .card-title-row .product-name {
   font-family: var(--font-body);
-  font-size: 0.9375rem;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.3;
@@ -754,7 +917,7 @@ onMounted(() => {
 
 .card-top .product-specs {
   font-family: var(--font-body);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -778,42 +941,42 @@ onMounted(() => {
 
 .price-value {
   font-family: var(--font-mono);
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 2.25rem;
+  font-weight: 700;
   color: var(--primary-color);
+  line-height: 1;
 }
 
 .price-value.empty {
   color: var(--gray-300);
-  font-size: 1rem;
+  font-size: 1.5rem;
 }
 
 .price-unit {
-  font-size: 0.6875rem;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
 .trend-badge {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.6875rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .trend-badge.up {
-  background: color-mix(in srgb, var(--price-rise-color) 10%, transparent);
+  background: rgba(239, 68, 68, 0.1);
   color: var(--price-rise-color);
 }
 
 .trend-badge.down {
-  background: color-mix(in srgb, var(--price-fall-color) 10%, transparent);
+  background: rgba(16, 185, 129, 0.1);
   color: var(--price-fall-color);
 }
 
-.trend-badge.flat,
-.trend-badge.none {
+.trend-badge.flat {
   background: var(--gray-100);
   color: var(--gray-400);
 }
@@ -838,11 +1001,45 @@ onMounted(() => {
 }
 
 .section-title-pc {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   font-family: var(--font-body);
-  font-size: 1rem;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+.section-title-pc svg {
+  color: #FFB800;
+}
+
+.trend-range-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.range-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.range-tab:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.range-tab.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
 }
 
 .home-featured-pc {
@@ -856,6 +1053,12 @@ onMounted(() => {
   border: 1px solid var(--border-color);
 }
 
+.search-area-pc {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .search-box-pc {
   display: flex;
   align-items: center;
@@ -863,7 +1066,7 @@ onMounted(() => {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--gray-100);
   border-radius: var(--radius);
-  width: 240px;
+  width: 260px;
 }
 
 .search-box-pc svg { color: var(--text-muted); flex-shrink: 0; }
@@ -873,7 +1076,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -886,7 +1089,7 @@ onMounted(() => {
   padding: var(--spacing-2xl);
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -911,7 +1114,7 @@ onMounted(() => {
 
 .navbar-title {
   font-family: var(--font-heading);
-  font-size: 1.25rem;
+  font-size: var(--font-size-xl);
   font-weight: 500;
   color: var(--text-primary);
   margin: 0;
@@ -944,7 +1147,7 @@ onMounted(() => {
   padding: var(--spacing-xs) var(--spacing-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   background: var(--bg-card);
   cursor: pointer;
@@ -960,7 +1163,7 @@ onMounted(() => {
   color: white;
   border-radius: var(--radius);
   font-family: var(--font-body);
-  font-size: 0.8125rem;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -974,7 +1177,7 @@ onMounted(() => {
   background: var(--error-bg);
   color: var(--error-color);
   border-radius: var(--radius);
-  font-size: 0.8125rem;
+  font-size: var(--font-size-sm);
 }
 
 .alert-error-mobile button {
@@ -984,7 +1187,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
 }
 
 .loading-scroll-mobile {
@@ -1037,14 +1240,14 @@ onMounted(() => {
   width: calc(50vw - var(--spacing-lg));
   max-width: 200px;
   background: var(--bg-card);
-  border: 1.5px solid var(--primary-color);
-  border-radius: var(--radius-md);
+  border: 2px solid var(--primary-color);
+  border-radius: var(--radius-lg);
   padding: var(--spacing-md);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  min-height: 180px;
+  min-height: 140px;
   flex-shrink: 0;
 }
 
@@ -1056,7 +1259,7 @@ onMounted(() => {
 
 .section-title {
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   margin: 0;
@@ -1095,7 +1298,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -1107,7 +1310,7 @@ onMounted(() => {
   padding: var(--spacing-xl);
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1153,7 +1356,7 @@ onMounted(() => {
 
 .item-header .product-name {
   font-family: var(--font-body);
-  font-size: 0.9375rem;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -1162,7 +1365,7 @@ onMounted(() => {
 }
 
 .item-header .product-specs {
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1175,6 +1378,10 @@ onMounted(() => {
   align-items: flex-end;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.item-aside .price-value {
+  font-size: 1.25rem;
 }
 
 .chart-area-sm {
@@ -1222,7 +1429,7 @@ onMounted(() => {
 
 .tab-label {
   font-family: var(--font-body);
-  font-size: 0.625rem;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 

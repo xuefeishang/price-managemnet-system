@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { usePermission, Permission } from '@/composables/usePermission'
-import { getCustomerName, loadAllDicts, getCurrencySymbol, getStatusLabel, getDictOptions } from '@/composables/useDict'
+import { getCustomerName, loadAllDicts, getCurrencySymbol, getStatusLabel, getDictOptions, getOriginName } from '@/composables/useDict'
 import { useLayout } from '@/composables/useLayout'
 import EmptyState from '@/components/EmptyState.vue'
 import { eventBus } from '@/utils/eventBus'
@@ -63,6 +63,17 @@ const getCustomerNames = (product: Product): string => {
   try {
     const keys = JSON.parse(product.customerIds)
     return keys.map((key: string) => getCustomerName(key)).filter(Boolean).join('、')
+  } catch {
+    return '-'
+  }
+}
+
+// 获取产品的产地名称列表（从字典缓存）
+const getOriginNames = (product: Product): string => {
+  if (!product.originIds) return '-'
+  try {
+    const keys = JSON.parse(product.originIds)
+    return keys.map((key: string) => getOriginName(key)).filter(Boolean).join('、')
   } catch {
     return '-'
   }
@@ -254,6 +265,7 @@ onMounted(() => {
           <div class="table-header">
             <div class="table-cell seq">序号</div>
             <div class="table-cell name">产品名称</div>
+            <div class="table-cell origin">产地</div>
             <div class="table-cell unit">计量单位</div>
             <div class="table-cell budget-price">预算价格</div>
             <div class="table-cell specs">产品规格</div>
@@ -274,6 +286,7 @@ onMounted(() => {
               <span class="product-name-text">{{ product.name }}</span>
               <span class="product-code-text" v-if="product.code">{{ product.code.toUpperCase() }}</span>
             </div>
+            <div class="table-cell origin"><span class="scroll-text">{{ getOriginNames(product) }}</span></div>
             <div class="table-cell unit">{{ product.unit || '-' }}</div>
             <div class="table-cell budget-price">{{ product.budgetPrice != null ? getCurrencySymbol(product.currency) + product.budgetPrice.toFixed(2) : '-' }}</div>
             <div class="table-cell specs"><span class="scroll-text">{{ product.specs || '-' }}</span></div>
@@ -465,7 +478,7 @@ onMounted(() => {
 
 .page-title-pc {
   font-family: var(--font-heading, 'Newsreader', Georgia, serif);
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: var(--text-primary);
   margin: 0;
@@ -481,7 +494,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--transition-fast);
@@ -512,14 +525,14 @@ onMounted(() => {
 
 .overview-card-label {
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-bottom: 8px;
 }
 
 .overview-card-value {
   font-family: var(--font-body), sans-serif;
-  font-size: 28px;
+  font-size: var(--font-size-3xl);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -558,7 +571,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -590,7 +603,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--transition-fast);
@@ -622,7 +635,7 @@ onMounted(() => {
   border-radius: var(--radius);
   background: var(--bg-card);
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
@@ -643,7 +656,7 @@ onMounted(() => {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -656,7 +669,7 @@ onMounted(() => {
 
 .result-count-pc {
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -664,7 +677,7 @@ onMounted(() => {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .table-header {
@@ -673,9 +686,10 @@ onMounted(() => {
   padding: 12px var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-secondary);
+  min-width: max-content;
 }
 
 .table-row {
@@ -684,6 +698,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--gray-100);
   cursor: pointer;
   transition: background-color var(--transition-fast);
+  min-width: max-content;
 }
 
 .table-row:last-child {
@@ -696,7 +711,7 @@ onMounted(() => {
 
 .table-cell {
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -707,26 +722,31 @@ onMounted(() => {
 .table-header .table-cell {
   color: var(--text-secondary);
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   justify-content: center;
   text-align: center;
 }
 
 .table-cell.seq {
-  flex: 0 0 50px;
+  width: 4%;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .table-cell.name {
-  flex: 1.5;
+  width: 12%;
   font-weight: 500;
-  min-width: 100px;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
   justify-content: center;
+}
+
+.table-cell.origin {
+  width: 10%;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 .product-name-text {
@@ -735,28 +755,28 @@ onMounted(() => {
 }
 
 .product-code-text {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono), monospace;
 }
 
 .table-cell.unit {
-  flex: 0 0 80px;
-  font-size: 14px;
+  width: 6%;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .table-cell.budget-price {
-  flex: 0 0 100px;
-  font-size: 14px;
+  width: 8%;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   text-align: right;
   justify-content: flex-end;
 }
 
 .table-cell.specs {
-  flex: 1.5;
-  font-size: 14px;
+  width: 12%;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   overflow: hidden;
   white-space: nowrap;
@@ -774,8 +794,8 @@ onMounted(() => {
 }
 
 .table-cell.customer-info {
-  flex: 1.5;
-  font-size: 14px;
+  width: 12%;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   overflow: hidden;
   white-space: nowrap;
@@ -788,8 +808,8 @@ onMounted(() => {
 }
 
 .table-cell.description {
-  flex: 1.5;
-  font-size: 14px;
+  width: 12%;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   overflow: hidden;
   white-space: nowrap;
@@ -812,12 +832,12 @@ onMounted(() => {
 }
 
 .table-cell.category {
-  flex: 0 0 100px;
+  width: 8%;
   color: var(--text-secondary);
 }
 
 .table-cell.status {
-  flex: 0 0 80px;
+  width: 6%;
   justify-content: center;
 }
 
@@ -826,7 +846,7 @@ onMounted(() => {
 }
 
 .table-cell.actions {
-  flex: 0 0 140px;
+  width: 10%;
   justify-content: center;
   gap: var(--spacing-sm);
 }
@@ -835,7 +855,7 @@ onMounted(() => {
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   font-family: var(--font-body), sans-serif;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -854,7 +874,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   background: var(--gray-100);
@@ -883,7 +903,7 @@ onMounted(() => {
   padding: var(--spacing-2xl);
   color: var(--text-muted);
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .loading-spinner {
@@ -916,7 +936,7 @@ onMounted(() => {
 
 .navbar-title {
   font-family: var(--font-heading), serif;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 500;
   color: var(--text-primary);
   margin: 0;
@@ -945,7 +965,7 @@ onMounted(() => {
 
 .card-label-mobile {
   font-family: var(--font-body), sans-serif;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 1px;
@@ -966,14 +986,14 @@ onMounted(() => {
 
 .stat-value-mobile {
   font-family: var(--font-body), sans-serif;
-  font-size: 22px;
+  font-size: var(--font-size-2xl);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .stat-label-mobile {
   font-family: var(--font-body), sans-serif;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -997,7 +1017,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -1042,7 +1062,7 @@ onMounted(() => {
 
 .product-name {
   font-family: var(--font-body), sans-serif;
-  font-size: 15px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
@@ -1050,7 +1070,7 @@ onMounted(() => {
 
 .product-specs {
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1061,7 +1081,7 @@ onMounted(() => {
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   font-family: var(--font-body), sans-serif;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   flex-shrink: 0;
   margin-left: var(--spacing-sm);
@@ -1092,7 +1112,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .meta-label {
@@ -1113,7 +1133,7 @@ onMounted(() => {
   color: var(--primary-color);
   font-weight: 600;
   font-family: var(--font-mono), monospace;
-  font-size: 15px;
+  font-size: var(--font-size-base);
 }
 
 .product-actions {
@@ -1127,7 +1147,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-body), sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   background: var(--primary-bg);
@@ -1156,7 +1176,7 @@ onMounted(() => {
 
 .empty-state p {
   font-family: var(--font-body), sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   margin: 0;
 }
 
@@ -1196,7 +1216,7 @@ onMounted(() => {
 
 .tab-label {
   font-family: var(--font-body), sans-serif;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 

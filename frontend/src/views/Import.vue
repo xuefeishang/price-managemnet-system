@@ -329,7 +329,7 @@ const switchTab = (tab: string) => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .import-page {
-  min-height: 100vh;
+  
   background-color: #FAFAFA;
 }
 
@@ -340,8 +340,8 @@ const switchTab = (tab: string) => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0 0 32px 0;
@@ -373,15 +373,15 @@ const switchTab = (tab: string) => {
 }
 
 .card-header-pc span {
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: #1A1A1A;
 }
 
 .card-desc-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   line-height: 1.5;
   margin: 0 0 24px 0;
@@ -400,8 +400,8 @@ const switchTab = (tab: string) => {
 }
 
 .tips-title-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 16px 0;
@@ -410,8 +410,8 @@ const switchTab = (tab: string) => {
 .tips-list-pc {
   margin: 0;
   padding-left: 20px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   line-height: 1.8;
 }
@@ -438,8 +438,8 @@ const switchTab = (tab: string) => {
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 20px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -474,15 +474,15 @@ const switchTab = (tab: string) => {
 }
 
 .card-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: #1A1A1A;
 }
 
 .card-desc {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
   line-height: 1.4;
   margin: 0 0 16px 0;
@@ -495,8 +495,8 @@ const switchTab = (tab: string) => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -517,8 +517,8 @@ const switchTab = (tab: string) => {
   color: #0D6E6E;
   border: 1px solid #0D6E6E;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -541,8 +541,8 @@ const switchTab = (tab: string) => {
   color: #0D6E6E;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
 }
@@ -575,8 +575,8 @@ const switchTab = (tab: string) => {
 }
 
 .progress-text {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #666666;
   min-width: 40px;
   text-align: right;
@@ -588,8 +588,8 @@ const switchTab = (tab: string) => {
   padding: 8px 12px;
   background: #F5F5F5;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #666666;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -601,8 +601,8 @@ const switchTab = (tab: string) => {
   margin-top: 12px;
   padding: 12px;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   text-align: center;
 }
 
@@ -625,8 +625,8 @@ const switchTab = (tab: string) => {
 }
 
 .tips-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 12px;
@@ -635,8 +635,8 @@ const switchTab = (tab: string) => {
 .tips-list {
   margin: 0;
   padding-left: 18px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #666666;
   line-height: 1.8;
 }
@@ -679,8 +679,8 @@ const switchTab = (tab: string) => {
 }
 
 .tab-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 0.625rem;
   font-weight: 500;
 }
 

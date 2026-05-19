@@ -8,6 +8,7 @@ import { addProductPrice, updatePrice, getPricesByDateWithStats, batchUpdateProd
 import type { Product, Price } from '@/types'
 import { eventBus } from '@/utils/eventBus'
 import { useLayout } from '@/composables/useLayout'
+import { getOriginName, loadAllDicts } from '@/composables/useDict'
 
 const router = useRouter()
 const { isPCLayout } = useLayout()
@@ -285,6 +286,18 @@ const getProductCurrencySymbol = (productId: number): string => {
   return getCurrencySymbol(product?.currency)
 }
 
+// 获取产品的产地名称列表
+const getProductOriginNames = (productId: number): string => {
+  const product = products.value.find(p => p.id === productId)
+  if (!product?.originIds) return '-'
+  try {
+    const keys = JSON.parse(product.originIds)
+    return keys.map((key: string) => getOriginName(key)).filter(Boolean).join('、')
+  } catch {
+    return '-'
+  }
+}
+
 // 格式化价格变化显示
 const formatPriceChange = (change: number | null | undefined) => {
   if (change === null || change === undefined) return '-'
@@ -404,6 +417,7 @@ const goToNextDate = () => {
 }
 
 onMounted(() => {
+  loadAllDicts()
   loadData()
 })
 </script>
@@ -471,6 +485,7 @@ onMounted(() => {
           <div class="table-header">
             <div class="table-cell seq-col">序号</div>
             <div class="table-cell product">产品信息</div>
+            <div class="table-cell origin-col">产地</div>
             <div class="table-cell price-col">当日售价</div>
             <div class="table-cell price-col">预算价格</div>
             <div class="table-cell price-col">昨日售价</div>
@@ -508,7 +523,11 @@ onMounted(() => {
               <div class="table-cell product">
                 <div class="product-info">
                   <span class="product-name">{{ product.name }}</span>
+                  <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
                 </div>
+              </div>
+              <div class="table-cell origin-col">
+                <span class="origin-text">{{ getProductOriginNames(product.id) }}</span>
               </div>
               <div class="table-cell price-col">
                 <div class="price-input-wrapper">
@@ -757,16 +776,16 @@ onMounted(() => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
 }
 
 .page-subtitle {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   margin: 0;
 }
@@ -791,8 +810,8 @@ onMounted(() => {
 .date-input {
   border: none;
   background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   outline: none;
   cursor: pointer;
@@ -828,8 +847,8 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;
@@ -891,14 +910,27 @@ onMounted(() => {
 
 .table-cell {
   padding: 14px 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
 .table-cell.product {
   flex: 2;
   min-width: 200px;
+}
+
+.table-cell.origin-col {
+  flex: 1;
+  min-width: 100px;
+  color: #666666;
+  font-size: var(--font-size-sm);
+}
+
+.origin-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-cell.price-col {
@@ -910,7 +942,7 @@ onMounted(() => {
   flex: 0.6;
   min-width: 80px;
   color: #888888;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .table-cell.seq-col {
@@ -920,7 +952,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   color: #888888;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .drag-handle {
@@ -945,8 +977,8 @@ onMounted(() => {
 }
 
 .seq-number {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   font-weight: 500;
 }
@@ -976,6 +1008,11 @@ onMounted(() => {
   color: #1A1A1A;
 }
 
+.product-specs {
+  font-size: var(--font-size-xs);
+  color: #999;
+}
+
 .price-input-wrapper {
   display: flex;
   align-items: center;
@@ -988,7 +1025,7 @@ onMounted(() => {
 .price-unit {
   padding: 6px 0 6px 10px;
   color: #6B7280;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -997,8 +1034,8 @@ onMounted(() => {
   padding: 8px 8px 8px 4px;
   border: none;
   background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   outline: none;
 }
@@ -1017,21 +1054,21 @@ onMounted(() => {
 }
 
 .price-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
 .budget-price-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   color: #6B7280;
 }
 
 .budget-price-mobile {
   display: block;
   padding: 8px 10px;
-  font-size: 15px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: #6B7280;
   background: #F9FAFB;
@@ -1040,8 +1077,8 @@ onMounted(() => {
 }
 
 .price-change {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -1058,7 +1095,7 @@ onMounted(() => {
 }
 
 .unit-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #6B7280;
 }
 
@@ -1074,8 +1111,8 @@ onMounted(() => {
   border-radius: 12px;
   border: 1px solid #E5E5E5;
   color: #666666;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 .loading-spinner {
@@ -1091,8 +1128,8 @@ onMounted(() => {
   padding: 60px 24px;
   text-align: center;
   color: #888888;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 /* ==================== 移动端布局 ==================== */
@@ -1145,8 +1182,8 @@ onMounted(() => {
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -1158,8 +1195,8 @@ onMounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;
@@ -1216,8 +1253,8 @@ onMounted(() => {
 
 .date-label {
   display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: #6B7280;
   margin-bottom: 8px;
@@ -1228,8 +1265,8 @@ onMounted(() => {
   padding: 10px 12px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   background: #FFFFFF;
   box-sizing: border-box;
@@ -1273,8 +1310,8 @@ onMounted(() => {
 }
 
 .card-seq {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: #0D6E6E;
   min-width: 20px;
@@ -1293,8 +1330,8 @@ onMounted(() => {
 }
 
 .product-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -1310,8 +1347,8 @@ onMounted(() => {
 }
 
 .field-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: #6B7280;
 }
@@ -1334,14 +1371,14 @@ onMounted(() => {
 }
 
 .compare-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
 .compare-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
 }
@@ -1358,8 +1395,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
 }
 
@@ -1380,7 +1417,7 @@ onMounted(() => {
   padding: 8px 0 8px 10px;
   color: #6B7280;
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .price-input {
@@ -1388,8 +1425,8 @@ onMounted(() => {
   padding: 8px 10px 8px 4px;
   border: none;
   background: transparent;
-  font-family: 'Inter', sans-serif;
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: #1A1A1A;
   outline: none;
@@ -1413,16 +1450,16 @@ onMounted(() => {
   padding: 60px;
   gap: 16px;
   color: #666666;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 .empty-state {
   padding: 48px 24px;
   text-align: center;
   color: #888888;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 @media (max-width: 480px) {

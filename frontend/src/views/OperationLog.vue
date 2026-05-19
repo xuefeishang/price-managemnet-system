@@ -428,53 +428,50 @@ onMounted(() => {
 
     <!-- ==================== 日志列表 ==================== -->
     <div v-if="activeTab === 'logs'" class="tab-content">
-      <!-- 筛选区域 -->
-      <div class="filter-section">
-        <div class="filter-row">
-          <div class="filter-item">
-            <input
-              v-model="filters.username"
-              type="text"
-              placeholder="用户名"
-              class="input"
-              @keyup.enter="handleSearch"
-            />
-          </div>
-          <div class="filter-item">
-            <select v-model="filters.operationType" class="input">
-              <option v-for="opt in operationTypes" :key="opt.value" :value="opt.value">
-                {{ opt.text }}
-              </option>
-            </select>
-          </div>
-          <div class="filter-item">
-            <select v-model="filters.operationModule" class="input">
-              <option v-for="opt in operationModules" :key="opt.value" :value="opt.value">
-                {{ opt.text }}
-              </option>
-            </select>
-          </div>
-        </div>
-        <div class="filter-row">
-          <div class="filter-item">
-            <select v-model="quickDateRange" class="input">
-              <option v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
-                {{ opt.text }}
-              </option>
-            </select>
-          </div>
+      <!-- 筛选区域 - 紧凑单行 -->
+      <div class="filter-bar">
+        <div class="filter-inline">
+          <select v-model="quickDateRange" class="filter-select-sm">
+            <option v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
           <template v-if="quickDateRange === 'custom'">
-            <div class="filter-item">
-              <input v-model="customStartDate" type="date" class="input" />
-            </div>
-            <div class="filter-item">
-              <input v-model="customEndDate" type="date" class="input" />
-            </div>
+            <input v-model="customStartDate" type="date" class="filter-input-sm" />
+            <span class="date-sep">~</span>
+            <input v-model="customEndDate" type="date" class="filter-input-sm" />
           </template>
-          <div class="filter-actions">
-            <button class="btn btn-outline" @click="handleReset">重置</button>
-            <button class="btn btn-primary" @click="handleSearch">搜索</button>
-          </div>
+          <input
+            v-model="filters.username"
+            type="text"
+            placeholder="用户名"
+            class="filter-input-sm"
+            @keyup.enter="handleSearch"
+          />
+          <select v-model="filters.operationType" class="filter-select-sm">
+            <option v-for="opt in operationTypes" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
+          <select v-model="filters.operationModule" class="filter-select-sm">
+            <option v-for="opt in operationModules" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
+        </div>
+        <div class="filter-btns">
+          <button class="btn-icon" @click="handleReset" title="重置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+          </button>
+          <button class="btn-icon primary" @click="handleSearch" title="搜索">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -772,26 +769,25 @@ onMounted(() => {
 .tab-section {
   background: white;
   border-radius: var(--radius-lg);
-  padding: var(--spacing-md);
-  box-shadow: var(--shadow-md);
+  padding: var(--spacing-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .tab-buttons {
   display: flex;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
+  gap: 2px;
 }
 
 .tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
+  gap: 5px;
+  padding: 7px 12px;
   border: none;
   background: transparent;
   color: var(--gray-600);
   border-radius: var(--radius);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -813,32 +809,85 @@ onMounted(() => {
   gap: var(--spacing-lg);
 }
 
-/* 筛选区域 */
-.filter-section {
+/* 筛选栏 - 紧凑单行 */
+.filter-bar {
   background: white;
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  box-shadow: var(--shadow-sm);
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.filter-row {
-  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--spacing-md);
   flex-wrap: wrap;
-  align-items: center;
 }
 
-.filter-item {
-  min-width: 150px;
-}
-
-.filter-actions {
+.filter-inline {
   display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
-  margin-left: auto;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.filter-select-sm,
+.filter-input-sm {
+  padding: 6px 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  background: white;
+  outline: none;
+  transition: all var(--transition-fast);
+  min-width: 100px;
+}
+
+.filter-input-sm[type="date"] {
+  min-width: 130px;
+}
+
+.filter-select-sm:focus,
+.filter-input-sm:focus {
+  border-color: var(--primary-color);
+}
+
+.date-sep {
+  color: var(--gray-400);
+  font-size: 0.75rem;
+}
+
+.filter-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  background: white;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-icon:hover {
+  background: var(--gray-50);
+  color: var(--gray-700);
+}
+
+.btn-icon.primary {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.btn-icon.primary:hover {
+  background: #0a5555;
 }
 
 /* 内容卡片 */
@@ -1178,20 +1227,6 @@ onMounted(() => {
   .stats-overview {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .filter-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .filter-item {
-    min-width: 100%;
-  }
-
-  .filter-actions {
-    margin-left: 0;
-    justify-content: flex-end;
-  }
 }
 
 @media (max-width: 768px) {
@@ -1206,6 +1241,25 @@ onMounted(() => {
 
   .report-selector .input {
     flex: 1;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-select-sm,
+  .filter-input-sm {
+    width: 100%;
+  }
+
+  .filter-btns {
+    justify-content: flex-end;
   }
 }
 </style>

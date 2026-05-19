@@ -16,7 +16,15 @@ const themeConfig = reactive<StyleConfig>({
   numberFont: 'JetBrains Mono',
   logoUrl: '',
   logoSize: 'medium',
-  activeTheme: 'theme_red_green'
+  activeTheme: 'theme_red_green',
+  // 字体大小默认值
+  fontSizeXs: '0.75rem',
+  fontSizeSm: '0.875rem',
+  fontSizeBase: '1rem',
+  fontSizeLg: '1.125rem',
+  fontSizeXl: '1.25rem',
+  fontSize2xl: '1.5rem',
+  fontSize3xl: '1.875rem'
 })
 
 const isLoaded = ref(false)
@@ -50,6 +58,15 @@ const applyThemeToCSS = () => {
   root.style.setProperty('--font-heading', `'${themeConfig.headingFont}', Georgia, serif`)
   root.style.setProperty('--font-body', `'${themeConfig.bodyFont}', sans-serif`)
   root.style.setProperty('--font-mono', `'${themeConfig.numberFont}', monospace`)
+
+  // 字体大小变量
+  root.style.setProperty('--font-size-xs', themeConfig.fontSizeXs)
+  root.style.setProperty('--font-size-sm', themeConfig.fontSizeSm)
+  root.style.setProperty('--font-size-base', themeConfig.fontSizeBase)
+  root.style.setProperty('--font-size-lg', themeConfig.fontSizeLg)
+  root.style.setProperty('--font-size-xl', themeConfig.fontSizeXl)
+  root.style.setProperty('--font-size-2xl', themeConfig.fontSize2xl)
+  root.style.setProperty('--font-size-3xl', themeConfig.fontSize3xl)
 }
 
 const loadThemeConfig = async () => {
@@ -81,6 +98,15 @@ const loadThemeConfig = async () => {
       themeConfig.logoSize = config.logoSize || 'medium'
       themeConfig.activeTheme = config.activeTheme || 'theme_red_green'
 
+      // 字体大小配置
+      themeConfig.fontSizeXs = config.fontSizeXs || '0.75rem'
+      themeConfig.fontSizeSm = config.fontSizeSm || '0.875rem'
+      themeConfig.fontSizeBase = config.fontSizeBase || '1rem'
+      themeConfig.fontSizeLg = config.fontSizeLg || '1.125rem'
+      themeConfig.fontSizeXl = config.fontSizeXl || '1.25rem'
+      themeConfig.fontSize2xl = config.fontSize2xl || '1.5rem'
+      themeConfig.fontSize3xl = config.fontSize3xl || '1.875rem'
+
       applyThemeToCSS()
       isLoaded.value = true
     }
@@ -107,6 +133,14 @@ const saveThemeConfig = async (config: Partial<StyleConfig>) => {
     if (config.logoUrl) themeConfig.logoUrl = config.logoUrl
     if (config.logoSize) themeConfig.logoSize = config.logoSize
     if (config.activeTheme) themeConfig.activeTheme = config.activeTheme
+    // 字体大小配置
+    if (config.fontSizeXs) themeConfig.fontSizeXs = config.fontSizeXs
+    if (config.fontSizeSm) themeConfig.fontSizeSm = config.fontSizeSm
+    if (config.fontSizeBase) themeConfig.fontSizeBase = config.fontSizeBase
+    if (config.fontSizeLg) themeConfig.fontSizeLg = config.fontSizeLg
+    if (config.fontSizeXl) themeConfig.fontSizeXl = config.fontSizeXl
+    if (config.fontSize2xl) themeConfig.fontSize2xl = config.fontSize2xl
+    if (config.fontSize3xl) themeConfig.fontSize3xl = config.fontSize3xl
     applyThemeToCSS()
   } catch (error) {
     console.error('Failed to save theme config:', error)

@@ -695,7 +695,7 @@ onUnmounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .menu-config-page {
-  min-height: 100vh;
+  
   background-color: #F5F5F5;
 }
 
@@ -755,16 +755,16 @@ onUnmounted(() => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
 }
 
 .page-subtitle {
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   color: #888888;
   margin: 0;
 }
@@ -778,8 +778,8 @@ onUnmounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;
@@ -798,8 +798,8 @@ onUnmounted(() => {
   color: #0D6E6E;
   border: 1px solid #0D6E6E;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -823,8 +823,8 @@ onUnmounted(() => {
   background: #FAFAFA;
   border-bottom: 1px solid #E5E5E5;
   padding: 0 20px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: #666666;
 }
@@ -852,8 +852,8 @@ onUnmounted(() => {
 .th.path, .td.path {
   flex: 1.5;
   min-width: 120px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   color: #666666;
 }
 
@@ -1046,8 +1046,8 @@ onUnmounted(() => {
   background: rgba(13, 110, 110, 0.1);
   color: #0D6E6E;
   border-radius: 4px;
-  font-size: 11px;
-  font-family: 'Inter', sans-serif;
+  font-size: 0.6875rem;
+  font-family: var(--font-body);
   font-weight: 500;
   margin-left: 8px;
 }
@@ -1067,8 +1067,8 @@ onUnmounted(() => {
   padding: 2px 6px;
   background: #E5E5E5;
   border-radius: 4px;
-  font-size: 11px;
-  font-family: 'Inter', sans-serif;
+  font-size: 0.6875rem;
+  font-family: var(--font-body);
   color: #666666;
   margin-right: 4px;
 }
@@ -1145,8 +1145,8 @@ onUnmounted(() => {
   border-radius: 12px;
   border: 1px solid #E5E5E5;
   color: #666666;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
 }
 
 .loading-spinner {
@@ -1206,8 +1206,8 @@ onUnmounted(() => {
 }
 
 .navbar-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0;
@@ -1219,8 +1219,8 @@ onUnmounted(() => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -1287,14 +1287,14 @@ onUnmounted(() => {
 .menu-name {
   font-weight: 600;
   color: #1A1A1A;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .card-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666666;
   margin-bottom: 12px;
 }
@@ -1309,7 +1309,7 @@ onUnmounted(() => {
   background: #F5F5F5;
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: background-color 150ms;
 }
@@ -1417,8 +1417,8 @@ onUnmounted(() => {
   align-items: center;
   padding: 16px 20px;
   border-bottom: 1px solid #E5E5E5;
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 18px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-lg);
   font-weight: 500;
 }
 
@@ -1434,8 +1434,8 @@ onUnmounted(() => {
 
 .form-item label {
   display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: #666666;
   margin-bottom: 8px;
@@ -1464,8 +1464,8 @@ onUnmounted(() => {
   padding: 10px 12px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   background: #FFFFFF;
   box-sizing: border-box;
@@ -1521,7 +1521,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -1537,8 +1537,8 @@ onUnmounted(() => {
   flex: 1;
   padding: 12px;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 150ms;

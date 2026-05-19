@@ -6,7 +6,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class SecurityUtils {
 
@@ -38,7 +41,7 @@ public class SecurityUtils {
     }
 
     /**
-     * 获取当前登录用户的角色
+     * 获取当前登录用户的角色（主角色，兼容旧逻辑）
      */
     public static String getCurrentUserRole() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -51,6 +54,21 @@ public class SecurityUtils {
                     .orElse(null);
         }
         return null;
+    }
+
+    /**
+     * 获取当前登录用户的所有角色列表
+     */
+    public static List<String> getCurrentUserRoles() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && !"anonymousUser".equals(authentication.getPrincipal())) {
+            return authentication.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .map(role -> role.replace(SystemConstants.ROLE_PREFIX, ""))
+                    .collect(Collectors.toList());
+        }
+        return Collections.emptyList();
     }
 
     /**
@@ -76,6 +94,22 @@ public class SecurityUtils {
         if (authentication != null && authentication.isAuthenticated()) {
             return authentication.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals(SystemConstants.ROLE_PREFIX + role));
+        }
+        return false;
+    }
+
+    /**
+     * 判断当前用户是否有任意一个指定角色
+     */
+    public static boolean hasAnyRole(String... roles) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            for (String role : roles) {
+                if (authentication.getAuthorities().stream()
+                        .anyMatch(a -> a.getAuthority().equals(SystemConstants.ROLE_PREFIX + role))) {
+                    return true;
+                }
+            }
         }
         return false;
     }

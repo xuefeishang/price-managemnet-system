@@ -471,6 +471,9 @@ public class PriceService {
         }
 
         int totalDeleted = 0;
+        List<Price> allToDelete = new ArrayList<>();
+        List<PriceHistory> historiesToUpdate = new ArrayList<>();
+
         for (Object[] dup : duplicates) {
             Long productId = (Long) dup[0];
             LocalDate effectiveDate = (LocalDate) dup[1];
@@ -483,17 +486,28 @@ public class PriceService {
             List<Price> toDelete = records.subList(1, records.size());
 
             for (Price p : toDelete) {
-                // 将关联到被删除价格的历史记录迁移到保留的价格记录上
-                priceHistoryRepository.findByPriceIdOrderByChangedTimeDesc(p.getId()).forEach(h -> {
+                // 收集需要迁移的历史记录
+                List<PriceHistory> histories = priceHistoryRepository.findByPriceIdOrderByChangedTimeDesc(p.getId());
+                for (PriceHistory h : histories) {
                     h.setPriceId(keepRecord.getId());
-                    priceHistoryRepository.save(h);
-                });
-                priceRepository.delete(p);
+                    historiesToUpdate.add(h);
+                }
+                allToDelete.add(p);
                 totalDeleted++;
             }
 
-            log.info("Cleaned up {} duplicate price records for product_id={}, effective_date={}",
+            log.info("Found {} duplicate price records for product_id={}, effective_date={}",
                     toDelete.size(), productId, effectiveDate);
+        }
+
+        // 批量更新历史记录
+        if (!historiesToUpdate.isEmpty()) {
+            priceHistoryRepository.saveAll(historiesToUpdate);
+        }
+
+        // 批量删除重复价格
+        if (!allToDelete.isEmpty()) {
+            priceRepository.deleteAll(allToDelete);
         }
 
         log.info("Total duplicate price records cleaned up: {}", totalDeleted);

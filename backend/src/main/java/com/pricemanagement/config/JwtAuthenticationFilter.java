@@ -17,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @SuppressWarnings("deprecation")
@@ -71,17 +72,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtUtil.validateToken(token)) {
                 Long userId = jwtUtil.getUserIdFromToken(token);
                 String username = jwtUtil.getUsernameFromToken(token);
-                String role = jwtUtil.getRoleFromToken(token);
+                List<String> roles = jwtUtil.getRolesFromToken(token);
 
-                if (username != null && role != null) {
-                    List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                            new SimpleGrantedAuthority(SystemConstants.ROLE_PREFIX + role)
-                    );
+                if (username != null && !roles.isEmpty()) {
+                    // 将所有角色转换为权限
+                    List<SimpleGrantedAuthority> authorities = roles.stream()
+                            .map(role -> new SimpleGrantedAuthority(SystemConstants.ROLE_PREFIX + role))
+                            .collect(Collectors.toList());
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(username, null, authorities);
                     authentication.setDetails(userId);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-                    log.info("Authenticated user: {} with role: {}, authorities: {}", username, role, authorities);
+                    log.info("Authenticated user: {} with roles: {}, authorities: {}", username, roles, authorities);
                 }
             } else {
                 log.warn("Invalid JWT token for request");

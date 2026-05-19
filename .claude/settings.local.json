@@ -142,7 +142,44 @@
       "Bash(wsl.exe -d Debian -- echo \"WSL works\")",
       "WebFetch(domain:spring.io)",
       "Bash(mvn spring-boot:run -Dspring-boot.run.jvmArguments=\"-Dserver.port=8080\")",
-      "Bash(ping *)"
+      "Bash(ping *)",
+      "Bash(npx degit *)",
+      "Bash(npx *)",
+      "Bash(mkdir -p frontend-uniapp)",
+      "Bash(npm init *)",
+      "Bash(npm search *)",
+      "Bash(docker-compose up *)",
+      "Bash(ipconfig)",
+      "Bash(dir /b \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\*.md\")",
+      "WebFetch(domain:developers.weixin.qq.com)",
+      "Bash(fuser \"E:/ClaudeCodeProject/price-management-system/index.html\")",
+      "Bash(./mvnw compile *)",
+      "Bash(xargs sed -i -e 's/font-family: '\\\\''Inter'\\\\'', sans-serif;/font-family: var\\(--font-body\\);/g' -e 's/font-family: '\\\\''Inter'\\\\'', -apple-system, BlinkMacSystemFont, '\\\\''Segoe UI'\\\\'', sans-serif;/font-family: var\\(--font-body\\);/g' -e 's/font-family: '\\\\''Inter'\\\\'', -apple-system, BlinkMacSystemFont, '\\\\''Segoe UI'\\\\'', Roboto, '\\\\''Helvetica Neue'\\\\'', Arial, sans-serif;/font-family: var\\(--font-body\\);/g' -e 's/font-family: '\\\\''Newsreader'\\\\'', Georgia, serif;/font-family: var\\(--font-heading\\);/g' -e 's/font-family: '\\\\''JetBrains Mono'\\\\'', monospace;/font-family: var\\(--font-mono\\);/g')",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8080\")",
+      "Bash(tasklist /FI \"PID eq 22620\")",
+      "Bash(tasklist)",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(pkill -f \"spring-boot:run\")",
+      "WebFetch(domain:m2.material.io)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm build *)",
+      "Bash(redis-cli FLUSHALL)",
+      "Bash(claude mcp *)",
+      "PowerShell(Get-ChildItem \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\" -Name 2>$null; if \\(-not \\(Test-Path \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\"\\)\\) { Write-Output \"docs folder not found\" })",
+      "Bash(mvnw spring-boot:run)",
+      "Bash(grep -E \"\\\\.md$\")",
+      "Bash(mv \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\开发指南.md\" \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\\\\dev\\\\\" && mv \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\项目设计文档.md\" \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\\\\dev\\\\\")",
+      "Bash(mv \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\项目设计规范.md\" \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\\\\dev\\\\\" && mv \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\UI设计说明.md\" \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\docs\\\\dev\\\\\")",
+      "Bash(Move-Item *)",
+      "PowerShell(Move-Item *)",
+      "PowerShell(netstat *)",
+      "PowerShell(mysql *)",
+      "Bash(cd /d E:\\\\ClaudeCodeProject\\\\price-management-system\\\\backend)",
+      "Bash(mvn spring-boot:run -Dspring-boot.run.arguments=\"--server.port=8081\")"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "image-viewer"
+  ]
 }

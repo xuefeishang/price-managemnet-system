@@ -1,0 +1,33 @@
+{
+  "name": "frontend-uniapp",
+  "version": "1.0.0",
+  "description": "矿产品价格管理系统 - 多端版本（H5/APP/小程序）",
+  "scripts": {
+    "dev:h5": "uni -p h5",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "dev:app": "uni -p app",
+    "build:h5": "uni build -p h5",
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "build:app": "uni build -p app",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5000920260515001",
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5000920260515001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5000920260515001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5000920260515001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5000920260515001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5000920260515001",
+    "dayjs": "^1.11.10",
+    "echarts": "^6.0.0",
+    "echarts-for-weixin": "^1.0.2",
+    "pinia": "2.1.7",
+    "vue": "3.4.21"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "5.3.3",
+    "vite": "5.2.8",
+    "vue-tsc": "^2.2.10"
+  }
+}

@@ -45,12 +45,46 @@ export type SyncStatus = 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'PROCESSING'
 export interface User {
   id: number
   username: string
+  employeeId?: string
   password?: string
-  role: Role
+  role: Role  // 主角色（兼容）
+  roles?: Role[]  // 角色列表
   status: UserStatus
   nickname: string
   email: string
   phone: string
+  department?: string
+  deptId?: number
+  loginType?: string
+  wechatOpenid?: string
+  wechatNickname?: string
+  wechatAvatar?: string
+  lastLoginTime?: string
+  lastLoginIp?: string
+  loginCount?: number
+  isLocked?: boolean
+  lockedTime?: string
+  createdTime: string
+  updatedTime: string
+}
+
+// 部门类型
+export type DeptType = 'HEADQUARTERS' | 'COMPANY' | 'DEPARTMENT'
+
+export interface Department {
+  id: number
+  parentId: number | null
+  deptCode: string
+  deptName: string
+  deptType: DeptType
+  leaderId?: number
+  leaderName?: string
+  sortOrder: number
+  status: string
+  path?: string
+  level?: number
+  userCount?: number
+  children?: Department[]
   createdTime: string
   updatedTime: string
 }
@@ -165,6 +199,9 @@ export interface SyncLog {
 export interface LoginRequest {
   username: string
   password: string
+  captchaKey?: string
+  captchaCode?: string
+  loginType?: string
 }
 
 // 登录响应类型
@@ -235,4 +272,58 @@ export interface SysDict {
   remark?: string
   createdTime: string
   updatedTime: string
+}
+
+// 系统角色类型
+export interface SysRole {
+  id: number
+  roleCode: string
+  roleName: string
+  description?: string
+  deptId?: number
+  sortOrder: number
+  status: string
+  isSystem: boolean
+  createdTime: string
+  updatedTime: string
+}
+
+// 系统权限类型
+export interface SysPermission {
+  id: number
+  permissionCode: string
+  permissionName: string
+  permissionType: string
+  parentId?: number
+  resourceUrl?: string
+  icon?: string
+  sortOrder: number
+  status: string
+  createdTime: string
+  updatedTime: string
+  children?: SysPermission[]
+}
+
+// ==================== 分类视觉配置 ====================
+
+// 分类视觉配置类型（深色主题配置）
+export interface CategoryDarkModeConfig {
+  primaryColor: string
+  textColor: string
+  borderColor: string
+  glowColor: string
+}
+
+// 分类视觉配置类型
+export interface CategoryVisualConfig {
+  categoryId?: number
+  categoryCode?: string      // 分类编码（用于匹配）
+  primaryColor: string      // 主色调（产品名称、图标）
+  secondaryColor: string    // 辅助色（背景渐变）
+  textColor: string         // 文字颜色
+  borderColor: string       // 边框颜色（统一使用深矿蓝#165DFF）
+  glowColor: string         // 光晕颜色（rgba带透明度0.15-0.2）
+  icon: string              // 图标标识符
+  iconType: 'builtin' | 'svg' | 'image'
+  darkMode?: CategoryDarkModeConfig  // 深色主题配置
 }

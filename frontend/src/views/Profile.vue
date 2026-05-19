@@ -740,7 +740,7 @@ onMounted(async () => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .profile-page {
-  min-height: 100vh;
+  
   background-color: #FAFAFA;
 }
 
@@ -751,8 +751,8 @@ onMounted(async () => {
 }
 
 .page-title-pc {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: var(--font-size-2xl);
   font-weight: 500;
   color: #1A1A1A;
   margin: 0 0 32px 0;
@@ -787,23 +787,23 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Inter', sans-serif;
-  font-size: 32px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-3xl);
   font-weight: 600;
   margin-bottom: 16px;
 }
 
 .user-name-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 20px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 4px;
 }
 
 .user-username-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #888888;
   margin-bottom: 16px;
 }
@@ -811,8 +811,8 @@ onMounted(async () => {
 .user-role-pc {
   padding: 6px 16px;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -840,8 +840,8 @@ onMounted(async () => {
 }
 
 .card-title-pc {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 16px 0;
@@ -879,8 +879,8 @@ onMounted(async () => {
 }
 
 .setting-left span {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
@@ -907,14 +907,14 @@ onMounted(async () => {
 }
 
 .info-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #666666;
 }
 
 .info-value {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   font-weight: 500;
 }
@@ -930,8 +930,8 @@ onMounted(async () => {
   color: #E07B54;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -971,8 +971,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Inter', sans-serif;
-  font-size: 32px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-3xl);
   font-weight: 600;
 }
 
@@ -984,8 +984,8 @@ onMounted(async () => {
 }
 
 .user-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -993,8 +993,8 @@ onMounted(async () => {
 .user-role-badge {
   padding: 4px 12px;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -1043,8 +1043,8 @@ onMounted(async () => {
 }
 
 .menu-left span {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
@@ -1060,8 +1060,8 @@ onMounted(async () => {
   color: #E07B54;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -1110,8 +1110,8 @@ onMounted(async () => {
 }
 
 .tab-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -1121,8 +1121,8 @@ onMounted(async () => {
 }
 
 .modal-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 18px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: #1A1A1A;
   margin: 0 0 20px 0;
@@ -1142,8 +1142,8 @@ onMounted(async () => {
 }
 
 .form-item label {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
 }
@@ -1157,8 +1157,8 @@ onMounted(async () => {
   padding: 0 16px;
   border: 1px solid #E5E5E5;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
   box-sizing: border-box;
 }
@@ -1212,8 +1212,8 @@ onMounted(async () => {
 }
 
 .strength-text {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -1228,8 +1228,8 @@ onMounted(async () => {
   flex: 1;
   height: 44px;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
@@ -1280,8 +1280,8 @@ onMounted(async () => {
 }
 
 .radio-item span {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   color: #1A1A1A;
 }
 
@@ -1298,8 +1298,8 @@ onMounted(async () => {
 }
 
 .mobile-modal-title {
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -1307,7 +1307,7 @@ onMounted(async () => {
 .close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: #888888;
   cursor: pointer;
   padding: 0;
@@ -1331,8 +1331,8 @@ onMounted(async () => {
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
 }

@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -31,6 +32,9 @@ public class ApprovalService {
     private final ProductRepository productRepository;
     private final PriceRepository priceRepository;
     private final PriceHistoryRepository priceHistoryRepository;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final SysRoleRepository sysRoleRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -241,6 +245,9 @@ public class ApprovalService {
         ApprovalNode currentNode = nodeRepository.findById(request.getCurrentNodeId())
                 .orElseThrow(() -> new IllegalStateException("当前审批节点不存在"));
 
+        // 验证审批人权限
+        validateApproverPermission(approverId, currentNode);
+
         // 记录审批操作
         ApprovalRecord record = new ApprovalRecord();
         record.setRequestId(requestId);
@@ -289,6 +296,9 @@ public class ApprovalService {
         ApprovalNode currentNode = nodeRepository.findById(request.getCurrentNodeId())
                 .orElseThrow(() -> new IllegalStateException("当前审批节点不存在"));
 
+        // 验证审批人权限
+        validateApproverPermission(approverId, currentNode);
+
         // 记录拒绝操作
         ApprovalRecord record = new ApprovalRecord();
         record.setRequestId(requestId);
@@ -304,6 +314,38 @@ public class ApprovalService {
         ApprovalRequest saved = requestRepository.save(request);
         log.info("Approval request {} rejected", requestId);
         return saved;
+    }
+
+    /**
+     * 验证审批人是否有权限审批当前节点
+     */
+    private void validateApproverPermission(Long approverId, ApprovalNode node) {
+        if (node.getApproverRole() == null || node.getApproverRole().isEmpty()) {
+            // 节点未指定审批角色，允许任何人审批（如知会节点）
+            return;
+        }
+
+        // 获取审批人的角色
+        User approver = userRepository.findById(approverId)
+                .orElseThrow(() -> new IllegalArgumentException("审批人不存在: " + approverId));
+
+        // 通过 UserRole 表获取审批人的角色
+        List<Long> roleIds = userRoleRepository.findRoleIdsByUserId(approverId);
+        if (roleIds.isEmpty()) {
+            throw new IllegalArgumentException("审批人无任何角色，无法审批");
+        }
+
+        List<SysRole> roles = sysRoleRepository.findAllById(roleIds);
+        Set<String> roleCodes = roles.stream()
+                .map(SysRole::getRoleCode)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // 检查审批人是否有节点要求的角色
+        if (!roleCodes.contains(node.getApproverRole())) {
+            throw new IllegalArgumentException("审批人角色 [" + roleCodes + "] 无权审批此节点，需要角色: " + node.getApproverRole());
+        }
+
+        log.debug("Approver {} validated for node with role {}", approverId, node.getApproverRole());
     }
 
     /**

@@ -68,8 +68,13 @@ public final class SystemConstants {
             "/api/auth/login",
             "/api/auth/register",
             "/api/auth/refresh-token",
+            "/api/auth/captcha",
             "/api/menus/tree",
             "/api/menus/visible",
+            "/api/departments/tree",
+            "/api/departments",
+            "/api/permissions",
+            "/api/permissions/tree",
             "/api/static/**",
             "/api/style/config",
             "/api/style/themes"

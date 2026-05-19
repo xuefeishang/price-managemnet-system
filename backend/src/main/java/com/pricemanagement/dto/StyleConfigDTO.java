@@ -17,4 +17,13 @@ public class StyleConfigDTO {
     private String logoUrl;
     private String logoSize;
     private String activeTheme;
+
+    // 字体大小配置
+    private String fontSizeXs;
+    private String fontSizeSm;
+    private String fontSizeBase;
+    private String fontSizeLg;
+    private String fontSizeXl;
+    private String fontSize2xl;
+    private String fontSize3xl;
 }

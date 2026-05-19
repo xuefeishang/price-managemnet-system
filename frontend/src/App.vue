@@ -23,7 +23,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   background-color: #FAFAFA;
   color: #1A1A1A;
   line-height: 1.5;

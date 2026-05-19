@@ -9,9 +9,13 @@ import com.pricemanagement.entity.RefreshToken;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.exception.TokenRefreshException;
 import com.pricemanagement.repository.UserRepository;
+import com.pricemanagement.service.CaptchaService;
+import com.pricemanagement.service.EmployeeIdService;
+import com.pricemanagement.service.PermissionService;
 import com.pricemanagement.service.RefreshTokenService;
 import com.pricemanagement.util.JwtUtil;
 import com.pricemanagement.util.OperationLogHelper;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -20,8 +24,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @RestController
@@ -34,56 +41,111 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final OperationLogHelper operationLogHelper;
     private final RefreshTokenService refreshTokenService;
+    private final CaptchaService captchaService;
+    private final EmployeeIdService employeeIdService;
+    private final PermissionService permissionService;
 
     @PostMapping("/login")
     @RateLimiter(time = 60, count = 5, limitType = RateLimiter.LimitType.IP,
             message = "登录尝试次数过多，请1分钟后再试")
-    public Result<?> login(@Validated @RequestBody LoginRequest loginRequest) {
-        log.debug("Attempting login for user: {}", loginRequest.getUsername());
+    public Result<?> login(@Validated @RequestBody LoginRequest loginRequest, HttpServletRequest httpRequest) {
+        String loginIdentifier = loginRequest.getUsername();
+        log.debug("Attempting login for: {}", loginIdentifier);
+
+        // 验证验证码（如果提供了）
+        if (loginRequest.getCaptchaKey() != null && loginRequest.getCaptchaCode() != null) {
+            if (!captchaService.validateCaptcha(loginRequest.getCaptchaKey(), loginRequest.getCaptchaCode())) {
+                operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                        "用户登录失败：验证码错误", loginIdentifier, "验证码错误或已过期");
+                return Result.error(400, "验证码错误或已过期");
+            }
+        }
 
         try {
-            Optional<User> userOptional = userRepository.findByUsername(loginRequest.getUsername());
-            if (userOptional.isEmpty()) {
-                log.debug("User not found: {}", loginRequest.getUsername());
-                operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
-                        "用户登录失败：用户不存在", loginRequest.getUsername(), "用户不存在");
-                return Result.error(401, "用户名或密码错误");
+            // 根据登录类型查找用户
+            Optional<User> userOptional;
+            String loginType = loginRequest.getLoginType();
+
+            if ("EMPLOYEE_ID".equals(loginType) || employeeIdService.isValidEmployeeId(loginIdentifier)) {
+                // 工号登录（6位数字）
+                userOptional = userRepository.findByEmployeeId(loginIdentifier);
+                if (userOptional.isEmpty()) {
+                    log.debug("User not found by employee ID: {}", loginIdentifier);
+                    operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                            "用户登录失败：工号不存在", loginIdentifier, "工号不存在");
+                    return Result.error(401, "工号或密码错误");
+                }
+            } else {
+                // 用户名登录
+                userOptional = userRepository.findByUsername(loginIdentifier);
+                if (userOptional.isEmpty()) {
+                    log.debug("User not found by username: {}", loginIdentifier);
+                    operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                            "用户登录失败：用户不存在", loginIdentifier, "用户不存在");
+                    return Result.error(401, "用户名或密码错误");
+                }
             }
 
             User user = userOptional.get();
-            if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-                log.debug("Incorrect password for user: {}", loginRequest.getUsername());
+
+            // 检查锁定状态
+            if (Boolean.TRUE.equals(user.getIsLocked())) {
+                log.debug("User account is locked: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
-                        "用户登录失败：密码错误", loginRequest.getUsername(), "密码错误");
-                return Result.error(401, "用户名或密码错误");
+                        "用户登录失败：账号被锁定", loginIdentifier, "账号已被锁定");
+                return Result.error(403, "账号已被锁定，请联系管理员");
+            }
+
+            if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+                log.debug("Incorrect password for: {}", loginIdentifier);
+                operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                        "用户登录失败：密码错误", loginIdentifier, "密码错误");
+                return Result.error(401, "用户名/工号或密码错误");
             }
 
             if (user.getStatus() != CommonStatus.ACTIVE) {
-                log.debug("User account is inactive: {}", loginRequest.getUsername());
+                log.debug("User account is inactive: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
-                        "用户登录失败：账号被禁用", loginRequest.getUsername(), "账号已被禁用");
+                        "用户登录失败：账号被禁用", loginIdentifier, "账号已被禁用");
                 return Result.error(403, "账号已被禁用");
             }
 
-            String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
-            log.debug("User logged in successfully: {}", loginRequest.getUsername());
+            // 获取用户角色列表（从 UserRole 表）
+            List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
+            // 主角色：优先使用 UserRole 表的第一个角色，否则使用 User.role 枚举
+            String primaryRole = roleCodes.isEmpty() ? user.getRole().name() : roleCodes.get(0);
+
+            // 生成JWT令牌（包含角色列表）
+            String token = jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, primaryRole);
+            log.debug("User logged in successfully: {} with roles: {}", loginIdentifier, roleCodes);
 
             // 创建刷新令牌
             RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getUsername());
 
+            // 更新登录信息
+            user.setLastLoginTime(LocalDateTime.now());
+            user.setLastLoginIp(httpRequest.getRemoteAddr());
+            user.setLoginCount(user.getLoginCount() + 1);
+            userRepository.save(user);
+
             // 记录登录成功日志
             operationLogHelper.logSuccess("用户认证", OperationLog.OperationType.LOGIN,
-                    "用户登录成功", loginRequest.getUsername());
+                    "用户登录成功", loginIdentifier);
 
+            // 获取用户权限列表
+            Set<String> permissions = permissionService.getUserPermissions(user.getId());
+
+            // 构建响应（包含角色列表）
             LoginResponse response = new LoginResponse(token, user.getId(), user.getUsername(),
-                    user.getNickname(), user.getRole().name());
+                    user.getNickname(), primaryRole, roleCodes);
 
-            // 返回包含刷新令牌的响应
+            // 返回包含刷新令牌和权限的响应
             return Result.success("登录成功", Map.of(
                     "accessToken", token,
                     "refreshToken", refreshToken.getToken(),
                     "tokenType", "Bearer",
-                    "user", response
+                    "user", response,
+                    "permissions", permissions
             ));
         } catch (Exception e) {
             log.error("Login error: {}", e.getMessage());
@@ -91,6 +153,16 @@ public class AuthController {
                     "用户登录异常", loginRequest.getUsername(), e.getMessage());
             return Result.error(500, "登录异常：" + e.getMessage());
         }
+    }
+
+    /**
+     * 获取验证码
+     */
+    @GetMapping("/captcha")
+    public Result<CaptchaResponse> getCaptcha(HttpServletRequest request) {
+        String ipAddress = request.getRemoteAddr();
+        CaptchaResponse captcha = captchaService.generateCaptcha(ipAddress);
+        return Result.success("获取验证码成功", captcha);
     }
 
     @PostMapping("/logout")

@@ -204,6 +204,35 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("style", "logo_url", "Logo地址", "/api/static/logo.png", 10, null));
             dicts.add(createDict("style", "active_theme", "当前主题", "theme_red_green", 11, null));
 
+            // 首页布局配置 home_layout
+            dicts.add(createDict("home_layout", "layout_mode", "驾驶舱模式", "{\"sections\":[\"summary\",\"metrics\",\"trend\",\"list\",\"alerts\"]}", 1, "Dashboard布局模式"));
+            dicts.add(createDict("home_layout", "card_columns", "PC卡片列数", "4", 2, "PC端每行显示卡片数"));
+            dicts.add(createDict("home_layout", "card_columns_mobile", "移动端卡片列数", "2", 3, "移动端每行显示卡片数"));
+            dicts.add(createDict("home_layout", "featured_product_count", "重点产品数量", "6", 4, "核心指标区显示产品数"));
+            dicts.add(createDict("home_layout", "show_trend_chart", "显示趋势图", "true", 5, "是否显示趋势分析区"));
+            dicts.add(createDict("home_layout", "show_alerts", "显示预警区", "true", 6, "是否显示风险预警区"));
+
+            // 首页小组件配置 home_widget
+            dicts.add(createDict("home_widget", "summary_stats", "经营摘要", "{\"enabled\":true,\"order\":1}", 1, "顶部摘要统计区"));
+            dicts.add(createDict("home_widget", "core_metrics", "核心指标", "{\"enabled\":true,\"order\":2,\"maxCards\":8}", 2, "核心指标卡片区"));
+            dicts.add(createDict("home_widget", "trend_chart", "趋势分析", "{\"enabled\":true,\"order\":3,\"defaultDays\":30}", 3, "趋势分析图表区"));
+            dicts.add(createDict("home_widget", "product_list", "产品列表", "{\"enabled\":true,\"order\":4}", 4, "产品行情列表区"));
+            dicts.add(createDict("home_widget", "risk_alerts", "风险预警", "{\"enabled\":true,\"order\":5}", 5, "风险预警提示区"));
+
+            // 价格预警规则 price_alert
+            dicts.add(createDict("price_alert", "single_day_rise", "单日涨幅>5%", "{\"type\":\"percentage\",\"threshold\":5,\"direction\":\"up\",\"severity\":\"warning\"}", 1, "单日涨幅超过5%预警"));
+            dicts.add(createDict("price_alert", "single_day_fall", "单日跌幅>5%", "{\"type\":\"percentage\",\"threshold\":5,\"direction\":\"down\",\"severity\":\"warning\"}", 2, "单日跌幅超过5%预警"));
+            dicts.add(createDict("price_alert", "consecutive_rise", "连续上涨3日", "{\"type\":\"consecutive\",\"days\":3,\"direction\":\"up\",\"severity\":\"info\"}", 3, "连续3日上涨预警"));
+            dicts.add(createDict("price_alert", "consecutive_fall", "连续下跌3日", "{\"type\":\"consecutive\",\"days\":3,\"direction\":\"down\",\"severity\":\"info\"}", 4, "连续3日下跌预警"));
+            dicts.add(createDict("price_alert", "price_high", "价格高于预算10%", "{\"type\":\"budget_diff\",\"threshold\":10,\"severity\":\"warning\"}", 5, "价格高于预算预警"));
+            dicts.add(createDict("price_alert", "price_low", "价格低于预算10%", "{\"type\":\"budget_diff\",\"threshold\":-10,\"severity\":\"warning\"}", 6, "价格低于预算预警"));
+
+            // 图表时间范围 chart_range
+            dicts.add(createDict("chart_range", "7d", "7日", "7", 1, "7天趋势"));
+            dicts.add(createDict("chart_range", "30d", "30日", "30", 2, "30天趋势"));
+            dicts.add(createDict("chart_range", "90d", "90日", "90", 3, "90天趋势"));
+            dicts.add(createDict("chart_range", "1y", "年度", "365", 4, "年度趋势"));
+
             // 保存到数据库（跳过已存在的）
             int created = 0;
             for (SysDict dict : dicts) {
