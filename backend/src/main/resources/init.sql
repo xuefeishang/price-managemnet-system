@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS sys_captcha (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '验证码ID',
     captcha_key VARCHAR(100) NOT NULL UNIQUE COMMENT '验证码Key（UUID）',
     captcha_code VARCHAR(4) NOT NULL COMMENT '验证码（4位数字）',
-    captcha_image VARCHAR(500) COMMENT '验证码图片Base64',
+    captcha_image TEXT COMMENT '验证码图片Base64',
     ip_address VARCHAR(50) COMMENT '请求IP',
     expire_time DATETIME NOT NULL COMMENT '过期时间',
     used BOOLEAN DEFAULT FALSE COMMENT '是否已使用',
