@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { getDictByCategory, getDictExtraValue, loadAllDicts } from './useDict'
+import { getDictByCategory, loadAllDicts } from './useDict'
 
 export interface HomeLayoutConfig {
   layoutMode: 'dashboard' | 'simple'
@@ -38,21 +38,22 @@ export function useHomeConfig() {
     // 加载布局配置
     const layoutDicts = getDictByCategory('home_layout')
     layoutDicts.forEach(dict => {
+      const extraVal = dict.extraValue || ''
       switch (dict.dictKey) {
         case 'card_columns':
-          layoutConfig.value.cardColumns = parseInt(dict.extraValue) || 4
+          layoutConfig.value.cardColumns = parseInt(extraVal) || 4
           break
         case 'card_columns_mobile':
-          layoutConfig.value.cardColumnsMobile = parseInt(dict.extraValue) || 2
+          layoutConfig.value.cardColumnsMobile = parseInt(extraVal) || 2
           break
         case 'featured_product_count':
-          layoutConfig.value.featuredProductCount = parseInt(dict.extraValue) || 6
+          layoutConfig.value.featuredProductCount = parseInt(extraVal) || 6
           break
         case 'show_trend_chart':
-          layoutConfig.value.showTrendChart = dict.extraValue === 'true'
+          layoutConfig.value.showTrendChart = extraVal === 'true'
           break
         case 'show_alerts':
-          layoutConfig.value.showAlerts = dict.extraValue === 'true'
+          layoutConfig.value.showAlerts = extraVal === 'true'
           break
       }
     })
@@ -80,7 +81,7 @@ export function useHomeConfig() {
       .map(dict => ({
         key: dict.dictKey,
         label: dict.dictValue,
-        days: parseInt(dict.extraValue) || 30
+        days: parseInt(dict.extraValue || '30') || 30
       }))
       .sort((a, b) => a.days - b.days)
   }

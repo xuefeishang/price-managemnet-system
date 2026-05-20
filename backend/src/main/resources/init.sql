@@ -538,7 +538,36 @@ SELECT * FROM (
 ) AS tmp
 WHERE @has_font_size_dict = 0;
 
-SELECT CONCAT('字典数据: ', IF(@has_dict > 0, '已存在，跳过', '初始化完成（10个分类）')) AS status;
+-- 分类视觉配置字典
+SET @has_category_visual_dict = 0;
+SELECT COUNT(*) INTO @has_category_visual_dict FROM sys_dict WHERE category='category_visual_config';
+
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+SELECT * FROM (
+    -- 黑色金属：钢铁灰色调
+    SELECT 'category_visual_config' AS category, 'BLACK_METAL' AS dict_key, '黑色金属' AS dict_value,
+    '{"categoryCode":"BLACK_METAL","primaryColor":"#4A5568","secondaryColor":"#718096","textColor":"#2D3748","borderColor":"#4A5568","glowColor":"rgba(74,85,104,0.2)","icon":"iron_ore","iconType":"builtin","darkMode":{"primaryColor":"#718096","textColor":"#E2E8F0","borderColor":"#4A5568","glowColor":"rgba(113,128,150,0.25)"}}' AS extra_value,
+    1 AS sort_order, 'ACTIVE' AS status, '钢铁类产品视觉配置' AS remark, NOW() AS created_time, NOW() AS updated_time
+    -- 有色金属：金铜色调
+    UNION ALL SELECT 'category_visual_config', 'NON_FERROUS_METAL', '有色金属',
+    '{"categoryCode":"NON_FERROUS_METAL","primaryColor":"#B87333","secondaryColor":"#D4A574","textColor":"#8B4513","borderColor":"#B87333","glowColor":"rgba(184,115,51,0.2)","icon":"copper_coil","iconType":"builtin","darkMode":{"primaryColor":"#D4A574","textColor":"#F5F7FA","borderColor":"#B87333","glowColor":"rgba(212,165,116,0.25)"}}',
+    2, 'ACTIVE', '铜铝等有色金属视觉配置', NOW(), NOW()
+    -- 贵金属：奢华金色
+    UNION ALL SELECT 'category_visual_config', 'PRECIOUS_METAL', '贵金属',
+    '{"categoryCode":"PRECIOUS_METAL","primaryColor":"#D4AF37","secondaryColor":"#FFD700","textColor":"#8B6914","borderColor":"#D4AF37","glowColor":"rgba(212,175,55,0.25)","icon":"gold_ingot","iconType":"builtin","darkMode":{"primaryColor":"#FFD700","textColor":"#FFF8DC","borderColor":"#D4AF37","glowColor":"rgba(255,215,0,0.3)"}}',
+    3, 'ACTIVE', '金银铂贵金属视觉配置', NOW(), NOW()
+    -- 化工产品：科技紫色调
+    UNION ALL SELECT 'category_visual_config', 'CHEMICAL', '化工产品',
+    '{"categoryCode":"CHEMICAL","primaryColor":"#8B5CF6","secondaryColor":"#A78BFA","textColor":"#6D28D9","borderColor":"#8B5CF6","glowColor":"rgba(139,92,246,0.2)","icon":"rare_element","iconType":"builtin","darkMode":{"primaryColor":"#A78BFA","textColor":"#EDE9FE","borderColor":"#8B5CF6","glowColor":"rgba(167,139,250,0.25)"}}',
+    4, 'ACTIVE', '化工原料产品视觉配置', NOW(), NOW()
+    -- 煤炭及焦炭：深黑色调
+    UNION ALL SELECT 'category_visual_config', 'COAL', '煤炭及焦炭',
+    '{"categoryCode":"COAL","primaryColor":"#1F2937","secondaryColor":"#374151","textColor":"#111827","borderColor":"#1F2937","glowColor":"rgba(31,41,55,0.3)","icon":"iron_ore","iconType":"builtin","darkMode":{"primaryColor":"#374151","textColor":"#F9FAFB","borderColor":"#1F2937","glowColor":"rgba(55,65,81,0.35)"}}',
+    5, 'ACTIVE', '煤炭焦炭产品视觉配置', NOW(), NOW()
+) AS tmp
+WHERE @has_category_visual_dict = 0;
+
+SELECT CONCAT('字典数据: ', IF(@has_dict > 0, '已存在，跳过', '初始化完成（11个分类，含分类视觉配置）')) AS status;
 
 -- =====================================================
 -- 8. 审批流程定义表
@@ -869,3 +898,188 @@ SELECT CONCAT('  - 产品: 20 个') AS '';
 SELECT CONCAT('  - 用户: 3 个') AS '';
 SELECT CONCAT('  - 审批工作流: 2 个（默认停用）') AS '';
 SELECT CONCAT('  - 审批节点: 3 个') AS '';
+
+-- =====================================================
+-- 21. 样式配置专用表
+-- =====================================================
+
+-- 样式配置主表（当前生效配置）
+CREATE TABLE IF NOT EXISTS sys_style_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+    config_key VARCHAR(100) NOT NULL UNIQUE COMMENT '配置键',
+    config_value TEXT COMMENT '配置值',
+    config_type VARCHAR(50) DEFAULT 'string' COMMENT '类型：string/json/color/font',
+    description VARCHAR(500) COMMENT '说明',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_style_config_key (config_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='样式配置表';
+
+-- 样式预设表（色彩方案、布局方案等）
+CREATE TABLE IF NOT EXISTS sys_style_preset (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '预设ID',
+    preset_type VARCHAR(50) NOT NULL COMMENT '预设类型：color_scheme/layout_style/font_preset',
+    preset_key VARCHAR(100) NOT NULL COMMENT '预设键',
+    preset_name VARCHAR(200) NOT NULL COMMENT '预设名称',
+    preset_description VARCHAR(500) COMMENT '预设说明',
+    config_json TEXT NOT NULL COMMENT '配置 JSON',
+    is_default TINYINT DEFAULT 0 COMMENT '是否默认',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    status VARCHAR(20) DEFAULT 'ACTIVE' COMMENT '状态',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_preset_type_key (preset_type, preset_key),
+    INDEX idx_preset_type (preset_type),
+    INDEX idx_preset_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='样式预设表';
+
+-- =====================================================
+-- 22. 初始化样式配置数据
+-- =====================================================
+
+SET @has_style_config = 0;
+SELECT COUNT(*) INTO @has_style_config FROM sys_style_config;
+
+-- 基础样式配置
+INSERT INTO sys_style_config (config_key, config_value, config_type, description, created_time, updated_time)
+SELECT * FROM (
+    SELECT 'system_name' AS config_key, '价格管理系统' AS config_value, 'string' AS config_type, '系统显示名称' AS description, NOW() AS created_time, NOW() AS updated_time
+    UNION ALL SELECT 'logo_url', '', 'string', 'Logo URL', NOW(), NOW()
+    UNION ALL SELECT 'logo_size', 'medium', 'string', 'Logo 尺寸：small/medium/large/xlarge', NOW(), NOW()
+    UNION ALL SELECT 'heading_font', 'Newsreader', 'font', '标题字体', NOW(), NOW()
+    UNION ALL SELECT 'body_font', 'Inter', 'font', '正文字体', NOW(), NOW()
+    UNION ALL SELECT 'number_font', 'JetBrains Mono', 'font', '数字字体', NOW(), NOW()
+    UNION ALL SELECT 'font_size_xs', '0.75rem', 'string', '辅助信息字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_sm', '0.875rem', 'string', '表格内容字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_base', '1rem', 'string', '正文表头字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_lg', '1.125rem', 'string', '小节标题字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_xl', '1.25rem', 'string', '页面副标题字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_2xl', '1.5rem', 'string', '页面主标题字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_3xl', '1.875rem', 'string', '特大标题字号', NOW(), NOW()
+    UNION ALL SELECT 'active_color_scheme', 'scheme_teal_classic', 'string', '当前色彩方案', NOW(), NOW()
+    UNION ALL SELECT 'active_layout_style', 'layout_top_nav', 'string', '当前布局方案', NOW(), NOW()
+    UNION ALL SELECT 'active_theme', 'theme_red_green', 'string', '兼容旧主题', NOW(), NOW()
+) AS tmp
+WHERE @has_style_config = 0;
+
+SELECT CONCAT('样式配置数据: ', IF(@has_style_config > 0, '已存在，跳过', '初始化完成（16项配置）')) AS status;
+
+-- =====================================================
+-- 23. 初始化色彩方案预设
+-- =====================================================
+
+SET @has_color_scheme = 0;
+SELECT COUNT(*) INTO @has_color_scheme FROM sys_style_preset WHERE preset_type='color_scheme';
+
+INSERT INTO sys_style_preset (preset_type, preset_key, preset_name, preset_description, config_json, is_default, sort_order, status, created_time, updated_time)
+SELECT * FROM (
+    -- 方案一：青绿经典（默认）
+    SELECT 'color_scheme' AS preset_type, 'scheme_teal_classic' AS preset_key, '青绿经典（默认）' AS preset_name, '当前系统默认配色，青绿主色，专业稳重' AS preset_description,
+    '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}' AS config_json,
+    1 AS is_default, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
+    -- 方案二：经典红绿
+    UNION ALL SELECT 'color_scheme', 'scheme_classic', '经典红绿', '传统配色，涨价红色，跌价绿色',
+    '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
+    0, 2, 'ACTIVE', NOW(), NOW()
+    -- 方案三：美股绿红
+    UNION ALL SELECT 'color_scheme', 'scheme_us_stock', '美股绿红', '美股风格，涨价绿色，跌价红色',
+    '{"priceRise":"#10B981","priceFall":"#EF4444","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
+    0, 3, 'ACTIVE', NOW(), NOW()
+    -- 方案四：商务蓝橙
+    UNION ALL SELECT 'color_scheme', 'scheme_business', '商务蓝橙', '商务风格配色',
+    '{"priceRise":"#3B82F6","priceFall":"#F97316","priceFlat":"#9CA3AF","chartPrimary":"#3B82F6","chartColors":["#3B82F6","#F97316","#0D6E6E","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B","#10B981"]}',
+    0, 4, 'ACTIVE', NOW(), NOW()
+    -- 方案五：高贵紫金
+    UNION ALL SELECT 'color_scheme', 'scheme_noble', '高贵紫金', '高贵风格配色',
+    '{"priceRise":"#8B5CF6","priceFall":"#EAB308","priceFlat":"#9CA3AF","chartPrimary":"#8B5CF6","chartColors":["#8B5CF6","#EAB308","#0D6E6E","#EC4899","#6366F1","#14B8A6","#64748B","#10B981","#F59E0B"]}',
+    0, 5, 'ACTIVE', NOW(), NOW()
+    -- 方案六：深矿蓝
+    UNION ALL SELECT 'color_scheme', 'scheme_deep_blue', '深矿蓝', '参考图配色，专业科技风格',
+    '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#165DFF","chartColors":["#165DFF","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
+    0, 6, 'ACTIVE', NOW(), NOW()
+    -- 方案七：暖色系
+    UNION ALL SELECT 'color_scheme', 'scheme_warm', '暖色系', '温暖活力配色',
+    '{"priceRise":"#F97316","priceFall":"#06B6D4","priceFlat":"#9CA3AF","chartPrimary":"#F97316","chartColors":["#F97316","#06B6D4","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
+    0, 7, 'ACTIVE', NOW(), NOW()
+) AS tmp
+WHERE @has_color_scheme = 0;
+
+SELECT CONCAT('色彩方案预设: ', IF(@has_color_scheme > 0, '已存在，跳过', '初始化完成（7套方案）')) AS status;
+
+-- =====================================================
+-- 24. 初始化布局方案预设
+-- =====================================================
+
+SET @has_layout_style = 0;
+SELECT COUNT(*) INTO @has_layout_style FROM sys_style_preset WHERE preset_type='layout_style';
+
+INSERT INTO sys_style_preset (preset_type, preset_key, preset_name, preset_description, config_json, is_default, sort_order, status, created_time, updated_time)
+SELECT * FROM (
+    -- 布局一：经典顶部导航（默认）
+    SELECT 'layout_style' AS preset_type, 'layout_top_nav' AS preset_key, '经典顶部导航' AS preset_name, '传统后台管理布局' AS preset_description,
+    '{"navPosition":"top","navBgColor":"#FFFFFF","navTextColor":"#1A1A1A","pageBgColor":"#FAFAFA","cardBgColor":"#FFFFFF","cardShadow":"0 1px 3px rgba(0,0,0,0.1)","borderRadius":"12px"}' AS config_json,
+    1 AS is_default, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
+    -- 布局二：左侧导航
+    UNION ALL SELECT 'layout_style', 'layout_left_nav', '左侧导航', '功能较多的系统布局',
+    '{"navPosition":"left","navBgColor":"#FFFFFF","navTextColor":"#1A1A1A","pageBgColor":"#FAFAFA","cardBgColor":"#FFFFFF","cardShadow":"0 1px 3px rgba(0,0,0,0.1)","borderRadius":"12px"}',
+    0, 2, 'ACTIVE', NOW(), NOW()
+    -- 布局三：深矿蓝仪表盘
+    UNION ALL SELECT 'layout_style', 'layout_dashboard', '深矿蓝仪表盘', '参考图布局，专业数据展示',
+    '{"navPosition":"left","navBgColor":"#1E3A5F","navTextColor":"#FFFFFF","pageBgColor":"#F5F5F5","cardBgColor":"#FFFFFF","cardShadow":"0 1px 3px rgba(0,0,0,0.1)","borderRadius":"8px","showTitleBar":true,"showMiniChart":true,"gradientChart":true}',
+    0, 3, 'ACTIVE', NOW(), NOW()
+    -- 布局四：极简卡片式
+    UNION ALL SELECT 'layout_style', 'layout_minimal', '极简卡片式', '简洁现代布局',
+    '{"navPosition":"top-minimal","navBgColor":"transparent","navTextColor":"#1A1A1A","pageBgColor":"#FAFAFA","cardBgColor":"#FFFFFF","cardShadow":"0 4px 6px rgba(0,0,0,0.1)","borderRadius":"16px"}',
+    0, 4, 'ACTIVE', NOW(), NOW()
+) AS tmp
+WHERE @has_layout_style = 0;
+
+SELECT CONCAT('布局方案预设: ', IF(@has_layout_style > 0, '已存在，跳过', '初始化完成（4套方案）')) AS status;
+
+-- =====================================================
+-- 25. 初始化字号预设
+-- =====================================================
+
+SET @has_font_preset = 0;
+SELECT COUNT(*) INTO @has_font_preset FROM sys_style_preset WHERE preset_type='font_preset';
+
+INSERT INTO sys_style_preset (preset_type, preset_key, preset_name, preset_description, config_json, is_default, sort_order, status, created_time, updated_time)
+SELECT * FROM (
+    -- 紧凑
+    SELECT 'font_preset' AS preset_type, 'compact' AS preset_key, '紧凑' AS preset_name, '数据密集型后台' AS preset_description,
+    '{"xs":"0.625rem","sm":"0.75rem","base":"0.875rem","lg":"1rem","xl":"1.125rem","2xl":"1.25rem","3xl":"1.5rem"}' AS config_json,
+    0 AS is_default, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
+    -- 标准（默认）
+    UNION ALL SELECT 'font_preset', 'standard', '标准', '通用场景',
+    '{"xs":"0.75rem","sm":"0.875rem","base":"1rem","lg":"1.125rem","xl":"1.25rem","2xl":"1.5rem","3xl":"1.875rem"}',
+    1, 2, 'ACTIVE', NOW(), NOW()
+    -- 大字体
+    UNION ALL SELECT 'font_preset', 'large', '大字体', '比标准略大',
+    '{"xs":"0.8125rem","sm":"0.9375rem","base":"1.0625rem","lg":"1.1875rem","xl":"1.375rem","2xl":"1.625rem","3xl":"1.9375rem"}',
+    0, 3, 'ACTIVE', NOW(), NOW()
+    -- 特大字体（无障碍）
+    UNION ALL SELECT 'font_preset', 'xlarge', '特大字体', '演示/投影/无障碍',
+    '{"xs":"0.875rem","sm":"1rem","base":"1.125rem","lg":"1.25rem","xl":"1.5rem","2xl":"1.75rem","3xl":"2rem"}',
+    0, 4, 'ACTIVE', NOW(), NOW()
+) AS tmp
+WHERE @has_font_preset = 0;
+
+SELECT CONCAT('字号预设: ', IF(@has_font_preset > 0, '已存在，跳过', '初始化完成（4套预设）')) AS status;
+
+-- =====================================================
+-- 初始化完成提示（更新）
+-- =====================================================
+
+SELECT '========================================' AS '';
+SELECT '  数据初始化完成！' AS message;
+SELECT '========================================' AS '';
+SELECT '' AS '';
+SELECT '默认用户:' AS '';
+SELECT '  admin   / admin123   (管理员)' AS '';
+SELECT '  editor  / admin123   (编辑者)' AS '';
+SELECT '  viewer  / admin123   (查看者)' AS '';
+SELECT '' AS '';
+SELECT '样式系统:' AS '';
+SELECT '  - 色彩方案: 7 套（青绿经典为默认）' AS '';
+SELECT '  - 布局方案: 4 套（经典顶部导航为默认）' AS '';
+SELECT '  - 字号预设: 4 套（标准为默认）' AS '';

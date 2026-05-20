@@ -12,7 +12,7 @@ import { usePermission, Permission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
 import { useHomeConfig } from '@/composables/useHomeConfig'
-import { loadAllDicts, getCurrencySymbol } from '@/composables/useDict'
+import { loadAllDicts, getCurrencySymbol, getDictByCategory } from '@/composables/useDict'
 import { getCategoryVisual, getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
 import CategoryFilterPanel from '@/components/CategoryFilterPanel.vue'
 import CategoryIcons from '@/components/icons/CategoryIcons.vue'
@@ -59,6 +59,7 @@ const gridCols = computed(() => {
 
 const filteredProducts = computed(() => {
   const active = products.value.filter(p => p.status === 'ACTIVE')
+  console.log('[Home] filteredProducts: active products =', active.length)
 
   // 分类筛选
   if (selectedCategoryIds.value.length > 0) {
@@ -192,6 +193,7 @@ const getPreviousDate = (dateStr: string) => {
 
 const loadData = async () => {
   loading.value = true
+  console.log('[Home] loadData: loading=true, isPCLayout=', isPCLayout.value)
   error.value = null
   try {
     const prevDate = getPreviousDate(selectedDate.value)
@@ -202,6 +204,8 @@ const loadData = async () => {
     ])
 
     products.value = productsRes.data.content || []
+    console.log('[Home] Loaded products:', products.value.length)
+    console.log('[Home] First product full:', JSON.stringify(products.value[0], null, 2))
     priceMap.value.clear()
     previousPriceMap.value.clear()
     chartOptionsMap.value.clear()
@@ -241,6 +245,7 @@ const loadData = async () => {
     console.error('Failed to load data:', err)
   } finally {
     loading.value = false
+    console.log('[Home] loadData: loading=false, products=', products.value.length)
   }
 }
 
@@ -291,14 +296,24 @@ const clearCategoryFilter = () => {
   selectedCategoryIds.value = []
 }
 
+// 获取产品的分类ID
+const getProductCategoryId = (product: Product): number | undefined => {
+  const catId = product.categoryId || product.category?.id
+  console.log(`[Home] getProductCategoryId for ${product.name}: categoryId=${product.categoryId}, category.id=${product.category?.id}, result=${catId}`)
+  return catId
+}
+
 // 获取产品卡片分类样式
 const getCardStyle = (product: Product) => {
-  if (!product.categoryId) return {}
-  return getCategoryCardStyle(product.categoryId)
+  const catId = getProductCategoryId(product)
+  if (!catId) return {}
+  const style = getCategoryCardStyle(catId)
+  console.log(`[Home] getCardStyle for product ${product.name} (categoryId=${catId}):`, style)
+  return style
 }
 
 const getCardClass = (product: Product) => {
-  return product.categoryId ? 'has-category' : ''
+  return getProductCategoryId(product) ? 'has-category' : ''
 }
 
 const activeTab = ref('home')
@@ -308,7 +323,9 @@ onMounted(async () => {
   // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
   try {
     const catRes = await getCategories('ACTIVE')
-    registerCategoryCodes((catRes.data || []).map(c => ({ id: c.id, code: c.code })))
+    const cats = catRes.data || []
+    console.log('[Home] Loaded categories:', cats.map(c => ({ id: c.id, code: c.code })))
+    registerCategoryCodes(cats.map(c => ({ id: c.id, code: c.code })))
   } catch (e) {
     console.error('Failed to load categories:', e)
   }
@@ -317,6 +334,11 @@ onMounted(async () => {
     loadAllDicts(),
     loadHomeConfig()
   ])
+
+  // 调试：检查字典数据
+  const visualConfigs = getDictByCategory('category_visual_config')
+  console.log('[Home] category_visual_config dicts:', visualConfigs.length, visualConfigs.map(d => ({ key: d.dictKey, code: JSON.parse(d.extraValue || '{}').categoryCode })))
+
   loadData()
 })
 </script>
@@ -469,16 +491,16 @@ onMounted(async () => {
                 @click="viewProduct(product)"
               >
                 <!-- 分类图标 -->
-                <div class="card-category-icon" v-if="product.categoryId">
+                <div class="card-category-icon" v-if="getProductCategoryId(product)">
                   <CategoryIcons
-                    :icon="getCategoryVisual(product.categoryId).icon"
+                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
                     :size="16"
-                    :color="getCategoryVisual(product.categoryId).primaryColor"
+                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
                   />
                 </div>
                 <div class="card-top">
                   <div class="card-title-row">
-                    <span class="product-name" :class="{ 'category-name': product.categoryId }">{{ product.name }}</span>
+                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
                     <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
                       {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
                       {{ priceChangeCache.get(product.id)?.formattedDiff }}
@@ -607,11 +629,21 @@ onMounted(async () => {
                 v-for="product in filteredProducts"
                 :key="product.id"
                 class="product-item"
+                :class="getCardClass(product)"
+                :style="getCardStyle(product)"
                 @click="viewProduct(product)"
               >
+                <!-- 分类图标 -->
+                <div class="item-category-icon" v-if="getProductCategoryId(product)">
+                  <CategoryIcons
+                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                    :size="14"
+                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                  />
+                </div>
                 <div class="item-main">
                   <div class="item-header">
-                    <span class="product-name">{{ product.name }}</span>
+                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
                     <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
                       {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
                       {{ priceChangeCache.get(product.id)?.formattedDiff }}
@@ -868,7 +900,7 @@ onMounted(async () => {
 /* 有分类的产品卡片 - 分类视觉样式 */
 .product-card-pc.has-category {
   border-color: var(--category-border);
-  background: linear-gradient(135deg, var(--bg-card) 0%, var(--category-secondary)08 100%);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-secondary) 8%, transparent) 100%);
 }
 
 .product-card-pc.has-category:hover {
@@ -1335,6 +1367,28 @@ onMounted(async () => {
   gap: var(--spacing-md);
   cursor: pointer;
   transition: border-color var(--transition-fast);
+  position: relative;
+}
+
+/* 有分类的产品项 - 分类视觉样式 */
+.product-item.has-category {
+  border-color: var(--category-border);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-secondary) 8%, transparent) 100%);
+}
+
+.product-item.has-category:hover {
+  border-color: var(--category-primary);
+}
+
+.product-item.has-category .product-name.category-name {
+  color: var(--category-primary);
+}
+
+.item-category-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0.7;
 }
 
 .product-item:hover { border-color: var(--primary-color); }

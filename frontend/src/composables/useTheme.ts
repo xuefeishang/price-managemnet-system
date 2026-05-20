@@ -17,6 +17,10 @@ const themeConfig = reactive<StyleConfig>({
   logoUrl: '',
   logoSize: 'medium',
   activeTheme: 'theme_red_green',
+  // 新增字段
+  activeColorScheme: 'scheme_teal_classic',
+  activeLayoutStyle: 'layout_top_nav',
+  fontSizePreset: 'standard',
   // 字体大小默认值
   fontSizeXs: '0.75rem',
   fontSizeSm: '0.875rem',
@@ -67,6 +71,55 @@ const applyThemeToCSS = () => {
   root.style.setProperty('--font-size-xl', themeConfig.fontSizeXl)
   root.style.setProperty('--font-size-2xl', themeConfig.fontSize2xl)
   root.style.setProperty('--font-size-3xl', themeConfig.fontSize3xl)
+
+  // 布局相关 CSS 变量（根据 activeLayoutStyle 设置）
+  applyLayoutVariables()
+}
+
+/**
+ * 应用布局 CSS 变量
+ */
+const applyLayoutVariables = () => {
+  const root = document.documentElement
+  const layoutStyle = themeConfig.activeLayoutStyle
+
+  // 默认布局变量
+  let navPosition = 'top'
+  let navBgColor = '#FFFFFF'
+  let navTextColor = '#1A1A1A'
+  let pageBgColor = '#FAFAFA'
+  let cardBgColor = '#FFFFFF'
+  let cardShadow = '0 1px 3px rgba(0,0,0,0.1)'
+  let borderRadius = '12px'
+
+  // 根据布局方案设置变量
+  switch (layoutStyle) {
+    case 'layout_left_nav':
+      navPosition = 'left'
+      break
+    case 'layout_dashboard':
+      navPosition = 'left'
+      navBgColor = '#1E3A5F'
+      navTextColor = '#FFFFFF'
+      pageBgColor = '#F5F5F5'
+      borderRadius = '8px'
+      break
+    case 'layout_minimal':
+      navPosition = 'top-minimal'
+      navBgColor = 'transparent'
+      cardShadow = '0 4px 6px rgba(0,0,0,0.1)'
+      borderRadius = '16px'
+      break
+  }
+
+  // 应用布局变量
+  root.style.setProperty('--app-nav-position', navPosition)
+  root.style.setProperty('--app-nav-bg', navBgColor)
+  root.style.setProperty('--app-nav-text', navTextColor)
+  root.style.setProperty('--app-page-bg', pageBgColor)
+  root.style.setProperty('--app-card-bg', cardBgColor)
+  root.style.setProperty('--app-card-shadow', cardShadow)
+  root.style.setProperty('--app-card-radius', borderRadius)
 }
 
 const loadThemeConfig = async () => {
@@ -97,6 +150,11 @@ const loadThemeConfig = async () => {
       themeConfig.logoUrl = config.logoUrl || ''
       themeConfig.logoSize = config.logoSize || 'medium'
       themeConfig.activeTheme = config.activeTheme || 'theme_red_green'
+
+      // 新增字段
+      themeConfig.activeColorScheme = config.activeColorScheme || 'scheme_teal_classic'
+      themeConfig.activeLayoutStyle = config.activeLayoutStyle || 'layout_top_nav'
+      themeConfig.fontSizePreset = config.fontSizePreset || 'standard'
 
       // 字体大小配置
       themeConfig.fontSizeXs = config.fontSizeXs || '0.75rem'
@@ -133,6 +191,10 @@ const saveThemeConfig = async (config: Partial<StyleConfig>) => {
     if (config.logoUrl) themeConfig.logoUrl = config.logoUrl
     if (config.logoSize) themeConfig.logoSize = config.logoSize
     if (config.activeTheme) themeConfig.activeTheme = config.activeTheme
+    // 新增字段
+    if (config.activeColorScheme) themeConfig.activeColorScheme = config.activeColorScheme
+    if (config.activeLayoutStyle) themeConfig.activeLayoutStyle = config.activeLayoutStyle
+    if (config.fontSizePreset) themeConfig.fontSizePreset = config.fontSizePreset
     // 字体大小配置
     if (config.fontSizeXs) themeConfig.fontSizeXs = config.fontSizeXs
     if (config.fontSizeSm) themeConfig.fontSizeSm = config.fontSizeSm
@@ -159,10 +221,61 @@ const switchTheme = async (themeKey: string) => {
       themeConfig.chartPrimaryColor = theme.colors.chartPrimary
       themeConfig.chartColors = theme.colors.chartColors
       themeConfig.activeTheme = themeKey
+      themeConfig.activeColorScheme = themeKey
       applyThemeToCSS()
     }
   } catch (error) {
     console.error('Failed to switch theme:', error)
+    throw error
+  }
+}
+
+/**
+ * 切换色彩方案
+ */
+const switchColorScheme = async (schemeKey: string) => {
+  try {
+    // 调用 API 切换色彩方案
+    const { switchColorScheme: apiSwitchColorScheme } = await import('@/api/style')
+    await apiSwitchColorScheme(schemeKey)
+    themeConfig.activeColorScheme = schemeKey
+    // 重新加载配置以应用新的颜色
+    await forceReloadThemeConfig()
+  } catch (error) {
+    console.error('Failed to switch color scheme:', error)
+    throw error
+  }
+}
+
+/**
+ * 切换布局方案
+ */
+const switchLayoutStyle = async (layoutKey: string) => {
+  try {
+    // 调用 API 切换布局方案
+    const { switchLayoutStyle: apiSwitchLayoutStyle } = await import('@/api/style')
+    await apiSwitchLayoutStyle(layoutKey)
+    themeConfig.activeLayoutStyle = layoutKey
+    applyLayoutVariables()
+  } catch (error) {
+    console.error('Failed to switch layout style:', error)
+    throw error
+  }
+}
+
+/**
+ * 切换字号预设
+ */
+const switchFontPreset = async (presetKey: string) => {
+  try {
+    // 调用 API 切换字号预设
+    const { switchFontPreset: apiSwitchFontPreset } = await import('@/api/style')
+    await apiSwitchFontPreset(presetKey)
+    themeConfig.fontSizePreset = presetKey
+    // 重新加载配置以应用新的字号
+    await forceReloadThemeConfig()
+  } catch (error) {
+    console.error('Failed to switch font preset:', error)
     throw error
   }
 }
@@ -189,6 +302,9 @@ export function useTheme() {
     forceReloadThemeConfig,
     saveThemeConfig,
     switchTheme,
+    switchColorScheme,
+    switchLayoutStyle,
+    switchFontPreset,
     getPriceColor,
     getPriceChangeClass,
     applyThemeToCSS

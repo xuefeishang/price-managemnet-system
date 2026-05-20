@@ -176,7 +176,20 @@
       "PowerShell(netstat *)",
       "PowerShell(mysql *)",
       "Bash(cd /d E:\\\\ClaudeCodeProject\\\\price-management-system\\\\backend)",
-      "Bash(mvn spring-boot:run -Dspring-boot.run.arguments=\"--server.port=8081\")"
+      "Bash(mvn spring-boot:run -Dspring-boot.run.arguments=\"--server.port=8081\")",
+      "PowerShell(docker exec price-management-mysql *)",
+      "Bash(mvn spring-boot:run -Dspring-boot.run.arguments=\"--server.port=8080\")",
+      "PowerShell(Get-Command *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT id, dict_key, dict_value, LEFT\\(extra_value, 80\\) AS extra_preview FROM sys_dict WHERE category='category_visual_config';\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT dict_key, extra_value FROM sys_dict WHERE category='category_visual_config' AND dict_key='CAT_BLACK_METAL';\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT id, name, code FROM product_category;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT id, name, category_id FROM product LIMIT 10;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT p.id, p.name, p.category_id, pc.name AS category_name FROM product p LEFT JOIN product_category pc ON p.category_id = pc.id LIMIT 10;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"SELECT dict_key, LEFT\\(extra_value, 200\\) FROM sys_dict WHERE category='category_visual_config';\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"UPDATE sys_dict SET extra_value = '{\\\\\"categoryCode\\\\\":\\\\\"BLACK_METAL\\\\\",\\\\\"primaryColor\\\\\":\\\\\"#DC2626\\\\\",\\\\\"secondaryColor\\\\\":\\\\\"#EF4444\\\\\",\\\\\"textColor\\\\\":\\\\\"#7F1D1D\\\\\",\\\\\"borderColor\\\\\":\\\\\"#DC2626\\\\\",\\\\\"glowColor\\\\\":\\\\\"rgba\\(220,38,38,0.25\\)\\\\\"}' WHERE category='category_visual_config' AND dict_key='CAT_BLACK_METAL';\")",
+      "PowerShell(Get-Content \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\backend\\\\src\\\\main\\\\resources\\\\update_category_visual_colors.sql\" | & \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management)",
+      "Bash(dir \"%TEMP%\\\\logos\")",
+      "PowerShell(gh pr *)"
     ]
   },
   "enabledMcpjsonServers": [

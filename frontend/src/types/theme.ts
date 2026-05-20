@@ -12,6 +12,10 @@ export interface StyleConfig {
   logoUrl: string
   logoSize: string
   activeTheme: string
+  // 新增字段
+  activeColorScheme?: string
+  activeLayoutStyle?: string
+  fontSizePreset?: string
   // 字体大小配置
   fontSizeXs: string
   fontSizeSm: string
@@ -29,6 +33,19 @@ export interface StyleTheme {
   colors?: Record<string, string>
   fonts?: Record<string, string>
   isActive: boolean
+}
+
+/**
+ * 样式预设接口
+ */
+export interface StylePreset {
+  key: string
+  name: string
+  description?: string
+  active?: boolean
+  isDefault?: boolean
+  sortOrder?: number
+  config?: Record<string, unknown>
 }
 
 export interface PresetTheme {
@@ -214,3 +231,28 @@ export const FONT_SIZE_FIELDS = [
   { key: 'fontSize2xl', label: '页面主标题', default: '1.5rem' },
   { key: 'fontSize3xl', label: '特大标题', default: '1.875rem' }
 ]
+
+// ==================== 版本管理类型 ====================
+
+/**
+ * 样式版本
+ */
+export interface StyleVersion {
+  id: number
+  versionNo: string
+  configSnapshot: string
+  changeSummary?: string
+  changedBy?: number
+  changedByName?: string
+  createdTime: string
+}
+
+/**
+ * 版本列表分页响应
+ */
+export interface StyleVersionPage {
+  content: StyleVersion[]
+  totalElements: number
+  totalPages: number
+  number: number
+}

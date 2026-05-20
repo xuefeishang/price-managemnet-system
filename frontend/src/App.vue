@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
+import { useTheme } from '@/composables/useTheme'
+
+const { loadThemeConfig } = useTheme()
+
+onMounted(() => {
+  // 应用启动时加载主题配置
+  loadThemeConfig()
+})
 </script>
 
 <template>

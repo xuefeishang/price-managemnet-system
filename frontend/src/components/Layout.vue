@@ -15,10 +15,14 @@ const route = useRoute()
 const { themeConfig, loadThemeConfig } = useTheme()
 const { isPCLayout } = useLayout()
 
-// Logo完整URL
+// Logo完整URL（支持http链接和data URL）
 const logoUrlFull = computed(() => {
   if (!themeConfig.value.logoUrl) return ''
+  // data URL (Base64) 直接返回
+  if (themeConfig.value.logoUrl.startsWith('data:')) return themeConfig.value.logoUrl
+  // http链接直接返回
   if (themeConfig.value.logoUrl.startsWith('http')) return themeConfig.value.logoUrl
+  // 相对路径拼接origin
   return window.location.origin + themeConfig.value.logoUrl
 })
 
@@ -573,7 +577,7 @@ watch(() => menuStore.version, () => {
   width: 240px;
   min-width: 240px;
   height: 100vh;
-  background: #FFFFFF;
+  background: var(--app-nav-bg);
   border-right: 1px solid #E5E5E5;
   display: flex;
   flex-direction: column;
@@ -621,7 +625,7 @@ watch(() => menuStore.version, () => {
   font-family: var(--font-heading);
   font-size: var(--font-size-lg);
   font-weight: 500;
-  color: #0D6E6E;
+  color: var(--app-nav-text);
 }
 
 /* 导航菜单 */
@@ -636,19 +640,19 @@ watch(() => menuStore.version, () => {
   align-items: center;
   padding: 12px 16px;
   margin-bottom: 4px;
-  border-radius: 8px;
+  border-radius: var(--app-card-radius);
   cursor: pointer;
   transition: all 150ms;
-  color: #666666;
+  color: var(--app-nav-text);
 }
 
 .nav-item:hover {
-  background: #F5F5F5;
-  color: #1A1A1A;
+  background: rgba(13, 110, 110, 0.1);
+  color: var(--app-nav-text);
 }
 
 .nav-item.active {
-  background: rgba(13, 110, 110, 0.1);
+  background: rgba(13, 110, 110, 0.15);
   color: #0D6E6E;
 }
 
@@ -690,16 +694,16 @@ watch(() => menuStore.version, () => {
 .nav-item.child {
   padding: 10px 16px 10px 44px;
   font-size: var(--font-size-xs);
-  color: #666666;
+  color: var(--app-nav-text);
 }
 
 .nav-item.child:hover {
-  background: #F5F5F5;
-  color: #1A1A1A;
+  background: rgba(13, 110, 110, 0.1);
+  color: var(--app-nav-text);
 }
 
 .nav-item.child.active {
-  background: rgba(13, 110, 110, 0.1);
+  background: rgba(13, 110, 110, 0.15);
   color: #0D6E6E;
 }
 
@@ -761,13 +765,14 @@ watch(() => menuStore.version, () => {
   font-family: var(--font-body);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--app-nav-text);
 }
 
 .user-role {
   font-family: var(--font-body);
   font-size: var(--font-size-xs);
-  color: #888888;
+  color: var(--app-nav-text);
+  opacity: 0.7;
 }
 
 .logout-btn {
@@ -775,7 +780,7 @@ watch(() => menuStore.version, () => {
   height: 36px;
   border: none;
   background: transparent;
-  color: #666666;
+  color: var(--app-nav-text);
   cursor: pointer;
   border-radius: 8px;
   display: flex;
@@ -796,11 +801,12 @@ watch(() => menuStore.version, () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: var(--app-page-bg);
 }
 
 /* 二级菜单栏 */
 .sub-navbar {
-  background: #FFFFFF;
+  background: var(--app-nav-bg);
   border-bottom: 1px solid #E5E5E5;
   padding: 0 24px;
   display: flex;

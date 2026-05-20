@@ -628,7 +628,7 @@ onMounted(() => {
               <td>
                 <div class="roles-cell">
                   <span
-                    v-for="(roleTag, idx) in getUserRoleTags(user.id).slice(0, 2)"
+                    v-for="roleTag in getUserRoleTags(user.id).slice(0, 2)"
                     :key="roleTag.id"
                     class="role-badge"
                     :class="getRoleClassByCode(roleTag.code)"

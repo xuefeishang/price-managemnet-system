@@ -2,6 +2,8 @@ package com.pricemanagement.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class StyleConfigDTO {
     private String systemName;
@@ -17,6 +19,11 @@ public class StyleConfigDTO {
     private String logoUrl;
     private String logoSize;
     private String activeTheme;
+
+    // 新增：色彩方案和布局方案
+    private String activeColorScheme;
+    private String activeLayoutStyle;
+    private String fontSizePreset;
 
     // 字体大小配置
     private String fontSizeXs;

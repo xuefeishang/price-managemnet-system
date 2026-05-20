@@ -4,6 +4,7 @@ import { showToast, showDialog } from 'vant'
 import { getDicts, createDict, updateDict, deleteDict, getDictCategories } from '@/api/dict'
 import { getStatusLabel, getDictOptions, CATEGORY_LABELS, loadAllDicts, refreshDictCache } from '@/composables/useDict'
 import { useLayout } from '@/composables/useLayout'
+import { isProtectedCategory, getCategoryMeta, getExtraValueMode, isColorValue, isJsonValue, formatJsonDisplay } from '@/constants/dictCategoryMeta'
 import type { SysDict } from '@/types'
 
 const dicts = ref<SysDict[]>([])
@@ -12,6 +13,9 @@ const loading = ref(false)
 const selectedCategory = ref<string>('')
 const togglingId = ref<number | null>(null)
 const { isPCLayout } = useLayout()
+
+// 显示系统配置开关（仅 ADMIN 可见）
+const showSystemConfig = ref(false)
 
 // 新增/编辑对话框
 const showEditDialog = ref(false)
@@ -33,8 +37,17 @@ const newCategory = ref('')
 
 // 获取分类中文标签
 const getCategoryLabel = (category: string): string => {
-  return CATEGORY_LABELS[category] || category
+  const meta = getCategoryMeta(category)
+  return meta?.label || CATEGORY_LABELS[category] || category
 }
+
+// 可见分类列表（根据 showSystemConfig 过滤）
+const visibleCategories = computed(() => {
+  if (showSystemConfig.value) {
+    return categories.value
+  }
+  return categories.value.filter(cat => !isProtectedCategory(cat))
+})
 
 // 状态筛选选项（使用全部状态项，含停用）
 const statusFilterOptions = computed(() => getDictOptions('common_status'))
@@ -46,6 +59,8 @@ const groupedDicts = computed(() => {
   }
   const groups: Record<string, SysDict[]> = {}
   for (const dict of dicts.value) {
+    // 默认隐藏受保护分类
+    if (!showSystemConfig.value && isProtectedCategory(dict.category)) continue
     if (!groups[dict.category]) groups[dict.category] = []
     groups[dict.category].push(dict)
   }
@@ -77,6 +92,12 @@ const loadCategories = async () => {
 }
 
 const handleToggleStatus = async (dict: SysDict) => {
+  // 受保护分类不允许切换状态
+  if (isProtectedCategory(dict.category)) {
+    showToast('此分类由样式设置管理，请前往样式设置修改')
+    return
+  }
+
   if (togglingId.value === dict.id) return
   const newStatus = dict.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
   const actionText = getStatusLabel(newStatus)
@@ -96,6 +117,12 @@ const handleToggleStatus = async (dict: SysDict) => {
 }
 
 const handleCreate = (category?: string) => {
+  // 受保护分类不允许创建
+  if (category && isProtectedCategory(category)) {
+    showToast('此分类由样式设置管理，请前往样式设置修改')
+    return
+  }
+
   isEditing.value = false
   editForm.value = {
     id: null,
@@ -109,6 +136,12 @@ const handleCreate = (category?: string) => {
 }
 
 const handleEdit = (dict: SysDict) => {
+  // 受保护分类不允许编辑
+  if (isProtectedCategory(dict.category)) {
+    showToast('此分类由样式设置管理，请前往样式设置修改')
+    return
+  }
+
   isEditing.value = true
   editForm.value = {
     id: dict.id,
@@ -198,6 +231,12 @@ const handleSave = async () => {
 }
 
 const handleDelete = async (dict: SysDict) => {
+  // 受保护分类不允许删除
+  if (isProtectedCategory(dict.category)) {
+    showToast('此分类由样式设置管理，请前往样式设置修改')
+    return
+  }
+
   showDialog({
     title: '确认删除',
     message: `确定要删除字典项"${dict.dictValue}"(${dict.category}.${dict.dictKey})吗？删除后不可恢复。`,
@@ -219,6 +258,62 @@ const handleDelete = async (dict: SysDict) => {
   }).catch(() => {})
 }
 
+// 跳转到样式设置
+const goToStyleSettings = () => {
+  window.location.href = '/style-settings'
+}
+
+// 复制文本到剪贴板
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    showToast('已复制到剪贴板')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
+// 获取 extraValue 的渲染信息
+const getExtraValueRender = (dict: SysDict) => {
+  const mode = getExtraValueMode(dict.category)
+  const value = dict.extraValue || ''
+
+  if (!value) {
+    return { type: 'empty', display: '', raw: '' }
+  }
+
+  // 根据模式渲染
+  switch (mode) {
+    case 'color':
+      if (isColorValue(value)) {
+        return { type: 'color', display: value, color: value, raw: value }
+      }
+      return { type: 'text', display: value, raw: value }
+
+    case 'icon':
+      return { type: 'icon', display: value, raw: value }
+
+    case 'json':
+      if (isJsonValue(value)) {
+        return { type: 'json', display: formatJsonDisplay(value), raw: value }
+      }
+      return { type: 'text', display: value, raw: value }
+
+    case 'readonly':
+      // 受保护分类，只读显示
+      if (isJsonValue(value)) {
+        return { type: 'json', display: formatJsonDisplay(value), raw: value, readonly: true }
+      }
+      if (isColorValue(value)) {
+        return { type: 'color', display: value, color: value, raw: value, readonly: true }
+      }
+      return { type: 'readonly', display: value, raw: value }
+
+    default:
+      return { type: 'text', display: value, raw: value }
+  }
+}
+
 onMounted(() => {
   loadAllDicts()
   loadDicts()
@@ -234,9 +329,13 @@ onMounted(() => {
         <div class="page-header-pc">
           <h1 class="page-title-pc">数据字典</h1>
           <div class="header-actions">
+            <label class="system-config-toggle">
+              <input type="checkbox" v-model="showSystemConfig" />
+              <span>显示系统配置</span>
+            </label>
             <select class="category-select" v-model="selectedCategory" @change="loadDicts()">
               <option value="">全部分类</option>
-              <option v-for="cat in categories" :key="cat" :value="cat">
+              <option v-for="cat in visibleCategories" :key="cat" :value="cat">
                 {{ getCategoryLabel(cat) }} ({{ cat }})
               </option>
             </select>
@@ -248,6 +347,17 @@ onMounted(() => {
               新建字典
             </button>
           </div>
+        </div>
+
+        <!-- 受保护分类提示 -->
+        <div v-if="showSystemConfig" class="protected-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>以下分类由样式设置管理，仅可查看。如需修改请</span>
+          <button class="link-btn" @click="goToStyleSettings">前往样式设置</button>
         </div>
 
         <!-- 按分类分组展示 -->
@@ -264,8 +374,9 @@ onMounted(() => {
                 <h2 class="category-name">{{ getCategoryLabel(cat as string) }}</h2>
                 <span class="category-code">{{ cat }}</span>
                 <span class="category-count">{{ items.length }} 项</span>
+                <span v-if="isProtectedCategory(cat as string)" class="protected-badge">受保护</span>
               </div>
-              <button class="btn-add-pc" @click="handleCreate(cat as string)">
+              <button v-if="!isProtectedCategory(cat as string)" class="btn-add-pc" @click="handleCreate(cat as string)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"/>
                   <line x1="5" y1="12" x2="19" y2="12"/>
@@ -289,7 +400,7 @@ onMounted(() => {
                 v-for="dict in items"
                 :key="dict.id"
                 class="table-row"
-                :class="{ inactive: dict.status === 'INACTIVE' }"
+                :class="{ inactive: dict.status === 'INACTIVE', protected: isProtectedCategory(dict.category) }"
               >
                 <div class="table-cell sort-col">{{ dict.sortOrder }}</div>
                 <div class="table-cell key-col">
@@ -299,11 +410,38 @@ onMounted(() => {
                   <span class="dict-value-text">{{ dict.dictValue }}</span>
                 </div>
                 <div class="table-cell extra-col">
-                  <span v-if="dict.extraValue" class="dict-extra-badge">{{ dict.extraValue }}</span>
+                  <template v-if="dict.extraValue">
+                    <!-- 颜色类型 -->
+                    <div v-if="getExtraValueRender(dict).type === 'color'" class="extra-color">
+                      <span class="color-swatch" :style="{ backgroundColor: getExtraValueRender(dict).color }"></span>
+                      <code class="color-value">{{ getExtraValueRender(dict).display }}</code>
+                    </div>
+                    <!-- 图标类型 -->
+                    <div v-else-if="getExtraValueRender(dict).type === 'icon'" class="extra-icon">
+                      <span class="icon-preview">{{ getExtraValueRender(dict).display }}</span>
+                    </div>
+                    <!-- JSON 类型 -->
+                    <div v-else-if="getExtraValueRender(dict).type === 'json'" class="extra-json">
+                      <pre class="json-preview">{{ getExtraValueRender(dict).display }}</pre>
+                      <button class="copy-btn" @click="copyToClipboard(getExtraValueRender(dict).raw)" title="复制JSON">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <!-- 只读类型 -->
+                    <div v-else-if="getExtraValueRender(dict).type === 'readonly'" class="extra-readonly">
+                      <span class="readonly-text">{{ getExtraValueRender(dict).display }}</span>
+                    </div>
+                    <!-- 普通文本 -->
+                    <span v-else class="dict-extra-badge">{{ getExtraValueRender(dict).display }}</span>
+                  </template>
                   <span v-else class="dict-extra-empty">-</span>
                 </div>
                 <div class="table-cell status-col">
                   <div
+                    v-if="!isProtectedCategory(dict.category)"
                     class="toggle-switch"
                     :class="{ active: dict.status === 'ACTIVE', loading: togglingId === dict.id }"
                     @click="handleToggleStatus(dict)"
@@ -317,18 +455,21 @@ onMounted(() => {
                 </div>
                 <div class="table-cell remark-col">{{ dict.remark || '-' }}</div>
                 <div class="table-cell actions-col" @click.stop>
-                  <button class="action-btn icon-only edit" @click="handleEdit(dict)" title="编辑">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button class="action-btn icon-only delete" @click="handleDelete(dict)" title="删除">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                  </button>
+                  <template v-if="!isProtectedCategory(dict.category)">
+                    <button class="action-btn icon-only edit" @click="handleEdit(dict)" title="编辑">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="action-btn icon-only delete" @click="handleDelete(dict)" title="删除">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  </template>
+                  <span v-else class="readonly-hint">只读</span>
                 </div>
               </div>
             </div>
@@ -367,6 +508,18 @@ onMounted(() => {
       </header>
 
       <main class="content">
+        <!-- 系统配置开关 -->
+        <label class="system-config-toggle mobile">
+          <input type="checkbox" v-model="showSystemConfig" />
+          <span>显示系统配置</span>
+        </label>
+
+        <!-- 受保护分类提示 -->
+        <div v-if="showSystemConfig" class="protected-notice mobile">
+          <span>以下分类由样式设置管理，仅可查看</span>
+          <button class="link-btn" @click="goToStyleSettings">前往样式设置</button>
+        </div>
+
         <!-- 分类筛选 -->
         <div class="category-tabs">
           <button
@@ -375,12 +528,15 @@ onMounted(() => {
             @click="selectedCategory = ''; loadDicts()"
           >全部</button>
           <button
-            v-for="cat in categories"
+            v-for="cat in visibleCategories"
             :key="cat"
             class="tab-btn"
-            :class="{ active: selectedCategory === cat }"
+            :class="{ active: selectedCategory === cat, protected: isProtectedCategory(cat) }"
             @click="selectedCategory = cat; loadDicts()"
-          >{{ getCategoryLabel(cat) }}</button>
+          >
+            {{ getCategoryLabel(cat) }}
+            <span v-if="isProtectedCategory(cat)" class="tab-protected-icon">🔒</span>
+          </button>
         </div>
 
         <div class="dict-list" v-if="!loading">
@@ -388,7 +544,7 @@ onMounted(() => {
             v-for="dict in dicts"
             :key="dict.id"
             class="dict-card"
-            :class="{ inactive: dict.status === 'INACTIVE' }"
+            :class="{ inactive: dict.status === 'INACTIVE', protected: isProtectedCategory(dict.category) }"
           >
             <div class="card-main">
               <div class="card-info">
@@ -397,37 +553,62 @@ onMounted(() => {
                   <code class="card-key">{{ dict.dictKey }}</code>
                   <span class="separator">·</span>
                   <span class="card-category">{{ dict.category }}</span>
+                  <span v-if="isProtectedCategory(dict.category)" class="card-protected-badge">受保护</span>
                 </div>
               </div>
             </div>
 
             <div class="card-detail" v-if="dict.extraValue">
               <span class="detail-label">扩展值</span>
-              <span class="detail-extra">{{ dict.extraValue }}</span>
+              <!-- 颜色类型 -->
+              <template v-if="getExtraValueRender(dict).type === 'color'">
+                <span class="color-swatch small" :style="{ backgroundColor: getExtraValueRender(dict).color }"></span>
+                <code class="detail-extra">{{ getExtraValueRender(dict).display }}</code>
+              </template>
+              <!-- JSON 类型 -->
+              <template v-else-if="getExtraValueRender(dict).type === 'json'">
+                <code class="detail-extra json">JSON</code>
+                <button class="copy-btn small" @click="copyToClipboard(getExtraValueRender(dict).raw)" title="复制">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </template>
+              <!-- 其他类型 -->
+              <template v-else>
+                <span class="detail-extra">{{ getExtraValueRender(dict).display }}</span>
+              </template>
             </div>
 
             <div class="card-control">
-              <div
-                class="toggle-switch small"
-                :class="{ active: dict.status === 'ACTIVE', loading: togglingId === dict.id }"
-                @click="handleToggleStatus(dict)"
-              >
-                <div class="toggle-slider"></div>
-              </div>
-              <div class="card-actions">
-                <button class="card-btn edit" @click="handleEdit(dict)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button class="card-btn delete" @click="handleDelete(dict)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
-              </div>
+              <template v-if="!isProtectedCategory(dict.category)">
+                <div
+                  class="toggle-switch small"
+                  :class="{ active: dict.status === 'ACTIVE', loading: togglingId === dict.id }"
+                  @click="handleToggleStatus(dict)"
+                >
+                  <div class="toggle-slider"></div>
+                </div>
+                <div class="card-actions">
+                  <button class="card-btn edit" @click="handleEdit(dict)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="card-btn delete" @click="handleDelete(dict)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="status-text" :class="dict.status">{{ getStatusLabel(dict.status) }}</span>
+                <span class="readonly-hint mobile">只读</span>
+              </template>
             </div>
           </div>
 
@@ -600,6 +781,102 @@ onMounted(() => {
 .dict-extra-badge { font-family: var(--font-mono); font-size: var(--font-size-xs); background: #FFF7ED; color: #C2410C; padding: 2px 8px; border-radius: 4px; }
 .dict-extra-empty { color: #D1D5DB; }
 
+/* extraValue 智能渲染样式 */
+.extra-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+.color-swatch.small {
+  width: 14px;
+  height: 14px;
+}
+.color-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: #6B7280;
+}
+
+.extra-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.icon-preview {
+  font-size: var(--font-size-sm);
+  padding: 2px 8px;
+  background: #EEF2FF;
+  color: #4F46E5;
+  border-radius: 4px;
+}
+
+.extra-json {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+}
+.json-preview {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: #F8FAFC;
+  color: #475569;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 60px;
+  overflow-y: auto;
+  flex: 1;
+  border: 1px solid #E2E8F0;
+}
+
+.extra-readonly {
+  display: inline-flex;
+  align-items: center;
+}
+.readonly-text {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: #9CA3AF;
+  font-style: italic;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #F3F4F6;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #6B7280;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+.copy-btn:hover {
+  background: #E5E7EB;
+  color: #374151;
+}
+.copy-btn.small {
+  width: 20px;
+  height: 20px;
+}
+
+.detail-extra.json {
+  background: #EEF2FF;
+  color: #4F46E5;
+}
+
 .toggle-switch { width: 40px; height: 22px; border-radius: 11px; background: #E5E7EB; position: relative; cursor: pointer; transition: all 200ms; flex-shrink: 0; }
 .toggle-switch.active { background: #0D6E6E; }
 .toggle-switch.loading { opacity: 0.6; pointer-events: none; }
@@ -696,6 +973,126 @@ onMounted(() => {
 .btn-cancel { padding: 10px 20px; background: #F3F4F6; color: #374151; border: none; border-radius: 8px; font-family: var(--font-body); font-size: var(--font-size-sm); cursor: pointer; }
 .btn-save { padding: 10px 20px; background: #0D6E6E; color: #FFFFFF; border: none; border-radius: 8px; font-family: var(--font-body); font-size: var(--font-size-sm); font-weight: 500; cursor: pointer; }
 .btn-save:hover { background: #0A5C5C; }
+
+/* ========== 受保护分类样式 ========== */
+.system-config-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary, #666);
+}
+.system-config-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color, #0D6E6E);
+}
+.system-config-toggle.mobile {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light, #F3F4F6);
+  margin-bottom: 8px;
+}
+
+.protected-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: var(--radius, 8px);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  color: #92400E;
+}
+.protected-notice.mobile {
+  padding: 10px 12px;
+  font-size: var(--font-size-xs);
+  flex-wrap: wrap;
+}
+.protected-notice svg {
+  flex-shrink: 0;
+  color: #D97706;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color, #0D6E6E);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.link-btn:hover {
+  color: var(--primary-hover, #0A5C5C);
+}
+
+.protected-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: #FEE2E2;
+  color: #DC2626;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm, 4px);
+  margin-left: 8px;
+}
+
+.readonly-hint {
+  font-size: var(--font-size-xs);
+  color: #9CA3AF;
+  font-style: italic;
+}
+.readonly-hint.mobile {
+  margin-left: auto;
+}
+
+.table-row.protected {
+  background: #FFFBEB;
+}
+.table-row.protected:hover {
+  background: #FEF3C7;
+}
+
+/* 移动端受保护分类标签 */
+.tab-btn.protected {
+  background: #FEF3C7;
+  border-color: #FCD34D;
+  color: #92400E;
+}
+.tab-btn.protected.active {
+  background: #D97706;
+  color: #FFFFFF;
+  border-color: #D97706;
+}
+.tab-protected-icon {
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.card-protected-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: #FEE2E2;
+  color: #DC2626;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+
+.dict-card.protected {
+  background: #FFFBEB;
+  border-color: #FCD34D;
+}
 
 @media (max-width: 1024px) {
   .pc-dict { display: none; }

@@ -1,0 +1,8 @@
+[mcp_servers.image-viewer]
+args = [
+    "C:/",
+    "npx",
+    "-y",
+    "inchat-image-viewer-mcp",
+]
+command = "cmd"

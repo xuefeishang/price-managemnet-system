@@ -122,4 +122,13 @@
   --alert-info-bg: rgba(59, 130, 246, 0.1);
   --alert-warning-bg: rgba(255, 122, 69, 0.1);
   --alert-danger-bg: rgba(245, 63, 63, 0.1);
+
+  /* 布局相关变量（运行时可切换） */
+  --app-nav-position: top;
+  --app-nav-bg: #FFFFFF;
+  --app-nav-text: #1A1A1A;
+  --app-page-bg: #FAFAFA;
+  --app-card-bg: #FFFFFF;
+  --app-card-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --app-card-radius: 12px;
 }
