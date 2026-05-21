@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
@@ -26,6 +26,9 @@ const sortBy = ref('sortOrder')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
 const activeTab = ref('products')
+
+// 防抖搜索
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const loadProducts = async () => {
   loading.value = true
@@ -82,6 +85,14 @@ const getOriginNames = (product: Product): string => {
 const handleSearch = () => {
   loadProducts()
 }
+
+// 防抖搜索
+watch(searchQuery, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    loadProducts()
+  }, 300)
+})
 
 const handleFilterChange = () => {
   loadProducts()
@@ -216,7 +227,6 @@ onMounted(() => {
               type="text"
               placeholder="搜索产品名称..."
               class="search-input-pc"
-              @keyup.enter="handleSearch"
             />
             <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''; loadProducts()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -361,7 +371,7 @@ onMounted(() => {
             type="text"
             placeholder="搜索产品名称..."
             class="search-input"
-            @keyup.enter="handleSearch"
+          />
           />
           <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''; loadProducts()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

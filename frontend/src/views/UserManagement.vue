@@ -36,6 +36,9 @@ const exporting = ref(false)
 const importResult = ref<{ successCount: number; skipCount: number; errors: string[] } | null>(null)
 const showMoreMenu = ref(false)
 
+// 防抖搜索
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 // 分页
 const currentPage = ref(0)
 const pageSize = ref(20)
@@ -165,6 +168,14 @@ const handlePageSizeChange = () => {
 // 筛选变化时重置页码
 watch([searchKeyword, roleFilter, statusFilter, deptFilter], () => {
   currentPage.value = 0
+})
+
+// 防抖搜索
+watch(searchKeyword, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    loadUsers()
+  }, 300)
 })
 
 // 获取可见页码
@@ -550,7 +561,6 @@ onMounted(() => {
             type="text"
             placeholder="搜索用户名或昵称..."
             class="search-input"
-            @keyup.enter="loadUsers"
           />
         </div>
         <select v-model="deptFilter" class="filter-select-sm" @change="loadUsers">

@@ -15,6 +15,8 @@ public interface UserRoleRepository extends JpaRepository<UserRole, Long> {
 
     List<UserRole> findByRoleId(Long roleId);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM UserRole ur WHERE ur.userId = ?1")
     void deleteByUserId(Long userId);
 
     @Modifying

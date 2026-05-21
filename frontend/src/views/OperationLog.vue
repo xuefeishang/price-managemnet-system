@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { showToast } from 'vant'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -47,6 +47,9 @@ const dateRangeOptions = [
 // 自定义日期范围
 const customStartDate = ref('')
 const customEndDate = ref('')
+
+// 防抖搜索
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 // 筛选条件
 const filters = ref({
@@ -162,6 +165,14 @@ const handleSearch = () => {
   loadLogs()
   loadStatistics()
 }
+
+// 防抖搜索
+watch(() => filters.value.username, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    handleSearch()
+  }, 300)
+})
 
 // 重置筛选
 const handleReset = () => {
@@ -446,7 +457,6 @@ onMounted(() => {
             type="text"
             placeholder="用户名"
             class="filter-input-sm"
-            @keyup.enter="handleSearch"
           />
           <select v-model="filters.operationType" class="filter-select-sm">
             <option v-for="opt in operationTypes" :key="opt.value" :value="opt.value">
