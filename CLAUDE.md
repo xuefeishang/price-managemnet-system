@@ -402,3 +402,43 @@ price-management-system/
 3. **API 变更**需要同时通知前端对接人员
 4. **数据库迁移**需要记录 SQL 变更脚本
 5. **文档归一原则**：每个场景只保留 1 份文档，避免重复。合并时删除旧文件，仅保留最新最完整的版本（如 init.sql 替代 schema.sql + approval_workflow_init.sql 等）
+
+---
+
+## Harbor 镜像备份规范
+
+### 镜像命名规则
+
+| 服务 | 基础名称 |
+|------|---------|
+| 后端 | `jlmining.com/pricemanage/price-management-backend` |
+| 前端 | `jlmining.com/pricemanage/price-management-frontend` |
+
+### 版本标签格式
+
+- **日期版本**：`v{主版本}.{次版本}.{补丁版本}-{YYYYMMDD}`
+- **示例**：`v1.4.0-20260525`
+- **latest 标签**：始终指向最新版本
+
+### 备份命令
+
+```bash
+# 打标签
+DATE=$(date +%Y%m%d)
+docker tag price-management-backend:latest jlmining.com/pricemanage/price-management-backend:v1.4.0-$DATE
+docker tag price-management-frontend:latest jlmining.com/pricemanage/price-management-frontend:v1.4.0-$DATE
+
+# 推送到 Harbor
+docker push jlmining.com/pricemanage/price-management-backend:v1.4.0-$DATE
+docker push jlmining.com/pricemanage/price-management-frontend:v1.4.0-$DATE
+
+# 更新 latest
+docker tag price-management-backend:latest jlmining.com/pricemanage/price-management-backend:latest
+docker tag price-management-frontend:latest jlmining.com/pricemanage/price-management-frontend:latest
+docker push jlmining.com/pricemanage/price-management-backend:latest
+docker push jlmining.com/pricemanage/price-management-frontend:latest
+```
+
+### 备份时机
+
+每次生产部署后必须备份镜像到 Harbor，记录版本号便于回滚。
