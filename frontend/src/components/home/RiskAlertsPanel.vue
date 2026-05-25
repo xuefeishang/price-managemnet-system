@@ -15,15 +15,15 @@ const getSeverityClass = (severity: string) => {
 
 const getSeverityIcon = (severity: string) => {
   switch (severity) {
-    case 'danger': return '⚠️'
-    case 'warning': return '⚡'
-    default: return '📊'
+    case 'danger': return '!'
+    case 'warning': return '!'
+    default: return 'i'
   }
 }
 </script>
 
 <template>
-  <div class="alerts-section" v-if="alerts.length > 0">
+  <div class="alerts-section">
     <div class="section-header">
       <h3 class="section-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -35,7 +35,7 @@ const getSeverityIcon = (severity: string) => {
       <span class="alert-count">{{ alerts.length }} 条</span>
     </div>
 
-    <div class="alerts-grid">
+    <div v-if="alerts.length > 0" class="alerts-grid">
       <div
         v-for="alert in alerts"
         :key="`${alert.productId}-${alert.alertType}`"
@@ -52,6 +52,13 @@ const getSeverityIcon = (severity: string) => {
           <span class="specs-value">{{ alert.productSpecs }}</span>
         </div>
       </div>
+    </div>
+
+    <div v-else class="alerts-empty">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+      <span>暂无风险预警</span>
     </div>
   </div>
 </template>
@@ -130,7 +137,16 @@ const getSeverityIcon = (severity: string) => {
 }
 
 .alert-icon {
-  font-size: 16px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 122, 69, 0.12);
+  color: #FF7A45;
 }
 
 .alert-product {
@@ -158,6 +174,21 @@ const getSeverityIcon = (severity: string) => {
 
 .specs-value {
   color: var(--text-secondary);
+}
+
+.alerts-empty {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.alerts-empty svg {
+  color: var(--gray-300);
 }
 
 @media (max-width: 1023px) {

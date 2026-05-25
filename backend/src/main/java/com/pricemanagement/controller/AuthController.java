@@ -73,7 +73,7 @@ public class AuthController {
                     log.debug("User not found by employee ID: {}", loginIdentifier);
                     operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                             "用户登录失败：工号不存在", loginIdentifier, "工号不存在");
-                    return Result.error(401, "工号或密码错误");
+                    return Result.error(401, "用户名或密码错误");
                 }
             } else {
                 // 用户名登录
@@ -100,7 +100,7 @@ public class AuthController {
                 log.debug("Incorrect password for: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                         "用户登录失败：密码错误", loginIdentifier, "密码错误");
-                return Result.error(401, "用户名/工号或密码错误");
+                return Result.error(401, "用户名或密码错误");
             }
 
             if (user.getStatus() != CommonStatus.ACTIVE) {

@@ -27,3 +27,8 @@ export const updateCategory = async (id: number, data: Partial<ProductCategory>)
 export const deleteCategory = async (id: number): Promise<ApiResponse<void>> => {
   return await http.delete(`/api/categories/${id}`)
 }
+
+// 批量更新分类排序
+export const batchUpdateCategorySort = async (items: { id: number; sortOrder: number }[]): Promise<ApiResponse<void>> => {
+  return await http.post('/api/categories/batch-sort', items)
+}

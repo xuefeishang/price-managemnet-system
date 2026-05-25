@@ -626,16 +626,15 @@ onMounted(() => {
 
       <!-- 产品价格列表 -->
       <main class="content" v-if="!loading">
-        <div class="price-list">
-          <VueDraggable
-            v-model="products"
-            tag="div"
-            class="price-list"
-            :animation="150"
-            handle=".drag-handle"
-            ghost-class="drag-ghost-mobile"
-            @end="handleDragEnd"
-          >
+        <VueDraggable
+          v-model="products"
+          tag="div"
+          class="price-list"
+          :animation="150"
+          handle=".drag-handle"
+          ghost-class="drag-ghost-mobile"
+          @end="handleDragEnd"
+        >
             <div
               v-for="(product, index) in products"
               :key="product.id"
@@ -704,11 +703,10 @@ onMounted(() => {
               <span class="unit-value">{{ priceMap.get(product.id)?.unit || '-' }}</span>
             </div>
           </div>
-          </VueDraggable>
+        </VueDraggable>
 
-          <div v-if="products.length === 0" class="empty-state">
-            暂无产品数据
-          </div>
+        <div v-if="products.length === 0" class="empty-state">
+          暂无产品数据
         </div>
       </main>
 

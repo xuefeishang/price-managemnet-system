@@ -44,6 +44,8 @@ spring:
       username: ${REDIS_USERNAME:default}
       password: ${REDIS_PASSWORD}
       timeout: 5000ms
+      repositories:
+        enabled: false
       # 连接池配置
       lettuce:
         pool:

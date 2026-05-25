@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS sys_dict (
     category VARCHAR(50) NOT NULL COMMENT '分类标识',
     dict_key VARCHAR(100) NOT NULL COMMENT '字典键',
     dict_value VARCHAR(200) NOT NULL COMMENT '显示值',
-    extra_value VARCHAR(500) COMMENT '扩展值（如货币符号、图标名、JSON配置等）',
+    extra_value TEXT COMMENT '扩展值（如货币符号、图标名、JSON配置等）',
     sort_order INT DEFAULT 0 COMMENT '排序顺序',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/INACTIVE',
     remark TEXT COMMENT '备注',
@@ -949,20 +949,25 @@ SELECT * FROM (
     UNION ALL SELECT 'heading_font', 'Newsreader', 'font', '标题字体', NOW(), NOW()
     UNION ALL SELECT 'body_font', 'Inter', 'font', '正文字体', NOW(), NOW()
     UNION ALL SELECT 'number_font', 'JetBrains Mono', 'font', '数字字体', NOW(), NOW()
-    UNION ALL SELECT 'font_size_xs', '0.75rem', 'string', '辅助信息字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_preset', 'standard', 'string', '字号预设', NOW(), NOW()
+    UNION ALL SELECT 'font_size_xs', '0.8125rem', 'string', '辅助信息字号', NOW(), NOW()
     UNION ALL SELECT 'font_size_sm', '0.875rem', 'string', '表格内容字号', NOW(), NOW()
     UNION ALL SELECT 'font_size_base', '1rem', 'string', '正文表头字号', NOW(), NOW()
     UNION ALL SELECT 'font_size_lg', '1.125rem', 'string', '小节标题字号', NOW(), NOW()
     UNION ALL SELECT 'font_size_xl', '1.25rem', 'string', '页面副标题字号', NOW(), NOW()
     UNION ALL SELECT 'font_size_2xl', '1.5rem', 'string', '页面主标题字号', NOW(), NOW()
-    UNION ALL SELECT 'font_size_3xl', '1.875rem', 'string', '特大标题字号', NOW(), NOW()
+    UNION ALL SELECT 'font_size_3xl', '2rem', 'string', '特大标题字号', NOW(), NOW()
     UNION ALL SELECT 'active_color_scheme', 'scheme_teal_classic', 'string', '当前色彩方案', NOW(), NOW()
     UNION ALL SELECT 'active_layout_style', 'layout_top_nav', 'string', '当前布局方案', NOW(), NOW()
+    UNION ALL SELECT 'subtitle_text', '价格展示与管理平台', 'string', '登录页副标题文案', NOW(), NOW()
+    UNION ALL SELECT 'subtitle_font', 'body', 'string', '登录页副标题字体', NOW(), NOW()
+    UNION ALL SELECT 'subtitle_font_weight', '400', 'string', '登录页副标题字重', NOW(), NOW()
+    UNION ALL SELECT 'subtitle_color', 'rgba(255, 255, 255, 0.75)', 'string', '登录页副标题颜色', NOW(), NOW()
     UNION ALL SELECT 'active_theme', 'theme_red_green', 'string', '兼容旧主题', NOW(), NOW()
 ) AS tmp
 WHERE @has_style_config = 0;
 
-SELECT CONCAT('样式配置数据: ', IF(@has_style_config > 0, '已存在，跳过', '初始化完成（16项配置）')) AS status;
+SELECT CONCAT('样式配置数据: ', IF(@has_style_config > 0, '已存在，跳过', '初始化完成（20项配置）')) AS status;
 
 -- =====================================================
 -- 23. 初始化色彩方案预设
@@ -977,34 +982,30 @@ SELECT * FROM (
     SELECT 'color_scheme' AS preset_type, 'scheme_teal_classic' AS preset_key, '青绿经典（默认）' AS preset_name, '当前系统默认配色，青绿主色，专业稳重' AS preset_description,
     '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}' AS config_json,
     1 AS is_default, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
-    -- 方案二：经典红绿
-    UNION ALL SELECT 'color_scheme', 'scheme_classic', '经典红绿', '传统配色，涨价红色，跌价绿色',
-    '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
-    0, 2, 'ACTIVE', NOW(), NOW()
-    -- 方案三：美股绿红
+    -- 方案二：美股绿红
     UNION ALL SELECT 'color_scheme', 'scheme_us_stock', '美股绿红', '美股风格，涨价绿色，跌价红色',
     '{"priceRise":"#10B981","priceFall":"#EF4444","priceFlat":"#9CA3AF","chartPrimary":"#0D6E6E","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
-    0, 3, 'ACTIVE', NOW(), NOW()
-    -- 方案四：商务蓝橙
+    0, 2, 'ACTIVE', NOW(), NOW()
+    -- 方案三：商务蓝橙
     UNION ALL SELECT 'color_scheme', 'scheme_business', '商务蓝橙', '商务风格配色',
     '{"priceRise":"#3B82F6","priceFall":"#F97316","priceFlat":"#9CA3AF","chartPrimary":"#3B82F6","chartColors":["#3B82F6","#F97316","#0D6E6E","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B","#10B981"]}',
-    0, 4, 'ACTIVE', NOW(), NOW()
-    -- 方案五：高贵紫金
+    0, 3, 'ACTIVE', NOW(), NOW()
+    -- 方案四：高贵紫金
     UNION ALL SELECT 'color_scheme', 'scheme_noble', '高贵紫金', '高贵风格配色',
     '{"priceRise":"#8B5CF6","priceFall":"#EAB308","priceFlat":"#9CA3AF","chartPrimary":"#8B5CF6","chartColors":["#8B5CF6","#EAB308","#0D6E6E","#EC4899","#6366F1","#14B8A6","#64748B","#10B981","#F59E0B"]}',
-    0, 5, 'ACTIVE', NOW(), NOW()
-    -- 方案六：深矿蓝
+    0, 4, 'ACTIVE', NOW(), NOW()
+    -- 方案五：深矿蓝
     UNION ALL SELECT 'color_scheme', 'scheme_deep_blue', '深矿蓝', '参考图配色，专业科技风格',
     '{"priceRise":"#EF4444","priceFall":"#10B981","priceFlat":"#9CA3AF","chartPrimary":"#165DFF","chartColors":["#165DFF","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
-    0, 6, 'ACTIVE', NOW(), NOW()
-    -- 方案七：暖色系
+    0, 5, 'ACTIVE', NOW(), NOW()
+    -- 方案六：暖色系
     UNION ALL SELECT 'color_scheme', 'scheme_warm', '暖色系', '温暖活力配色',
     '{"priceRise":"#F97316","priceFall":"#06B6D4","priceFlat":"#9CA3AF","chartPrimary":"#F97316","chartColors":["#F97316","#06B6D4","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}',
-    0, 7, 'ACTIVE', NOW(), NOW()
+    0, 6, 'ACTIVE', NOW(), NOW()
 ) AS tmp
 WHERE @has_color_scheme = 0;
 
-SELECT CONCAT('色彩方案预设: ', IF(@has_color_scheme > 0, '已存在，跳过', '初始化完成（7套方案）')) AS status;
+SELECT CONCAT('色彩方案预设: ', IF(@has_color_scheme > 0, '已存在，跳过', '初始化完成（6套方案）')) AS status;
 
 -- =====================================================
 -- 24. 初始化布局方案预设
@@ -1046,20 +1047,20 @@ SELECT COUNT(*) INTO @has_font_preset FROM sys_style_preset WHERE preset_type='f
 INSERT INTO sys_style_preset (preset_type, preset_key, preset_name, preset_description, config_json, is_default, sort_order, status, created_time, updated_time)
 SELECT * FROM (
     -- 紧凑
-    SELECT 'font_preset' AS preset_type, 'compact' AS preset_key, '紧凑' AS preset_name, '数据密集型后台' AS preset_description,
-    '{"xs":"0.625rem","sm":"0.75rem","base":"0.875rem","lg":"1rem","xl":"1.125rem","2xl":"1.25rem","3xl":"1.5rem"}' AS config_json,
+    SELECT 'font_preset' AS preset_type, 'compact' AS preset_key, '紧凑' AS preset_name, '高密度但保持可读' AS preset_description,
+    '{"xs":"0.75rem","sm":"0.8125rem","base":"0.9375rem","lg":"1rem","xl":"1.125rem","2xl":"1.375rem","3xl":"1.75rem"}' AS config_json,
     0 AS is_default, 1 AS sort_order, 'ACTIVE' AS status, NOW() AS created_time, NOW() AS updated_time
     -- 标准（默认）
     UNION ALL SELECT 'font_preset', 'standard', '标准', '通用场景',
-    '{"xs":"0.75rem","sm":"0.875rem","base":"1rem","lg":"1.125rem","xl":"1.25rem","2xl":"1.5rem","3xl":"1.875rem"}',
+    '{"xs":"0.8125rem","sm":"0.875rem","base":"1rem","lg":"1.125rem","xl":"1.25rem","2xl":"1.5rem","3xl":"2rem"}',
     1, 2, 'ACTIVE', NOW(), NOW()
     -- 大字体
-    UNION ALL SELECT 'font_preset', 'large', '大字体', '比标准略大',
-    '{"xs":"0.8125rem","sm":"0.9375rem","base":"1.0625rem","lg":"1.1875rem","xl":"1.375rem","2xl":"1.625rem","3xl":"1.9375rem"}',
+    UNION ALL SELECT 'font_preset', 'large', '大字体', '阅读友好',
+    '{"xs":"0.875rem","sm":"1rem","base":"1.125rem","lg":"1.25rem","xl":"1.5rem","2xl":"1.875rem","3xl":"2.375rem"}',
     0, 3, 'ACTIVE', NOW(), NOW()
     -- 特大字体（无障碍）
     UNION ALL SELECT 'font_preset', 'xlarge', '特大字体', '演示/投影/无障碍',
-    '{"xs":"0.875rem","sm":"1rem","base":"1.125rem","lg":"1.25rem","xl":"1.5rem","2xl":"1.75rem","3xl":"2rem"}',
+    '{"xs":"1rem","sm":"1.125rem","base":"1.25rem","lg":"1.5rem","xl":"1.75rem","2xl":"2.25rem","3xl":"2.75rem"}',
     0, 4, 'ACTIVE', NOW(), NOW()
 ) AS tmp
 WHERE @has_font_preset = 0;
@@ -1080,6 +1081,6 @@ SELECT '  editor  / admin123   (编辑者)' AS '';
 SELECT '  viewer  / admin123   (查看者)' AS '';
 SELECT '' AS '';
 SELECT '样式系统:' AS '';
-SELECT '  - 色彩方案: 7 套（青绿经典为默认）' AS '';
+SELECT '  - 色彩方案: 6 套（青绿经典为默认）' AS '';
 SELECT '  - 布局方案: 4 套（经典顶部导航为默认）' AS '';
 SELECT '  - 字号预设: 4 套（标准为默认）' AS '';

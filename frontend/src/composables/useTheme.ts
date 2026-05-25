@@ -2,6 +2,7 @@ import { ref, reactive, computed } from 'vue'
 import { getStyleConfig, updateStyleConfig, switchTheme as apiSwitchTheme } from '@/api/style'
 import type { StyleConfig } from '@/types/theme'
 import { PRESET_THEMES } from '@/types/theme'
+import { resolveLayoutTokens, applyLayoutTokensToCSS } from '@/utils/layoutTokenResolver'
 
 const themeConfig = reactive<StyleConfig>({
   systemName: '价格管理系统',
@@ -22,13 +23,23 @@ const themeConfig = reactive<StyleConfig>({
   activeLayoutStyle: 'layout_top_nav',
   fontSizePreset: 'standard',
   // 字体大小默认值
-  fontSizeXs: '0.75rem',
+  fontSizeXs: '0.8125rem',
   fontSizeSm: '0.875rem',
   fontSizeBase: '1rem',
   fontSizeLg: '1.125rem',
   fontSizeXl: '1.25rem',
   fontSize2xl: '1.5rem',
-  fontSize3xl: '1.875rem'
+  fontSize3xl: '2rem',
+  // 双Logo配置
+  logoUrlLogin: '',
+  logoUrlNav: '',
+  logoSizeLogin: '',
+  logoSizeNav: '',
+  // 副标题配置
+  subtitleText: '价格展示与管理平台',
+  subtitleFont: 'body',
+  subtitleFontWeight: '400',
+  subtitleColor: 'rgba(255, 255, 255, 0.75)'
 })
 
 const isLoaded = ref(false)
@@ -77,49 +88,11 @@ const applyThemeToCSS = () => {
 }
 
 /**
- * 应用布局 CSS 变量
+ * 应用布局 CSS 变量（使用统一 resolver）
  */
 const applyLayoutVariables = () => {
-  const root = document.documentElement
-  const layoutStyle = themeConfig.activeLayoutStyle
-
-  // 默认布局变量
-  let navPosition = 'top'
-  let navBgColor = '#FFFFFF'
-  let navTextColor = '#1A1A1A'
-  let pageBgColor = '#FAFAFA'
-  let cardBgColor = '#FFFFFF'
-  let cardShadow = '0 1px 3px rgba(0,0,0,0.1)'
-  let borderRadius = '12px'
-
-  // 根据布局方案设置变量
-  switch (layoutStyle) {
-    case 'layout_left_nav':
-      navPosition = 'left'
-      break
-    case 'layout_dashboard':
-      navPosition = 'left'
-      navBgColor = '#1E3A5F'
-      navTextColor = '#FFFFFF'
-      pageBgColor = '#F5F5F5'
-      borderRadius = '8px'
-      break
-    case 'layout_minimal':
-      navPosition = 'top-minimal'
-      navBgColor = 'transparent'
-      cardShadow = '0 4px 6px rgba(0,0,0,0.1)'
-      borderRadius = '16px'
-      break
-  }
-
-  // 应用布局变量
-  root.style.setProperty('--app-nav-position', navPosition)
-  root.style.setProperty('--app-nav-bg', navBgColor)
-  root.style.setProperty('--app-nav-text', navTextColor)
-  root.style.setProperty('--app-page-bg', pageBgColor)
-  root.style.setProperty('--app-card-bg', cardBgColor)
-  root.style.setProperty('--app-card-shadow', cardShadow)
-  root.style.setProperty('--app-card-radius', borderRadius)
+  const tokens = resolveLayoutTokens(themeConfig.activeLayoutStyle || 'layout_top_nav')
+  applyLayoutTokensToCSS(tokens)
 }
 
 const loadThemeConfig = async () => {
@@ -157,13 +130,25 @@ const loadThemeConfig = async () => {
       themeConfig.fontSizePreset = config.fontSizePreset || 'standard'
 
       // 字体大小配置
-      themeConfig.fontSizeXs = config.fontSizeXs || '0.75rem'
+      themeConfig.fontSizeXs = config.fontSizeXs || '0.8125rem'
       themeConfig.fontSizeSm = config.fontSizeSm || '0.875rem'
       themeConfig.fontSizeBase = config.fontSizeBase || '1rem'
       themeConfig.fontSizeLg = config.fontSizeLg || '1.125rem'
       themeConfig.fontSizeXl = config.fontSizeXl || '1.25rem'
       themeConfig.fontSize2xl = config.fontSize2xl || '1.5rem'
-      themeConfig.fontSize3xl = config.fontSize3xl || '1.875rem'
+      themeConfig.fontSize3xl = config.fontSize3xl || '2rem'
+
+      // 双Logo配置
+      themeConfig.logoUrlLogin = config.logoUrlLogin || ''
+      themeConfig.logoUrlNav = config.logoUrlNav || ''
+      themeConfig.logoSizeLogin = config.logoSizeLogin || ''
+      themeConfig.logoSizeNav = config.logoSizeNav || ''
+
+      // 副标题配置
+      themeConfig.subtitleText = config.subtitleText || '价格展示与管理平台'
+      themeConfig.subtitleFont = config.subtitleFont || 'body'
+      themeConfig.subtitleFontWeight = config.subtitleFontWeight || '400'
+      themeConfig.subtitleColor = config.subtitleColor || 'rgba(255, 255, 255, 0.75)'
 
       applyThemeToCSS()
       isLoaded.value = true
@@ -203,6 +188,16 @@ const saveThemeConfig = async (config: Partial<StyleConfig>) => {
     if (config.fontSizeXl) themeConfig.fontSizeXl = config.fontSizeXl
     if (config.fontSize2xl) themeConfig.fontSize2xl = config.fontSize2xl
     if (config.fontSize3xl) themeConfig.fontSize3xl = config.fontSize3xl
+    // 双Logo配置
+    if (config.logoUrlLogin !== undefined) themeConfig.logoUrlLogin = config.logoUrlLogin
+    if (config.logoUrlNav !== undefined) themeConfig.logoUrlNav = config.logoUrlNav
+    if (config.logoSizeLogin !== undefined) themeConfig.logoSizeLogin = config.logoSizeLogin
+    if (config.logoSizeNav !== undefined) themeConfig.logoSizeNav = config.logoSizeNav
+    // 副标题配置
+    if (config.subtitleText !== undefined) themeConfig.subtitleText = config.subtitleText
+    if (config.subtitleFont !== undefined) themeConfig.subtitleFont = config.subtitleFont
+    if (config.subtitleFontWeight !== undefined) themeConfig.subtitleFontWeight = config.subtitleFontWeight
+    if (config.subtitleColor !== undefined) themeConfig.subtitleColor = config.subtitleColor
     applyThemeToCSS()
   } catch (error) {
     console.error('Failed to save theme config:', error)

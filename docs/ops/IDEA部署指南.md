@@ -97,6 +97,10 @@ EXIT;
 3. 点击 **执行**（闪电图标）按钮
 4. 确认所有表创建和数据插入成功
 
+> 已部署环境通过 Flyway 执行 `V14__rebalance_font_size_presets.sql` 更新样式设置字号预设；新环境执行 `init.sql` 时已包含同样的字号刻度。
+
+> 首页产品产地展示复用既有 `product.origin_ids` 与 `origin` 字典数据，不需要新增数据库迁移；升级时重新打包后端和前端即可。
+
 > 注意：`init.sql` 包含完整的表结构创建和数据初始化，推荐使用此脚本一步完成初始化。
 
 ### 3.4 验证数据是否正确
@@ -111,6 +115,10 @@ SELECT * FROM product_category;
 
 -- 查看产品数据（应该有20条记录）
 SELECT * FROM product;
+
+-- 验证首页产品列表排序字段
+SELECT id, name, sort_order, status FROM product_category ORDER BY sort_order;
+SELECT id, name, category_id, sort_order, show_on_home, status FROM product ORDER BY category_id, sort_order;
 
 -- 查看用户数据（应该有3条记录）
 SELECT username, role, status FROM sys_user;

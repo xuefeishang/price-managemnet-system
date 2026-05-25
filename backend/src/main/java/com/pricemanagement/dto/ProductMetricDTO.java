@@ -16,6 +16,9 @@ public class ProductMetricDTO {
     /** 产品规格 */
     private String specs;
 
+    /** 产地ID列表（JSON字符串，前端通过字典服务解析显示名称） */
+    private String originIds;
+
     /** 当前价格 */
     private Double currentPrice;
 

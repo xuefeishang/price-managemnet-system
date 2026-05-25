@@ -88,9 +88,13 @@ public class StyleConfigController {
     public Result<Void> updateStyleConfig(@RequestBody StyleConfigDTO config) {
         try {
             styleConfigService.updateStyleConfig(config);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "保存样式配置", null);
             return Result.success("更新样式配置成功");
         } catch (Exception e) {
             log.error("Update style config failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "保存样式配置失败", null, e.getMessage());
             return Result.error(400, "更新样式配置失败: " + e.getMessage());
         }
     }
@@ -100,11 +104,17 @@ public class StyleConfigController {
     public Result<Void> switchTheme(@PathVariable String themeKey) {
         try {
             styleConfigService.switchTheme(themeKey);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换主题: " + themeKey, "themeKey=" + themeKey);
             return Result.success("切换主题成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换主题失败", "themeKey=" + themeKey, e.getMessage());
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
             log.error("Switch theme failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换主题失败", "themeKey=" + themeKey, e.getMessage());
             return Result.error(400, "切换主题失败: " + e.getMessage());
         }
     }
@@ -117,11 +127,17 @@ public class StyleConfigController {
     public Result<Void> switchColorScheme(@PathVariable String schemeKey) {
         try {
             styleConfigService.switchColorScheme(schemeKey);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换色彩方案: " + schemeKey, "schemeKey=" + schemeKey);
             return Result.success("切换色彩方案成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换色彩方案失败", "schemeKey=" + schemeKey, e.getMessage());
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
             log.error("Switch color scheme failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换色彩方案失败", "schemeKey=" + schemeKey, e.getMessage());
             return Result.error(400, "切换色彩方案失败: " + e.getMessage());
         }
     }
@@ -134,11 +150,17 @@ public class StyleConfigController {
     public Result<Void> switchLayoutStyle(@PathVariable String layoutKey) {
         try {
             styleConfigService.switchLayoutStyle(layoutKey);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换布局方案: " + layoutKey, "layoutKey=" + layoutKey);
             return Result.success("切换布局方案成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换布局方案失败", "layoutKey=" + layoutKey, e.getMessage());
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
             log.error("Switch layout style failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换布局方案失败", "layoutKey=" + layoutKey, e.getMessage());
             return Result.error(400, "切换布局方案失败: " + e.getMessage());
         }
     }
@@ -151,11 +173,17 @@ public class StyleConfigController {
     public Result<Void> switchFontPreset(@PathVariable String presetKey) {
         try {
             styleConfigService.switchFontPreset(presetKey);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换字号预设: " + presetKey, "presetKey=" + presetKey);
             return Result.success("切换字号预设成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换字号预设失败", "presetKey=" + presetKey, e.getMessage());
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
             log.error("Switch font preset failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "切换字号预设失败", "presetKey=" + presetKey, e.getMessage());
             return Result.error(400, "切换字号预设失败: " + e.getMessage());
         }
     }
@@ -165,12 +193,64 @@ public class StyleConfigController {
     public Result<String> uploadLogo(@RequestParam("file") MultipartFile file) {
         try {
             String logoUrl = styleConfigService.uploadLogo(file);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传Logo", null);
             return Result.success("上传Logo成功", logoUrl);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传Logo失败", null, e.getMessage());
             return Result.error(400, e.getMessage());
         } catch (IOException e) {
             log.error("Upload logo failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传Logo失败", null, e.getMessage());
             return Result.error(400, "上传Logo失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 上传登录页Logo
+     */
+    @PostMapping("/logo/login")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<String> uploadLogoLogin(@RequestParam("file") MultipartFile file) {
+        try {
+            String logoUrl = styleConfigService.uploadLogoLogin(file);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传登录页Logo", null);
+            return Result.success("上传登录页Logo成功", logoUrl);
+        } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传登录页Logo失败", null, e.getMessage());
+            return Result.error(400, e.getMessage());
+        } catch (IOException e) {
+            log.error("Upload login logo failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传登录页Logo失败", null, e.getMessage());
+            return Result.error(400, "上传登录页Logo失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 上传导航栏Logo
+     */
+    @PostMapping("/logo/nav")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<String> uploadLogoNav(@RequestParam("file") MultipartFile file) {
+        try {
+            String logoUrl = styleConfigService.uploadLogoNav(file);
+            operationLogHelper.logSuccess("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传导航栏Logo", null);
+            return Result.success("上传导航栏Logo成功", logoUrl);
+        } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传导航栏Logo失败", null, e.getMessage());
+            return Result.error(400, e.getMessage());
+        } catch (IOException e) {
+            log.error("Upload nav logo failed: {}", e.getMessage(), e);
+            operationLogHelper.logError("样式设置", OperationLog.OperationType.UPDATE,
+                    "上传导航栏Logo失败", null, e.getMessage());
+            return Result.error(400, "上传导航栏Logo失败: " + e.getMessage());
         }
     }
 

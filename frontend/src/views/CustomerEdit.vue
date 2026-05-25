@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCustomer, createCustomer, updateCustomer } from '@/api/customers'
 import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
+import { useLayout } from '@/composables/useLayout'
 import type { CustomerStatus } from '@/types'
 
 const route = useRoute()
@@ -13,13 +14,7 @@ const isEdit = !!customerId
 
 const loading = ref(false)
 const saving = ref(false)
-
-const isPCLayout = computed(() => {
-  if (typeof window !== 'undefined') {
-    return window.innerWidth >= 1024
-  }
-  return false
-})
+const { isPCLayout } = useLayout()
 
 const form = reactive<{
   name: string
@@ -152,7 +147,7 @@ onMounted(() => {
               />
             </div>
 
-            <div class="form-group">
+            <div class="form-group form-group-wide">
               <label class="form-label">地址</label>
               <input
                 v-model="form.address"
@@ -192,7 +187,7 @@ onMounted(() => {
               />
             </div>
 
-            <div class="form-group">
+            <div class="form-group form-group-wide">
               <label class="form-label">备注</label>
               <textarea
                 v-model="form.remark"
@@ -340,17 +335,21 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .customer-edit-page {
-  
-  background-color: #FAFAFA;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-page, #FAFAFA);
 }
 
 .pc-edit {
-  padding: 32px;
-  max-width: 600px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
 .pc-header {
-  margin-bottom: 32px;
+  margin-bottom: 0;
 }
 
 .page-title-pc {
@@ -368,10 +367,13 @@ onMounted(() => {
 }
 
 .pc-form-card {
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   border-radius: 12px;
   padding: 24px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border-color, #E5E5E5);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
 }
 
 .pc-actions {
@@ -380,17 +382,10 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.customer-edit-page {
-  display: flex;
-  flex-direction: column;
-  max-width: 402px;
-  margin: 0 auto;
-}
-
 .navbar {
   height: 56px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
+  background: var(--bg-card, #FFFFFF);
+  border-bottom: 1px solid var(--border-color, #E5E5E5);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -411,7 +406,7 @@ onMounted(() => {
   height: 36px;
   border: none;
   background: transparent;
-  color: #1A1A1A;
+  color: var(--text-primary, #1A1A1A);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -420,20 +415,20 @@ onMounted(() => {
 }
 
 .back-btn:hover {
-  background: #F5F5F5;
+  background: var(--gray-100, #F5F5F5);
 }
 
 .navbar-title {
   font-family: var(--font-heading);
   font-size: var(--font-size-xl);
   font-weight: 500;
-  color: #1A1A1A;
+  color: var(--text-primary, #1A1A1A);
   margin: 0;
 }
 
 .save-btn {
   padding: 8px 16px;
-  background: #0D6E6E;
+  background: var(--primary-color, #0D6E6E);
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
@@ -444,7 +439,7 @@ onMounted(() => {
 }
 
 .save-btn:hover:not(:disabled) {
-  background: #0D8A8A;
+  background: var(--primary-light, #0D8A8A);
 }
 
 .save-btn:disabled {
@@ -461,18 +456,18 @@ onMounted(() => {
 }
 
 .form-card {
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   border-radius: 12px;
   padding: 20px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border-color, #E5E5E5);
 }
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
+.form-group-wide {
+  grid-column: 1 / -1;
 }
 
 .form-label {
@@ -480,7 +475,7 @@ onMounted(() => {
   font-family: var(--font-body);
   font-size: var(--font-size-sm);
   font-weight: 500;
-  color: #1A1A1A;
+  color: var(--text-primary, #1A1A1A);
   margin-bottom: 4px;
 }
 
@@ -488,12 +483,12 @@ onMounted(() => {
 .form-textarea {
   width: 100%;
   padding: 12px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border-color, #E5E5E5);
   border-radius: 8px;
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   font-family: var(--font-body);
   font-size: var(--font-size-sm);
-  color: #1A1A1A;
+  color: var(--text-primary, #1A1A1A);
   transition: border-color 150ms;
   box-sizing: border-box;
 }
@@ -501,12 +496,12 @@ onMounted(() => {
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: #0D6E6E;
+  border-color: var(--primary-color, #0D6E6E);
 }
 
 .form-input::placeholder,
 .form-textarea::placeholder {
-  color: #888888;
+  color: var(--text-muted, #888888);
 }
 
 .form-textarea {
@@ -522,20 +517,20 @@ onMounted(() => {
 .status-btn {
   flex: 1;
   padding: 10px 16px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border-color, #E5E5E5);
   border-radius: 8px;
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   font-family: var(--font-body);
   font-size: var(--font-size-sm);
-  color: #666666;
+  color: var(--text-secondary, #666666);
   cursor: pointer;
   transition: all 150ms;
 }
 
 .status-btn.active {
-  border-color: #0D6E6E;
+  border-color: var(--primary-color, #0D6E6E);
   background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
+  color: var(--primary-color, #0D6E6E);
 }
 
 .loading-state {
@@ -550,8 +545,8 @@ onMounted(() => {
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #E5E5E5;
-  border-top-color: #0D6E6E;
+  border: 3px solid var(--border-color, #E5E5E5);
+  border-top-color: var(--primary-color, #0D6E6E);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -560,9 +555,22 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
+  .customer-edit-page {
+    max-width: 402px;
+    margin: 0 auto;
+  }
+
   .pc-edit {
     display: none;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group:last-child {
+    margin-bottom: 0;
   }
 }
 

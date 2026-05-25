@@ -12,6 +12,39 @@ const router = useRouter()
 const { themeConfig, loadThemeConfig } = useTheme()
 const { isPCLayout } = useLayout()
 
+// 副标题样式（动态配置）
+const subtitleStyle = computed(() => {
+  const fontMap: Record<string, string> = {
+    heading: 'var(--font-heading)',
+    body: 'var(--font-body)'
+  }
+  return {
+    fontFamily: fontMap[themeConfig.value.subtitleFont || 'body'],
+    fontWeight: themeConfig.value.subtitleFontWeight || '400',
+    color: themeConfig.value.subtitleColor || 'rgba(255, 255, 255, 0.75)'
+  }
+})
+
+// Logo尺寸样式（登录页放大1倍）
+const logoSizeStyle = computed(() => {
+  const sizeMap: Record<string, string> = {
+    small: '48px',
+    medium: '72px',
+    large: '96px',
+    xlarge: '128px'
+  }
+  // 优先使用登录页专用尺寸，否则使用通用尺寸
+  const size = themeConfig.value.logoSizeLogin || themeConfig.value.logoSize
+  return { height: sizeMap[size] || '72px' }
+})
+
+// Logo URL处理（优先使用登录页专用Logo，否则使用通用Logo）
+const logoUrlFull = computed(() => {
+  const url = themeConfig.value.logoUrlLogin || themeConfig.value.logoUrl
+  if (!url) return ''
+  return url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL || ''}${url}`
+})
+
 const form = ref({
   username: '',
   password: '',
@@ -125,21 +158,23 @@ const handleLogin = async () => {
       captchaCode: form.value.captchaCode
     })
     if (success) {
-      // 保存用户名记忆
+      // 保存用户名记忆状态
       if (rememberUsername.value) {
         localStorage.setItem('rememberUsername', form.value.username)
+        localStorage.setItem('rememberUsernameFlag', 'true')
       } else {
         localStorage.removeItem('rememberUsername')
+        localStorage.removeItem('rememberUsernameFlag')
       }
       router.push('/home')
-    } else {
-      errorMessage.value = '用户名或密码错误'
-      // 刷新验证码
-      refreshCaptcha()
     }
   } catch (error: any) {
-    console.error('Login error:', error)
-    errorMessage.value = error?.response?.data?.message || '登录失败，请稍后重试'
+    // 仅开发环境打印日志
+    if (import.meta.env.DEV) {
+      console.error('Login error:', error)
+    }
+    // 显示后端返回的具体错误信息
+    errorMessage.value = error.message || '登录失败，请稍后重试'
     // 刷新验证码
     refreshCaptcha()
   } finally {
@@ -192,6 +227,11 @@ onMounted(async () => {
     form.value.username = savedUsername
     rememberUsername.value = true
   }
+  // 恢复勾选状态（即使没有保存用户名也恢复勾选状态）
+  const savedRememberFlag = localStorage.getItem('rememberUsernameFlag')
+  if (savedRememberFlag === 'true') {
+    rememberUsername.value = true
+  }
 })
 
 // 组件卸载时清理计时器
@@ -211,8 +251,15 @@ onUnmounted(() => {
         <!-- 左侧品牌区域 -->
         <div class="brand-section">
           <div class="brand-content">
+            <img
+              v-if="logoUrlFull"
+              :src="logoUrlFull"
+              alt="Logo"
+              class="brand-logo"
+              :style="logoSizeStyle"
+            />
             <h1 class="brand-title">{{ themeConfig.systemName }}</h1>
-            <p class="brand-subtitle">企业价格展示与管理平台</p>
+            <p class="brand-subtitle" :style="subtitleStyle">{{ themeConfig.subtitleText || '价格展示与管理平台' }}</p>
           </div>
         </div>
 
@@ -359,8 +406,15 @@ onUnmounted(() => {
       <div class="login-content">
         <!-- 标题区域 -->
         <div class="title-section">
+          <img
+            v-if="logoUrlFull"
+            :src="logoUrlFull"
+            alt="Logo"
+            class="main-logo"
+            :style="logoSizeStyle"
+          />
           <h1 class="main-title">{{ themeConfig.systemName }}</h1>
-          <p class="subtitle">企业价格展示与管理平台</p>
+          <p class="subtitle" :style="subtitleStyle">{{ themeConfig.subtitleText || '价格展示与管理平台' }}</p>
         </div>
 
         <!-- 登录表单 -->
@@ -537,22 +591,29 @@ onUnmounted(() => {
   z-index: 1;
   color: white;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .brand-title {
   font-family: var(--font-heading);
   font-size: var(--font-size-3xl);
-  font-weight: 500;
+  font-weight: 600;
   color: #FFFFFF;
   line-height: 1.1;
-  margin-bottom: 16px;
+  margin: 0 0 12px 0;
+}
+
+.brand-logo {
+  object-fit: contain;
+  margin-bottom: 20px;
 }
 
 .brand-subtitle {
-  font-family: var(--font-body);
   font-size: var(--font-size-sm);
-  color: rgba(255, 255, 255, 0.9);
   line-height: 1.4;
+  margin: 0;
 }
 
 /* 右侧表单区域 */
@@ -846,17 +907,20 @@ onUnmounted(() => {
 .main-title {
   font-family: var(--font-heading);
   font-size: 2.5rem;
-  font-weight: 500;
+  font-weight: 600;
   color: #1A1A1A;
   line-height: 1.05;
-  margin: 0;
+  margin: 0 0 12px 0;
   text-align: center;
 }
 
+.main-logo {
+  object-fit: contain;
+  margin-bottom: 20px;
+}
+
 .subtitle {
-  font-family: var(--font-body);
   font-size: var(--font-size-sm);
-  color: #666666;
   line-height: 1.4;
   margin: 0;
   text-align: center;

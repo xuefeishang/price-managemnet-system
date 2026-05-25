@@ -311,6 +311,7 @@ export interface CategoryDarkModeConfig {
   primaryColor: string
   textColor: string
   borderColor: string
+  surfaceColor?: string
   glowColor: string
 }
 
@@ -318,10 +319,16 @@ export interface CategoryDarkModeConfig {
 export interface CategoryVisualConfig {
   categoryId?: number
   categoryCode?: string      // 分类编码（用于匹配）
+  presetId?: string          // 视觉预设ID
+  presetVersion?: number     // 视觉预设版本
+  customized?: boolean       // 是否经过高级微调
   primaryColor: string      // 主色调（产品名称、图标）
   secondaryColor: string    // 辅助色（背景渐变）
   textColor: string         // 文字颜色
-  borderColor: string       // 边框颜色（统一使用深矿蓝#165DFF）
+  borderColor: string       // 边框颜色（随分类视觉方案变化）
+  surfaceColor?: string      // 分类浅底色
+  chartLineColor?: string    // 趋势图线条色
+  chartAreaColor?: string    // 趋势图面积色
   glowColor: string         // 光晕颜色（rgba带透明度0.15-0.2）
   icon: string              // 图标标识符
   iconType: 'builtin' | 'svg' | 'image'

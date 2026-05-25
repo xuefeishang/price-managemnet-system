@@ -33,7 +33,7 @@ public class SysDict {
     @Column(name = "dict_value", nullable = false, length = 200)
     private String dictValue;
 
-    @Column(name = "extra_value", length = 500)
+    @Column(name = "extra_value", columnDefinition = "TEXT")
     private String extraValue;
 
     @Column(name = "sort_order")

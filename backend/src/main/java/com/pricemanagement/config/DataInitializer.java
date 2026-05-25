@@ -209,13 +209,13 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("home_layout", "card_columns", "PC卡片列数", "4", 2, "PC端每行显示卡片数"));
             dicts.add(createDict("home_layout", "card_columns_mobile", "移动端卡片列数", "2", 3, "移动端每行显示卡片数"));
             dicts.add(createDict("home_layout", "featured_product_count", "重点产品数量", "6", 4, "核心指标区显示产品数"));
-            dicts.add(createDict("home_layout", "show_trend_chart", "显示趋势图", "true", 5, "是否显示趋势分析区"));
+            dicts.add(createDict("home_layout", "show_trend_chart", "显示重点走势", "true", 5, "是否显示重点关注指标下方的重点走势小折线图"));
             dicts.add(createDict("home_layout", "show_alerts", "显示预警区", "true", 6, "是否显示风险预警区"));
 
             // 首页小组件配置 home_widget
             dicts.add(createDict("home_widget", "summary_stats", "经营摘要", "{\"enabled\":true,\"order\":1}", 1, "顶部摘要统计区"));
             dicts.add(createDict("home_widget", "core_metrics", "核心指标", "{\"enabled\":true,\"order\":2,\"maxCards\":8}", 2, "核心指标卡片区"));
-            dicts.add(createDict("home_widget", "trend_chart", "趋势分析", "{\"enabled\":true,\"order\":3,\"defaultDays\":30}", 3, "趋势分析图表区"));
+            dicts.add(createDict("home_widget", "trend_chart", "重点走势", "{\"enabled\":true,\"order\":3,\"defaultDays\":30}", 3, "重点关注指标关联的小折线图区"));
             dicts.add(createDict("home_widget", "product_list", "产品列表", "{\"enabled\":true,\"order\":4}", 4, "产品行情列表区"));
             dicts.add(createDict("home_widget", "risk_alerts", "风险预警", "{\"enabled\":true,\"order\":5}", 5, "风险预警提示区"));
 

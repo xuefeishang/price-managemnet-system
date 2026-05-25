@@ -1,12 +1,14 @@
 package com.pricemanagement.controller;
 
 import com.pricemanagement.dto.HomeDashboardDTO;
+import com.pricemanagement.dto.HomeProductOrderDTO;
 import com.pricemanagement.dto.PriceAlertDTO;
 import com.pricemanagement.dto.HomeSummaryDTO;
 import com.pricemanagement.dto.TrendAnalysisDTO;
 import com.pricemanagement.service.HomeDashboardService;
 import com.pricemanagement.dto.Result;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -70,5 +72,14 @@ public class HomeController {
         LocalDate targetDate = date != null ? date : LocalDate.now().minusDays(1);
         TrendAnalysisDTO trend = homeDashboardService.getTrendAnalysis(targetDate, days);
         return Result.success("获取趋势分析成功", trend);
+    }
+
+    /**
+     * 获取首页产品列表排序树
+     */
+    @GetMapping("/product-order")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<List<HomeProductOrderDTO>> getProductOrder() {
+        return Result.success("获取首页产品排序成功", homeDashboardService.getProductOrder());
     }
 }

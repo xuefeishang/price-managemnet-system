@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { showToast } from 'vant'
 import { getColorSchemes } from '@/api/style'
 import { useStyleSettingsWorkbench } from '@/composables/useStyleSettingsWorkbench'
 import type { StylePreset } from '@/types/theme'
+import { isSupportedHexColor, type PriceColorField } from '@/utils/styleColorValidation'
 
 const workbench = useStyleSettingsWorkbench()
 
 const colorSchemes = ref<StylePreset[]>([])
 const loading = ref(false)
+const hiddenDuplicateSchemeKeys = new Set(['scheme_classic'])
 
 // 加载色彩方案列表
 const loadColorSchemes = async () => {
@@ -23,14 +25,10 @@ const loadColorSchemes = async () => {
   }
 }
 
-// 切换色彩方案
-const switchScheme = async (schemeKey: string) => {
-  try {
-    await workbench.applyColorScheme(schemeKey)
-    showToast({ message: '色彩方案已切换', position: 'top', duration: 1500 })
-  } catch (error) {
-    showToast({ message: '切换失败，已恢复原设置', position: 'top', duration: 2000 })
-  }
+// 切换色彩方案（只更新草稿，需保存才生效）
+const switchScheme = (schemeKey: string) => {
+  workbench.applyColorScheme(schemeKey)
+  showToast({ message: '色彩方案已进入草稿，请点击顶部保存配置', position: 'top', duration: 1500 })
 }
 
 // 获取方案预览颜色
@@ -45,6 +43,64 @@ const getSchemePreview = (scheme: StylePreset) => {
 
 // 当前激活的色彩方案
 const activeKey = computed(() => workbench.activeColorSchemeKey.value)
+const visibleColorSchemes = computed(() =>
+  colorSchemes.value.filter(scheme => !hiddenDuplicateSchemeKeys.has(scheme.key))
+)
+
+const colorTextValues = ref<Record<PriceColorField, string>>({
+  priceRiseColor: '',
+  priceFallColor: '',
+  priceFlatColor: ''
+})
+
+const colorErrors = ref<Record<PriceColorField, boolean>>({
+  priceRiseColor: false,
+  priceFallColor: false,
+  priceFlatColor: false
+})
+
+const updateColorDraft = (
+  key: PriceColorField,
+  value: string
+) => {
+  if (!workbench.draftConfig.value || workbench.draftConfig.value[key] === value) return
+  workbench.updateDraft({ [key]: value })
+}
+
+const handleColorPickerInput = (key: PriceColorField, value: string) => {
+  colorTextValues.value[key] = value
+  colorErrors.value[key] = false
+  updateColorDraft(key, value)
+}
+
+const handleColorTextInput = (key: PriceColorField, value: string) => {
+  colorTextValues.value[key] = value
+  const normalizedValue = value.trim()
+  const isValid = isSupportedHexColor(normalizedValue)
+  colorErrors.value[key] = !isValid
+  if (isValid) {
+    updateColorDraft(key, normalizedValue)
+  }
+}
+
+watch(
+  () => [
+    workbench.draftConfig.value?.priceRiseColor,
+    workbench.draftConfig.value?.priceFallColor,
+    workbench.draftConfig.value?.priceFlatColor
+  ],
+  () => {
+    const config = workbench.draftConfig.value
+    if (!config) return
+    colorTextValues.value.priceRiseColor = config.priceRiseColor
+    colorTextValues.value.priceFallColor = config.priceFallColor
+    colorTextValues.value.priceFlatColor = config.priceFlatColor
+    colorErrors.value.priceRiseColor = !isSupportedHexColor(config.priceRiseColor)
+    colorErrors.value.priceFallColor = !isSupportedHexColor(config.priceFallColor)
+    colorErrors.value.priceFlatColor = !isSupportedHexColor(config.priceFlatColor)
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   loadColorSchemes()
@@ -58,7 +114,7 @@ onMounted(() => {
         色彩方案
         <span class="section-status">当前：{{ activeKey || '默认' }}</span>
       </h2>
-      <p class="section-hint">选择预设色彩方案，影响涨跌色、图表色板等</p>
+      <p class="section-hint">选择预设后进入草稿，点击顶部保存配置后生效</p>
 
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
@@ -66,7 +122,7 @@ onMounted(() => {
 
       <div v-else class="scheme-grid">
         <div
-          v-for="scheme in colorSchemes"
+          v-for="scheme in visibleColorSchemes"
           :key="scheme.key"
           class="scheme-card"
           :class="{ active: scheme.key === activeKey }"
@@ -98,10 +154,12 @@ onMounted(() => {
       </div>
     </section>
 
-    <!-- 价格涨跌色配置 -->
-    <section class="config-section" v-if="workbench.draftConfig.value">
-      <h2 class="section-title">价格涨跌色</h2>
-      <p class="section-hint">即时生效，自动保存</p>
+    <details class="config-section advanced-section" v-if="workbench.draftConfig.value" open>
+      <summary>
+        <span>高级微调</span>
+        <small>价格涨跌色</small>
+      </summary>
+      <p class="section-hint">适合临时修正涨跌/持平颜色；修改后进入草稿，点击顶部保存配置后生效</p>
 
       <div class="color-config">
         <div class="color-row">
@@ -109,16 +167,20 @@ onMounted(() => {
           <div class="color-input-group">
             <input
               type="color"
-              v-model="workbench.draftConfig.value.priceRiseColor"
-              @change="workbench.applyAndPersist({ priceRiseColor: workbench.draftConfig.value.priceRiseColor })"
+              :value="workbench.draftConfig.value.priceRiseColor"
+              @input="handleColorPickerInput('priceRiseColor', ($event.target as HTMLInputElement).value)"
               class="color-picker"
             />
-            <input
-              type="text"
-              v-model="workbench.draftConfig.value.priceRiseColor"
-              @change="workbench.applyAndPersist({ priceRiseColor: workbench.draftConfig.value.priceRiseColor })"
-              class="color-text"
-            />
+            <div class="color-text-field">
+              <input
+                type="text"
+                :value="colorTextValues.priceRiseColor"
+                @input="handleColorTextInput('priceRiseColor', ($event.target as HTMLInputElement).value)"
+                class="color-text"
+                :class="{ invalid: colorErrors.priceRiseColor }"
+              />
+              <span v-if="colorErrors.priceRiseColor" class="color-error">请输入 #RGB 或 #RRGGBB</span>
+            </div>
           </div>
           <span
             class="preview-badge up"
@@ -133,16 +195,20 @@ onMounted(() => {
           <div class="color-input-group">
             <input
               type="color"
-              v-model="workbench.draftConfig.value.priceFallColor"
-              @change="workbench.applyAndPersist({ priceFallColor: workbench.draftConfig.value.priceFallColor })"
+              :value="workbench.draftConfig.value.priceFallColor"
+              @input="handleColorPickerInput('priceFallColor', ($event.target as HTMLInputElement).value)"
               class="color-picker"
             />
-            <input
-              type="text"
-              v-model="workbench.draftConfig.value.priceFallColor"
-              @change="workbench.applyAndPersist({ priceFallColor: workbench.draftConfig.value.priceFallColor })"
-              class="color-text"
-            />
+            <div class="color-text-field">
+              <input
+                type="text"
+                :value="colorTextValues.priceFallColor"
+                @input="handleColorTextInput('priceFallColor', ($event.target as HTMLInputElement).value)"
+                class="color-text"
+                :class="{ invalid: colorErrors.priceFallColor }"
+              />
+              <span v-if="colorErrors.priceFallColor" class="color-error">请输入 #RGB 或 #RRGGBB</span>
+            </div>
           </div>
           <span
             class="preview-badge down"
@@ -157,16 +223,20 @@ onMounted(() => {
           <div class="color-input-group">
             <input
               type="color"
-              v-model="workbench.draftConfig.value.priceFlatColor"
-              @change="workbench.applyAndPersist({ priceFlatColor: workbench.draftConfig.value.priceFlatColor })"
+              :value="workbench.draftConfig.value.priceFlatColor"
+              @input="handleColorPickerInput('priceFlatColor', ($event.target as HTMLInputElement).value)"
               class="color-picker"
             />
-            <input
-              type="text"
-              v-model="workbench.draftConfig.value.priceFlatColor"
-              @change="workbench.applyAndPersist({ priceFlatColor: workbench.draftConfig.value.priceFlatColor })"
-              class="color-text"
-            />
+            <div class="color-text-field">
+              <input
+                type="text"
+                :value="colorTextValues.priceFlatColor"
+                @input="handleColorTextInput('priceFlatColor', ($event.target as HTMLInputElement).value)"
+                class="color-text"
+                :class="{ invalid: colorErrors.priceFlatColor }"
+              />
+              <span v-if="colorErrors.priceFlatColor" class="color-error">请输入 #RGB 或 #RRGGBB</span>
+            </div>
           </div>
           <span
             class="preview-badge flat"
@@ -176,24 +246,7 @@ onMounted(() => {
           </span>
         </div>
       </div>
-    </section>
-
-    <!-- 图表色板 -->
-    <section class="config-section" v-if="workbench.draftConfig.value">
-      <h2 class="section-title">
-        图表色板
-        <span class="section-status">9 色</span>
-      </h2>
-
-      <div class="chart-colors">
-        <span
-          v-for="(color, index) in workbench.draftConfig.value.chartColors"
-          :key="index"
-          class="chart-color-dot"
-          :style="{ background: color }"
-        ></span>
-      </div>
-    </section>
+    </details>
   </div>
 </template>
 
@@ -233,6 +286,29 @@ onMounted(() => {
   font-size: var(--font-size-xs);
   color: #888888;
   margin: 0 0 20px 0;
+}
+
+.advanced-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.advanced-section summary small {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: #666666;
+  padding: 4px 10px;
+  background: #F5F5F5;
+  border-radius: 4px;
+}
+
+.advanced-section[open] summary {
+  margin-bottom: 8px;
 }
 
 .loading-state {
@@ -353,6 +429,12 @@ onMounted(() => {
   gap: 8px;
 }
 
+.color-text-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .color-picker {
   width: 40px;
   height: 40px;
@@ -372,6 +454,17 @@ onMounted(() => {
   font-family: var(--font-mono);
 }
 
+.color-text.invalid {
+  border-color: #EF4444;
+  background: #FEF2F2;
+}
+
+.color-error {
+  font-size: 10px;
+  color: #EF4444;
+  line-height: 1.2;
+}
+
 .preview-badge {
   padding: 4px 12px;
   border-radius: 6px;
@@ -379,16 +472,4 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* 图表色板 */
-.chart-colors {
-  display: flex;
-  gap: 8px;
-}
-
-.chart-color-dot {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
 </style>

@@ -6,6 +6,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ProductMetric } from '@/api/home'
 import { useTheme } from '@/composables/useTheme'
+import { getOriginName } from '@/composables/useDict'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -15,6 +16,22 @@ const props = defineProps<{
 }>()
 
 const { themeConfig } = useTheme()
+
+const parseOriginIds = (originIds?: string) => {
+  if (!originIds) return []
+  try {
+    const parsed = JSON.parse(originIds)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+const getProductOriginLabel = (product: ProductMetric) =>
+  parseOriginIds(product.originIds)
+    .map(key => getOriginName(key))
+    .filter(Boolean)
+    .join(' / ')
 
 const generateChartOption = (product: ProductMetric) => {
   const lineColor = product.priceDirection === 'up'
@@ -69,6 +86,10 @@ const generateChartOption = (product: ProductMetric) => {
         <div class="product-info">
           <span class="product-name">{{ product.productName }}</span>
           <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
+          <span class="product-origin" v-if="getProductOriginLabel(product)">
+            <span class="origin-label">产地</span>
+            <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+          </span>
         </div>
         <span
           class="trend-badge"
@@ -158,6 +179,36 @@ const generateChartOption = (product: ProductMetric) => {
 .product-specs {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 8px 2px 3px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 20%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--bg-card));
+  color: var(--primary-color);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.origin-label {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  font-weight: 600;
+}
+
+.origin-value {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

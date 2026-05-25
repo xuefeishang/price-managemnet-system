@@ -33,6 +33,8 @@ spring:
       username: ${REDIS_USERNAME:default}
       password: ${REDIS_PASSWORD:123abc}
       timeout: 5000ms
+      repositories:
+        enabled: false
 
   cache:
     type: simple

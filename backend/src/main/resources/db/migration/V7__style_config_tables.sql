@@ -49,6 +49,10 @@ VALUES
     ('font_size_3xl', '1.875rem', 'string', '特大标题字号'),
     ('active_color_scheme', 'scheme_teal_classic', 'string', '当前色彩方案'),
     ('active_layout_style', 'layout_top_nav', 'string', '当前布局方案'),
+    ('subtitle_text', '价格展示与管理平台', 'string', '登录页副标题文案'),
+    ('subtitle_font', 'body', 'string', '登录页副标题字体'),
+    ('subtitle_font_weight', '400', 'string', '登录页副标题字重'),
+    ('subtitle_color', 'rgba(255, 255, 255, 0.75)', 'string', '登录页副标题颜色'),
     ('active_theme', 'theme_red_green', 'string', '兼容旧主题')
 ON DUPLICATE KEY UPDATE
     config_value = VALUES(config_value),
@@ -59,12 +63,11 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO sys_style_preset (preset_type, preset_key, preset_name, preset_description, config_json, is_default, sort_order, status)
 VALUES
     ('color_scheme', 'scheme_teal_classic', '青绿经典（默认）', '当前系统默认配色，青绿主色，专业稳重', '{"priceRiseColor":"#EF4444","priceFallColor":"#10B981","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#0D6E6E","chartBudgetColor":"#F59E0B","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 1, 1, 'ACTIVE'),
-    ('color_scheme', 'scheme_classic', '经典红绿', '传统配色，涨价红色，跌价绿色', '{"priceRiseColor":"#EF4444","priceFallColor":"#10B981","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#0D6E6E","chartBudgetColor":"#F59E0B","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 2, 'ACTIVE'),
-    ('color_scheme', 'scheme_us_stock', '美股绿红', '美股风格，涨价绿色，跌价红色', '{"priceRiseColor":"#10B981","priceFallColor":"#EF4444","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#0D6E6E","chartBudgetColor":"#F59E0B","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 3, 'ACTIVE'),
-    ('color_scheme', 'scheme_business', '商务蓝橙', '商务风格配色', '{"priceRiseColor":"#3B82F6","priceFallColor":"#F97316","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#3B82F6","chartBudgetColor":"#F59E0B","chartColors":["#3B82F6","#F97316","#0D6E6E","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B","#10B981"]}', 0, 4, 'ACTIVE'),
-    ('color_scheme', 'scheme_noble', '高贵紫金', '高贵风格配色', '{"priceRiseColor":"#8B5CF6","priceFallColor":"#EAB308","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#8B5CF6","chartBudgetColor":"#F59E0B","chartColors":["#8B5CF6","#EAB308","#0D6E6E","#EC4899","#6366F1","#14B8A6","#64748B","#10B981","#F59E0B"]}', 0, 5, 'ACTIVE'),
-    ('color_scheme', 'scheme_deep_blue', '深矿蓝', '参考图配色，专业科技风格', '{"priceRiseColor":"#EF4444","priceFallColor":"#10B981","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#165DFF","chartBudgetColor":"#F59E0B","chartColors":["#165DFF","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 6, 'ACTIVE'),
-    ('color_scheme', 'scheme_warm', '暖色系', '温暖活力配色', '{"priceRiseColor":"#F97316","priceFallColor":"#06B6D4","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#F97316","chartBudgetColor":"#F59E0B","chartColors":["#F97316","#06B6D4","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 7, 'ACTIVE')
+    ('color_scheme', 'scheme_us_stock', '美股绿红', '美股风格，涨价绿色，跌价红色', '{"priceRiseColor":"#10B981","priceFallColor":"#EF4444","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#0D6E6E","chartBudgetColor":"#F59E0B","chartColors":["#0D6E6E","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 2, 'ACTIVE'),
+    ('color_scheme', 'scheme_business', '商务蓝橙', '商务风格配色', '{"priceRiseColor":"#3B82F6","priceFallColor":"#F97316","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#3B82F6","chartBudgetColor":"#F59E0B","chartColors":["#3B82F6","#F97316","#0D6E6E","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B","#10B981"]}', 0, 3, 'ACTIVE'),
+    ('color_scheme', 'scheme_noble', '高贵紫金', '高贵风格配色', '{"priceRiseColor":"#8B5CF6","priceFallColor":"#EAB308","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#8B5CF6","chartBudgetColor":"#F59E0B","chartColors":["#8B5CF6","#EAB308","#0D6E6E","#EC4899","#6366F1","#14B8A6","#64748B","#10B981","#F59E0B"]}', 0, 4, 'ACTIVE'),
+    ('color_scheme', 'scheme_deep_blue', '深矿蓝', '参考图配色，专业科技风格', '{"priceRiseColor":"#EF4444","priceFallColor":"#10B981","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#165DFF","chartBudgetColor":"#F59E0B","chartColors":["#165DFF","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 5, 'ACTIVE'),
+    ('color_scheme', 'scheme_warm', '暖色系', '温暖活力配色', '{"priceRiseColor":"#F97316","priceFallColor":"#06B6D4","priceFlatColor":"#9CA3AF","chartPrimaryColor":"#F97316","chartBudgetColor":"#F59E0B","chartColors":["#F97316","#06B6D4","#F59E0B","#EF4444","#8B5CF6","#EC4899","#6366F1","#14B8A6","#64748B"]}', 0, 6, 'ACTIVE')
 ON DUPLICATE KEY UPDATE
     preset_name = VALUES(preset_name),
     preset_description = VALUES(preset_description),

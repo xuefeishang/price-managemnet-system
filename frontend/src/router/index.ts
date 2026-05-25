@@ -21,6 +21,7 @@ declare module 'vue-router' {
     adminOnly?: boolean
     editorOnly?: boolean
     permission?: string  // 具体权限标识
+    activeMenu?: string  // 非菜单路由对应的菜单路径
   }
 }
 
@@ -65,13 +66,13 @@ const router = createRouter({
           path: 'product-detail/:id',
           name: 'ProductDetail',
           component: () => import('../views/ProductDetail.vue'),
-          meta: { title: '产品详情' }
+          meta: { title: '产品详情', activeMenu: '/products' }
         },
         {
           path: 'product-edit/:id?',
           name: 'ProductEdit',
           component: () => import('../views/ProductEdit.vue'),
-          meta: { title: '产品维护', editorOnly: true }
+          meta: { title: '产品维护', editorOnly: true, activeMenu: '/products' }
         },
         {
           path: 'categories',
@@ -83,7 +84,7 @@ const router = createRouter({
           path: 'category-edit/:id?',
           name: 'CategoryEdit',
           component: () => import('../views/CategoryEdit.vue'),
-          meta: { title: '分类编辑', editorOnly: true }
+          meta: { title: '分类编辑', editorOnly: true, activeMenu: '/categories' }
         },
         {
           path: 'origins',
@@ -95,7 +96,7 @@ const router = createRouter({
           path: 'origin-edit/:id?',
           name: 'OriginEdit',
           component: () => import('../views/OriginEdit.vue'),
-          meta: { title: '产地编辑', editorOnly: true }
+          meta: { title: '产地编辑', editorOnly: true, activeMenu: '/origins' }
         },
         {
           path: 'customers',
@@ -107,7 +108,7 @@ const router = createRouter({
           path: 'customer-edit/:id?',
           name: 'CustomerEdit',
           component: () => import('../views/CustomerEdit.vue'),
-          meta: { title: '客户编辑', editorOnly: true }
+          meta: { title: '客户编辑', editorOnly: true, activeMenu: '/customers' }
         },
         {
           path: 'users',

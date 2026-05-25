@@ -24,6 +24,16 @@ export interface StyleConfig {
   fontSizeXl: string
   fontSize2xl: string
   fontSize3xl: string
+  // 双Logo配置
+  logoUrlLogin?: string
+  logoUrlNav?: string
+  logoSizeLogin?: string
+  logoSizeNav?: string
+  // 副标题配置
+  subtitleText?: string       // 登录页副标题文案
+  subtitleFont?: string       // heading/body
+  subtitleFontWeight?: string // 400/500/600
+  subtitleColor?: string      // 颜色值
 }
 
 export interface StyleTheme {
@@ -115,22 +125,31 @@ export const PRESET_THEMES: PresetTheme[] = [
 
 export const AVAILABLE_FONTS = {
   heading: [
-    { value: 'Newsreader', label: 'Newsreader' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+    { value: 'SimHei', label: '黑体' },
+    { value: 'KaiTi', label: '楷体' },
     { value: 'Noto Serif SC', label: '思源宋体' },
+    { value: 'Noto Sans SC', label: '思源黑体' },
+    { value: 'Newsreader', label: 'Newsreader' },
     { value: 'Georgia', label: 'Georgia' },
     { value: 'Times New Roman', label: 'Times New Roman' }
   ],
   body: [
-    { value: 'Inter', label: 'Inter' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+    { value: 'SimHei', label: '黑体' },
     { value: 'Noto Sans SC', label: '思源黑体' },
+    { value: 'Inter', label: 'Inter' },
     { value: 'Roboto', label: 'Roboto' },
-    { value: 'Microsoft YaHei', label: '微软雅黑' }
+    { value: 'PingFang SC', label: '苹方' }
   ],
   number: [
     { value: 'JetBrains Mono', label: 'JetBrains Mono' },
     { value: 'SF Mono', label: 'SF Mono' },
     { value: 'Source Code Pro', label: 'Source Code Pro' },
-    { value: 'Consolas', label: 'Consolas' }
+    { value: 'Consolas', label: 'Consolas' },
+    { value: 'Monaco', label: 'Monaco' }
   ]
 }
 
@@ -162,23 +181,23 @@ export const FONT_SIZE_PRESETS: FontSizePreset[] = [
   {
     key: 'compact',
     name: '紧凑',
-    description: '数据密集型后台',
-    wcagCompliant: false,
+    description: '高密度但保持可读',
+    wcagCompliant: true,
     sizes: {
-      xs: '0.625rem',
-      sm: '0.75rem',
-      base: '0.875rem',
+      xs: '0.75rem',
+      sm: '0.8125rem',
+      base: '0.9375rem',
       lg: '1rem',
       xl: '1.125rem',
-      '2xl': '1.25rem',
-      '3xl': '1.5rem'
+      '2xl': '1.375rem',
+      '3xl': '1.75rem'
     }
   },
   {
     key: 'standard',
     name: '标准',
     description: '通用场景',
-    wcagCompliant: false,
+    wcagCompliant: true,
     sizes: {
       xs: '0.75rem',
       sm: '0.875rem',
@@ -186,22 +205,22 @@ export const FONT_SIZE_PRESETS: FontSizePreset[] = [
       lg: '1.125rem',
       xl: '1.25rem',
       '2xl': '1.5rem',
-      '3xl': '1.875rem'
+      '3xl': '2rem'
     }
   },
   {
     key: 'large',
     name: '大字体',
-    description: '比标准略大',
-    wcagCompliant: false,
+    description: '阅读友好',
+    wcagCompliant: true,
     sizes: {
-      xs: '0.8125rem',
-      sm: '0.9375rem',
-      base: '1.0625rem',
-      lg: '1.1875rem',
-      xl: '1.375rem',
-      '2xl': '1.625rem',
-      '3xl': '1.9375rem'
+      xs: '0.875rem',
+      sm: '1rem',
+      base: '1.125rem',
+      lg: '1.25rem',
+      xl: '1.5rem',
+      '2xl': '1.875rem',
+      '3xl': '2.375rem'
     }
   },
   {
@@ -210,26 +229,26 @@ export const FONT_SIZE_PRESETS: FontSizePreset[] = [
     description: '演示/投影/无障碍',
     wcagCompliant: true,
     sizes: {
-      xs: '0.875rem',
-      sm: '1rem',
-      base: '1.125rem',
-      lg: '1.25rem',
-      xl: '1.5rem',
-      '2xl': '1.75rem',
-      '3xl': '2rem'
+      xs: '1rem',
+      sm: '1.125rem',
+      base: '1.25rem',
+      lg: '1.5rem',
+      xl: '1.75rem',
+      '2xl': '2.25rem',
+      '3xl': '2.75rem'
     }
   }
 ]
 
 // 字体大小字段定义
 export const FONT_SIZE_FIELDS = [
-  { key: 'fontSizeXs', label: '辅助信息', default: '0.75rem' },
+  { key: 'fontSizeXs', label: '辅助信息', default: '0.8125rem' },
   { key: 'fontSizeSm', label: '表格内容', default: '0.875rem' },
   { key: 'fontSizeBase', label: '正文表头', default: '1rem' },
   { key: 'fontSizeLg', label: '小节标题', default: '1.125rem' },
   { key: 'fontSizeXl', label: '页面副标题', default: '1.25rem' },
   { key: 'fontSize2xl', label: '页面主标题', default: '1.5rem' },
-  { key: 'fontSize3xl', label: '特大标题', default: '1.875rem' }
+  { key: 'fontSize3xl', label: '特大标题', default: '2rem' }
 ]
 
 // ==================== 版本管理类型 ====================

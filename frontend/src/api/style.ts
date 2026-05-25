@@ -87,6 +87,32 @@ export const uploadLogo = (file: File) => {
   })
 }
 
+/**
+ * 上传登录页Logo
+ */
+export const uploadLogoLogin = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return http.post<string>('/api/style/logo/login', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
+/**
+ * 上传导航栏Logo
+ */
+export const uploadLogoNav = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return http.post<string>('/api/style/logo/nav', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
 // ==================== 版本管理 API ====================
 
 /**

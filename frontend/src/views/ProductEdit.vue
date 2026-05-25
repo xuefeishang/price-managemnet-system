@@ -1068,7 +1068,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-/* 分区滚动定位：避免被 Layout 的 sub-navbar(48px) 遮挡 */
+/* 分区滚动定位：避免被 Layout 顶部上下文导航遮挡 */
 .form-section {
   scroll-margin-top: 64px;
 }

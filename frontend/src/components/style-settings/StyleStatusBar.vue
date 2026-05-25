@@ -3,9 +3,7 @@ import { computed } from 'vue'
 import { useStyleSettingsWorkbench } from '@/composables/useStyleSettingsWorkbench'
 
 const emit = defineEmits<{
-  (e: 'reset-default'): void
-  (e: 'open-version'): void
-  (e: 'export-config'): void
+  (e: 'save-config'): void
 }>()
 
 const workbench = useStyleSettingsWorkbench()
@@ -18,8 +16,8 @@ const statusText = computed(() => {
     case 'saved': return workbench.lastSavedAt.value
       ? `已保存 ${formatTime(workbench.lastSavedAt.value)}`
       : '已保存'
-    case 'failed': return '保存失败，已恢复'
-    case 'dirty': return '正在应用...'
+    case 'failed': return '保存失败'
+    case 'dirty': return '有未保存的更改'
     default: return '当前配置'
   }
 })
@@ -55,14 +53,8 @@ const formatTime = (iso: string) => {
       </span>
 
       <div class="action-buttons">
-        <button class="btn-action" @click="emit('reset-default')">
-          恢复默认
-        </button>
-        <button class="btn-action" @click="emit('export-config')">
-          导出配置
-        </button>
-        <button class="btn-action primary" @click="emit('open-version')">
-          历史版本
+        <button class="btn-action primary" @click="emit('save-config')">
+          保存配置
         </button>
       </div>
     </div>

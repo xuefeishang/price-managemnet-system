@@ -89,7 +89,9 @@ instance.interceptors.request.use(
     return config
   },
   error => {
-    console.error('Request error:', error)
+    if (import.meta.env.DEV) {
+      console.error('Request error:', error)
+    }
     return Promise.reject(error)
   }
 )
@@ -118,15 +120,25 @@ instance.interceptors.response.use(
     } else {
       // 业务错误
       const errorMsg = data.message || '请求失败'
-      showToast({
-        message: errorMsg,
-        position: 'bottom'
-      })
-      return Promise.reject(new Error(errorMsg))
+      // 登录接口错误由 Login.vue 自己处理，不弹全局 toast
+      const loginUrl = '/auth/login'
+      const isLoginUrl = response.config.url?.includes(loginUrl)
+      if (!isLoginUrl) {
+        showToast({
+          message: errorMsg,
+          position: 'bottom'
+        })
+      }
+      // 创建包含响应数据的错误对象
+      const error = new Error(errorMsg) as any
+      error.response = { data }
+      return Promise.reject(error)
     }
   },
   async error => {
-    console.error('Response error:', error)
+    if (import.meta.env.DEV) {
+      console.error('Response error:', error)
+    }
     const axiosError = error as AxiosError
     const url = error.config?.url || ''
     const status = error.response?.status
@@ -146,8 +158,23 @@ instance.interceptors.response.use(
     // 登录接口的401由业务逻辑处理，不弹全局弹窗
     // 刷新令牌接口的401也不需要刷新
     // 公开接口（captcha、style等）也不需要刷新
+    // 429 限流错误统一显示后端消息
     const publicUrls = ['/auth/login', '/auth/refresh-token', '/auth/captcha', '/style/config']
+    const isLoginUrl = url.includes('/auth/login')
     const isPublicUrl = publicUrls.some(u => url.includes(u))
+
+    // 429 限流错误特殊处理
+    if (status === 429) {
+      const errorMsg = getErrorMessage()
+      // 登录接口的 429 由 Login.vue 处理
+      if (!isLoginUrl) {
+        showToast(errorMsg)
+      }
+      // 保留原始响应数据
+      const err = new Error(errorMsg) as any
+      err.response = error.response
+      return Promise.reject(err)
+    }
 
     if (status === 401 && !isPublicUrl) {
       // 如果正在刷新令牌，将请求加入队列
@@ -211,9 +238,19 @@ instance.interceptors.response.use(
     } else if (!status && !error.message) {
       showToast('网络连接失败，请检查网络')
     } else if (error.message && !status) {
-      showToast(getErrorMessage())
+      // 网络错误（无响应），登录接口由 Login.vue 处理
+      if (!isLoginUrl) {
+        showToast(getErrorMessage())
+      }
     } else {
       showToast('网络错误，请稍后重试')
+    }
+
+    // 对于登录接口，保留原始响应数据以便 Login.vue 处理
+    if (isLoginUrl) {
+      const err = new Error(getErrorMessage()) as any
+      err.response = error.response
+      return Promise.reject(err)
     }
 
     return Promise.reject(error)

@@ -80,6 +80,18 @@ public class StyleConfigService {
         config.setFontSize2xl(getConfigValue("font_size_2xl", "1.5rem"));
         config.setFontSize3xl(getConfigValue("font_size_3xl", "1.875rem"));
 
+        // 双Logo配置
+        config.setLogoUrlLogin(getConfigValue("logo_url_login", ""));
+        config.setLogoUrlNav(getConfigValue("logo_url_nav", ""));
+        config.setLogoSizeLogin(getConfigValue("logo_size_login", ""));
+        config.setLogoSizeNav(getConfigValue("logo_size_nav", ""));
+
+        // 副标题配置
+        config.setSubtitleText(getConfigValue("subtitle_text", "价格展示与管理平台"));
+        config.setSubtitleFont(getConfigValue("subtitle_font", "body"));
+        config.setSubtitleFontWeight(getConfigValue("subtitle_font_weight", "400"));
+        config.setSubtitleColor(getConfigValue("subtitle_color", "rgba(255, 255, 255, 0.75)"));
+
         return config;
     }
 
@@ -330,6 +342,34 @@ public class StyleConfigService {
             updateConfig("font_size_3xl", config.getFontSize3xl());
         }
 
+        // 双Logo配置
+        if (config.getLogoUrlLogin() != null) {
+            updateConfig("logo_url_login", config.getLogoUrlLogin());
+        }
+        if (config.getLogoUrlNav() != null) {
+            updateConfig("logo_url_nav", config.getLogoUrlNav());
+        }
+        if (config.getLogoSizeLogin() != null) {
+            updateConfig("logo_size_login", config.getLogoSizeLogin());
+        }
+        if (config.getLogoSizeNav() != null) {
+            updateConfig("logo_size_nav", config.getLogoSizeNav());
+        }
+
+        // 副标题配置
+        if (config.getSubtitleText() != null) {
+            updateConfig("subtitle_text", config.getSubtitleText());
+        }
+        if (config.getSubtitleFont() != null) {
+            updateConfig("subtitle_font", config.getSubtitleFont());
+        }
+        if (config.getSubtitleFontWeight() != null) {
+            updateConfig("subtitle_font_weight", config.getSubtitleFontWeight());
+        }
+        if (config.getSubtitleColor() != null) {
+            updateConfig("subtitle_color", config.getSubtitleColor());
+        }
+
         // 保存版本快照
         StyleConfigDTO snapshotConfig = getStyleConfig();
         versionService.saveSnapshot(snapshotConfig, changeSummary, changedBy);
@@ -486,6 +526,68 @@ public class StyleConfigService {
     }
 
     /**
+     * 上传登录页Logo
+     */
+    @Transactional
+    @CacheEvict(value = {"style", "dict"}, allEntries = true)
+    public String uploadLogoLogin(MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Logo 文件不能为空");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Logo 文件必须是图片格式");
+        }
+
+        if (file.getSize() > MAX_LOGO_SIZE) {
+            throw new IllegalArgumentException("Logo 文件大小不能超过 1.5MB");
+        }
+
+        byte[] imageBytes = file.getBytes();
+        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+        String mimeType = contentType;
+        String dataUrl = "data:" + mimeType + ";base64," + base64Image;
+
+        log.info("Login Logo uploaded as Base64, size: {} bytes -> {} chars", file.getSize(), dataUrl.length());
+
+        updateConfig("logo_url_login", dataUrl);
+
+        return dataUrl;
+    }
+
+    /**
+     * 上传导航栏Logo
+     */
+    @Transactional
+    @CacheEvict(value = {"style", "dict"}, allEntries = true)
+    public String uploadLogoNav(MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Logo 文件不能为空");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Logo 文件必须是图片格式");
+        }
+
+        if (file.getSize() > MAX_LOGO_SIZE) {
+            throw new IllegalArgumentException("Logo 文件大小不能超过 1.5MB");
+        }
+
+        byte[] imageBytes = file.getBytes();
+        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+        String mimeType = contentType;
+        String dataUrl = "data:" + mimeType + ";base64," + base64Image;
+
+        log.info("Nav Logo uploaded as Base64, size: {} bytes -> {} chars", file.getSize(), dataUrl.length());
+
+        updateConfig("logo_url_nav", dataUrl);
+
+        return dataUrl;
+    }
+
+    /**
      * 获取配置值
      */
     private String getConfigValue(String configKey, String defaultValue) {
@@ -523,6 +625,7 @@ public class StyleConfigService {
 
     /**
      * 回滚到指定版本
+     * 注意：Logo 不随版本回滚，保持当前值
      */
     @Transactional
     @CacheEvict(value = {"style", "dict"}, allEntries = true)
@@ -530,7 +633,7 @@ public class StyleConfigService {
         StyleConfigDTO snapshotConfig = versionService.getConfigSnapshot(versionId)
                 .orElseThrow(() -> new IllegalArgumentException("版本不存在或快照损坏: " + versionId));
 
-        // 写回配置
+        // 写回配置（Logo 字段不从快照恢复）
         if (snapshotConfig.getSystemName() != null) {
             updateConfig("system_name", snapshotConfig.getSystemName());
         }
@@ -561,9 +664,7 @@ public class StyleConfigService {
         if (snapshotConfig.getNumberFont() != null) {
             updateConfig("number_font", snapshotConfig.getNumberFont());
         }
-        if (snapshotConfig.getLogoUrl() != null) {
-            updateConfig("logo_url", snapshotConfig.getLogoUrl());
-        }
+        // Logo URL 不回滚（保持当前值）
         if (snapshotConfig.getLogoSize() != null) {
             updateConfig("logo_size", snapshotConfig.getLogoSize());
         }
@@ -600,11 +701,31 @@ public class StyleConfigService {
         if (snapshotConfig.getFontSize3xl() != null) {
             updateConfig("font_size_3xl", snapshotConfig.getFontSize3xl());
         }
+        // Logo URL 不回滚（保持当前值），仅回滚尺寸
+        if (snapshotConfig.getLogoSizeLogin() != null) {
+            updateConfig("logo_size_login", snapshotConfig.getLogoSizeLogin());
+        }
+        if (snapshotConfig.getLogoSizeNav() != null) {
+            updateConfig("logo_size_nav", snapshotConfig.getLogoSizeNav());
+        }
+        // 副标题配置回滚
+        if (snapshotConfig.getSubtitleText() != null) {
+            updateConfig("subtitle_text", snapshotConfig.getSubtitleText());
+        }
+        if (snapshotConfig.getSubtitleFont() != null) {
+            updateConfig("subtitle_font", snapshotConfig.getSubtitleFont());
+        }
+        if (snapshotConfig.getSubtitleFontWeight() != null) {
+            updateConfig("subtitle_font_weight", snapshotConfig.getSubtitleFontWeight());
+        }
+        if (snapshotConfig.getSubtitleColor() != null) {
+            updateConfig("subtitle_color", snapshotConfig.getSubtitleColor());
+        }
 
         // 生成回滚版本快照
         StyleConfigDTO newSnapshot = getStyleConfig();
-        versionService.saveSnapshot(newSnapshot, "回滚到版本 #" + versionId, changedBy);
+        versionService.saveSnapshot(newSnapshot, "回滚到版本 #" + versionId + "（Logo 保持不变）", changedBy);
 
-        log.info("样式配置已回滚到版本: versionId={}", versionId);
+        log.info("样式配置已回滚到版本: versionId={}, Logo保持当前值", versionId);
     }
 }

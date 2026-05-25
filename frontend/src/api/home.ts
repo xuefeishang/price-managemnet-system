@@ -1,5 +1,5 @@
 import http from '@/utils/http'
-import type { ApiResponse } from '@/types'
+import type { ApiResponse, ProductCategory, ProductStatus } from '@/types'
 
 export interface HomeDashboard {
   summary: HomeSummary
@@ -33,6 +33,7 @@ export interface ProductMetric {
   productId: number
   productName: string
   specs: string
+  originIds?: string
   currentPrice: number | null
   previousPrice: number | null
   priceDirection: 'up' | 'down' | 'flat'
@@ -51,6 +52,27 @@ export interface TrendAnalysis {
   dates: string[]
   productTrends: Record<number, (number | null)[]>
   avgTrend: (number | null)[]
+}
+
+export interface HomeProductOrderItem {
+  id: number
+  name: string
+  code?: string
+  specs?: string
+  originIds?: string
+  sortOrder?: number
+  showOnHome?: boolean
+  status: ProductStatus
+  unit?: string
+  currency?: string
+  categoryId?: number
+}
+
+export interface HomeProductOrderGroup {
+  category: Pick<ProductCategory, 'id' | 'name' | 'code' | 'sortOrder' | 'status'> | null
+  virtualKey?: 'uncategorized'
+  name: string
+  products: HomeProductOrderItem[]
 }
 
 export const getHomeDashboard = async (date?: string): Promise<ApiResponse<HomeDashboard>> => {
@@ -73,4 +95,8 @@ export const getTrendAnalysis = async (date?: string, days?: number): Promise<Ap
   if (date) params.date = date
   if (days) params.days = days
   return await http.get('/api/home/trend', { params })
+}
+
+export const getHomeProductOrder = async (): Promise<ApiResponse<HomeProductOrderGroup[]>> => {
+  return await http.get('/api/home/product-order')
 }

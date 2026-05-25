@@ -34,7 +34,8 @@ export const PROTECTED_CATEGORIES = [
   'font_preset',
   'home_layout',
   'home_widget',
-  'category_visual_config'
+  'category_visual_config',
+  'category_visual_custom_combo'
 ]
 
 /**
@@ -302,6 +303,17 @@ export const DICT_CATEGORY_META: DictCategoryMeta[] = [
     extraValueMode: 'json',
     ownerPage: 'category-visual-settings',
     description: '分类视觉映射配置，JSON 结构复杂'
+  },
+  {
+    category: 'category_visual_custom_combo',
+    label: '分类视觉自定义组合',
+    domain: 'visual_mapping',
+    editableInDictPage: false,
+    keyMutable: false,
+    valueMutable: false,
+    extraValueMode: 'json',
+    ownerPage: 'category-visual-settings',
+    description: '分类视觉“我的组合”配置，仅允许 1 组'
   }
 ]
 

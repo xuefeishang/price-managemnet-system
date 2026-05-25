@@ -34,7 +34,7 @@ public class GlobalExceptionHandler {
             errors.put(fieldName, errorMessage);
         });
         log.warn("Validation failed: {}", errors);
-        return Result.error(400, "参数校验失败");
+        return new Result<>(400, "参数校验失败", errors);
     }
 
     /**

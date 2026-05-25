@@ -71,9 +71,14 @@ export const useUserStore = defineStore('user', () => {
         permissions.value = new Set(responseData.permissions)
       }
       return true
-    } catch (error) {
-      console.error('Login failed:', error)
-      return false
+    } catch (error: any) {
+      // 仅开发环境打印日志
+      if (import.meta.env.DEV) {
+        console.error('Login failed:', error)
+      }
+      // 从 error.message 或 error.response.data.message 获取错误信息
+      const message = error.message || error?.response?.data?.message || '登录失败，请稍后重试'
+      throw new Error(message)
     }
   }
 

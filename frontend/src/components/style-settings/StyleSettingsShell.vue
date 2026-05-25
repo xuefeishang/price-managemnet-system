@@ -1,21 +1,30 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, provide, onErrorCaptured } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, onErrorCaptured } from 'vue'
 import { showToast } from 'vant'
 import { useStyleSettingsWorkbench } from '@/composables/useStyleSettingsWorkbench'
+import { useHomePreviewState } from '@/composables/useHomePreviewState'
+import { useHomeProductOrderState } from '@/composables/useHomeProductOrderState'
+import { useCategoryPreviewState } from '@/composables/useCategoryPreviewState'
+import { getInvalidPriceColorLabels } from '@/utils/styleColorValidation'
+import { resolveStylePresetName } from '@/utils/stylePresetNames'
 
 // Props
-defineProps<{
+const props = defineProps<{
   activeSection?: string
 }>()
 
 // Emits
 const emit = defineEmits<{
   (e: 'update:activeSection', value: string): void
-  (e: 'open-version'): void
 }>()
 
 // 工作台状态
 const workbench = useStyleSettingsWorkbench()
+
+// 首页和分类状态
+const homeState = useHomePreviewState()
+const productOrderState = useHomeProductOrderState()
+const categoryState = useCategoryPreviewState()
 
 // 一级导航配置
 const sections = [
@@ -25,12 +34,13 @@ const sections = [
   { key: 'typography', label: '排版', icon: 'font' },
   { key: 'layout', label: '布局', icon: 'layout' },
   { key: 'home', label: '首页体验', icon: 'home' },
+  { key: 'home-sort', label: '首页排序', icon: 'sort' },
   { key: 'category', label: '分类视觉', icon: 'category' },
   { key: 'version', label: '版本恢复', icon: 'history' }
 ]
 
-// 当前激活的导航
-const currentSection = ref('overview')
+// 当前激活的导航 - 以 props 为唯一来源
+const currentSection = computed(() => props.activeSection || 'overview')
 
 // 移动端预览抽屉
 const showPreviewDrawer = ref(false)
@@ -41,18 +51,70 @@ const checkMobile = () => {
   isMobile.value = window.innerWidth < 1024
 }
 
+const effectiveSaveStatus = computed(() => {
+  if (workbench.saveStatus.value === 'saving' || productOrderState.saving.value) return 'saving'
+  if (workbench.saveStatus.value === 'failed') return 'failed'
+  if (hasUnsavedChanges.value) return 'dirty'
+  if (workbench.saveStatus.value === 'saved') return 'saved'
+  return workbench.saveStatus.value
+})
+
 // 保存状态显示
 const saveStatusText = computed(() => {
-  switch (workbench.saveStatus.value) {
+  switch (effectiveSaveStatus.value) {
     case 'saving': return '正在保存...'
     case 'saved': return workbench.lastSavedAt.value
       ? `已保存 ${formatTime(workbench.lastSavedAt.value)}`
       : '已保存'
-    case 'failed': return '保存失败，已恢复'
-    case 'dirty': return '正在应用...'
+    case 'failed': return '保存失败'
+    case 'dirty': return '有未保存的更改'
     default: return '当前配置'
   }
 })
+
+// 是否有未保存更改（包含样式、首页、分类）
+const hasUnsavedChanges = computed(() =>
+  workbench.saveStatus.value === 'dirty' ||
+  homeState.hasUnsavedChanges.value ||
+  productOrderState.hasUnsavedChanges.value ||
+  categoryState.hasUnsavedChanges.value
+)
+
+// 保存配置（统一保存样式、首页、分类）
+const handleSave = async () => {
+  try {
+    const invalidColorLabels = getInvalidPriceColorLabels(workbench.draftConfig.value)
+    if (invalidColorLabels.length > 0) {
+      showToast({
+        message: `${invalidColorLabels.join('、')}格式不正确，请使用 #RGB 或 #RRGGBB`,
+        position: 'top',
+        duration: 2500
+      })
+      return
+    }
+
+    // 并行保存所有配置
+    const savePromises: Promise<void>[] = []
+
+    if (workbench.saveStatus.value === 'dirty') {
+      savePromises.push(workbench.saveConfig())
+    }
+    if (homeState.hasUnsavedChanges.value) {
+      savePromises.push(homeState.saveAll())
+    }
+    if (productOrderState.hasUnsavedChanges.value) {
+      savePromises.push(productOrderState.saveOrder())
+    }
+    if (categoryState.hasUnsavedChanges.value) {
+      savePromises.push(categoryState.saveAll())
+    }
+
+    await Promise.all(savePromises)
+    showToast({ message: '配置已保存', position: 'top', duration: 1500 })
+  } catch (error) {
+    showToast({ message: '保存失败，请重试', position: 'top', duration: 2000 })
+  }
+}
 
 // 格式化时间
 const formatTime = (iso: string) => {
@@ -62,9 +124,24 @@ const formatTime = (iso: string) => {
 
 // 切换导航
 const switchSection = (key: string) => {
-  currentSection.value = key
   emit('update:activeSection', key)
 }
+
+// 从预设缓存获取方案名称（动态来源）
+const colorSchemeName = computed(() => {
+  const key = workbench.activeColorSchemeKey.value
+  return resolveStylePresetName(workbench.colorSchemes.value, key, '默认')
+})
+
+const fontPresetName = computed(() => {
+  const key = workbench.activeFontPresetKey.value
+  return resolveStylePresetName(workbench.fontPresets.value, key, '标准')
+})
+
+const layoutStyleName = computed(() => {
+  const key = workbench.activeLayoutStyleKey.value
+  return resolveStylePresetName(workbench.layoutStyles.value, key, '默认')
+})
 
 // 错误边界处理
 onErrorCaptured((err, _instance, info) => {
@@ -81,6 +158,13 @@ onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   workbench.loadWorkbenchConfig()
+  homeState.loadConfig()
+  productOrderState.loadOrder()
+  categoryState.loadCategories(true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
 })
 </script>
 
@@ -91,37 +175,47 @@ onMounted(() => {
       <div class="status-left">
         <h1 class="page-title">全局样式设置</h1>
         <div class="current-scheme" v-if="workbench.isLoaded.value">
-          <span class="scheme-tag">{{ workbench.activeColorSchemeKey.value || '默认' }}</span>
+          <span class="scheme-tag">{{ colorSchemeName }}</span>
           <span class="scheme-divider">/</span>
-          <span class="scheme-tag">{{ workbench.activeFontPresetKey.value || '标准' }}</span>
+          <span class="scheme-tag">{{ fontPresetName }}</span>
+          <span class="scheme-divider">/</span>
+          <span class="scheme-tag">{{ layoutStyleName }}</span>
         </div>
       </div>
       <div class="status-right">
-        <span class="save-status" :class="workbench.saveStatus.value">
+        <span class="save-status" :class="effectiveSaveStatus">
           {{ saveStatusText }}
         </span>
         <div class="quick-actions">
-          <button class="action-btn" @click="workbench.resetToDefault()">恢复默认</button>
-          <button class="action-btn primary" @click="$emit('open-version')">历史版本</button>
+          <button
+            class="action-btn primary"
+            :class="{ saving: effectiveSaveStatus === 'saving' }"
+            :disabled="!hasUnsavedChanges || effectiveSaveStatus === 'saving'"
+            @click="handleSave"
+          >
+            {{ effectiveSaveStatus === 'saving' ? '保存中...' : '保存配置' }}
+          </button>
         </div>
       </div>
     </header>
 
-    <!-- PC 端三栏布局 -->
-    <div class="workbench-layout" v-if="!isMobile">
-      <!-- 左侧导航 -->
-      <nav class="section-nav">
-        <div
+    <nav class="section-tabs" aria-label="样式配置域">
+      <div class="section-tabs-scroll">
+        <button
           v-for="section in sections"
           :key="section.key"
-          class="nav-item"
+          class="section-tab"
           :class="{ active: currentSection === section.key }"
+          type="button"
           @click="switchSection(section.key)"
         >
-          <span class="nav-label">{{ section.label }}</span>
-        </div>
-      </nav>
+          {{ section.label }}
+        </button>
+      </div>
+    </nav>
 
+    <!-- PC 端两栏布局 -->
+    <div class="workbench-layout" v-if="!isMobile">
       <!-- 中央配置区 -->
       <main class="config-panel">
         <slot name="config" :section="currentSection"></slot>
@@ -135,21 +229,6 @@ onMounted(() => {
 
     <!-- 移动端布局 -->
     <div class="mobile-layout" v-else>
-      <!-- 横向导航 -->
-      <nav class="mobile-nav">
-        <div class="nav-scroll">
-          <div
-            v-for="section in sections"
-            :key="section.key"
-            class="mobile-nav-item"
-            :class="{ active: currentSection === section.key }"
-            @click="switchSection(section.key)"
-          >
-            {{ section.label }}
-          </div>
-        </div>
-      </nav>
-
       <!-- 配置区 -->
       <main class="mobile-config">
         <slot name="config" :section="currentSection"></slot>
@@ -177,9 +256,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:global(.pc-main:has(.style-settings-shell)) {
+  overflow-y: visible;
+}
+
 .style-settings-shell {
   min-height: 100vh;
-  background-color: #FAFAFA;
+  background-color: var(--bg-page, #FAFAFA);
 }
 
 /* 顶部状态栏 */
@@ -191,8 +274,8 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
+  background: var(--bg-card, #FFFFFF);
+  border-bottom: 1px solid var(--border-color, #E5E5E5);
 }
 
 .status-left {
@@ -218,12 +301,12 @@ onMounted(() => {
 
 .scheme-tag {
   padding: 4px 12px;
-  background: #F5F5F5;
+  background: var(--bg-secondary, #F5F5F5);
   border-radius: 4px;
 }
 
 .scheme-divider {
-  color: #E5E5E5;
+  color: var(--border-color, #E5E5E5);
 }
 
 .status-right {
@@ -237,8 +320,12 @@ onMounted(() => {
   color: #666666;
 }
 
+.save-status.dirty {
+  color: #F59E0B;
+}
+
 .save-status.saving {
-  color: #0D6E6E;
+  color: var(--primary-color, #0D6E6E);
 }
 
 .save-status.saved {
@@ -257,71 +344,97 @@ onMounted(() => {
 .action-btn {
   padding: 8px 16px;
   font-size: var(--font-size-sm);
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border-color, #E5E5E5);
   border-radius: 6px;
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   color: #666666;
   cursor: pointer;
   transition: all 150ms;
 }
 
 .action-btn:hover {
-  border-color: #0D6E6E;
-  color: #0D6E6E;
+  border-color: var(--primary-color, #0D6E6E);
+  color: var(--primary-color, #0D6E6E);
 }
 
 .action-btn.primary {
-  background: #0D6E6E;
-  border-color: #0D6E6E;
+  background: var(--primary-color, #0D6E6E);
+  border-color: var(--primary-color, #0D6E6E);
   color: #FFFFFF;
 }
 
 .action-btn.primary:hover {
-  background: #0A5555;
+  background: color-mix(in srgb, var(--primary-color, #0D6E6E) 85%, black);
 }
 
-/* PC 端三栏布局 */
-.workbench-layout {
-  display: grid;
-  grid-template-columns: 200px 1fr 360px;
-  gap: 24px;
-  padding: 24px;
+.action-btn.primary:disabled {
+  background: #9CA3AF;
+  border-color: #9CA3AF;
+  cursor: not-allowed;
+}
+
+.action-btn.primary.saving {
+  background: color-mix(in srgb, var(--primary-color, #0D6E6E) 85%, black);
+}
+
+/* 配置域导航 */
+.section-tabs {
+  position: sticky;
+  top: 65px;
+  z-index: 90;
+  padding: 10px 24px;
+  background: var(--bg-card, #FFFFFF);
+  border-bottom: 1px solid var(--border-color, #E5E5E5);
+}
+
+.section-tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   max-width: 1600px;
   margin: 0 auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* 左侧导航 */
-.section-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 16px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
-  border-radius: 12px;
-  height: fit-content;
-  position: sticky;
-  top: 96px;
+.section-tabs-scroll::-webkit-scrollbar {
+  display: none;
 }
 
-.nav-item {
-  padding: 12px 16px;
-  font-size: var(--font-size-sm);
+.section-tab {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: #666666;
-  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
   cursor: pointer;
   transition: all 150ms;
 }
 
-.nav-item:hover {
-  background: #F5F5F5;
+.section-tab:hover {
+  background: var(--bg-secondary, #F5F5F5);
   color: #1A1A1A;
 }
 
-.nav-item.active {
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
-  font-weight: 500;
+.section-tab.active {
+  background: color-mix(in srgb, var(--primary-color, #0D6E6E) 10%, transparent);
+  color: var(--primary-color, #0D6E6E);
+}
+
+/* PC 端两栏布局 */
+.workbench-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+  align-items: start;
 }
 
 /* 中央配置区 */
@@ -332,10 +445,11 @@ onMounted(() => {
 /* 右侧预览区 */
 .preview-panel {
   position: sticky;
-  top: 96px;
-  height: fit-content;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
+  top: 125px;
+  align-self: start;
+  padding-right: 2px;
+  overflow: visible;
+  z-index: 20;
 }
 
 /* 移动端布局 */
@@ -343,43 +457,9 @@ onMounted(() => {
   padding: 16px;
 }
 
-.mobile-nav {
-  margin-bottom: 16px;
-}
-
-.nav-scroll {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.nav-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.mobile-nav-item {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  font-size: var(--font-size-sm);
-  color: #666666;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 150ms;
-}
-
-.mobile-nav-item.active {
-  background: #0D6E6E;
-  border-color: #0D6E6E;
-  color: #FFFFFF;
-}
-
 .mobile-config {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border-color, #E5E5E5);
   border-radius: 12px;
   padding: 16px;
 }
@@ -389,13 +469,13 @@ onMounted(() => {
   bottom: 80px;
   right: 16px;
   padding: 12px 24px;
-  background: #0D6E6E;
+  background: var(--primary-color, #0D6E6E);
   color: #FFFFFF;
   border: none;
   border-radius: 24px;
   font-size: var(--font-size-sm);
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(13, 110, 110, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary-color, #0D6E6E) 30%, transparent);
 }
 
 /* 预览抽屉 */
@@ -413,10 +493,9 @@ onMounted(() => {
 
 .preview-drawer {
   width: 100%;
-  max-height: 80vh;
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   border-radius: 16px 16px 0 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .drawer-header {
@@ -424,7 +503,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border-color, #E5E5E5);
 }
 
 .drawer-header h3 {
@@ -436,7 +515,7 @@ onMounted(() => {
   width: 32px;
   height: 32px;
   border: none;
-  background: #F5F5F5;
+  background: var(--bg-secondary, #F5F5F5);
   border-radius: 8px;
   font-size: 20px;
   cursor: pointer;
@@ -444,14 +523,13 @@ onMounted(() => {
 
 .drawer-content {
   padding: 16px;
-  overflow-y: auto;
-  max-height: calc(80vh - 60px);
+  overflow: visible;
 }
 
 /* 响应式 */
 @media (max-width: 1280px) {
   .workbench-layout {
-    grid-template-columns: 180px 1fr 320px;
+    grid-template-columns: minmax(0, 1fr) 320px;
   }
 }
 
@@ -460,6 +538,11 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .section-tabs {
+    top: 123px;
+    padding: 10px 16px;
   }
 
   .status-right {

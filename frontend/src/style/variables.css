@@ -85,13 +85,13 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
   /* 字体大小 - Typography Scale (参考 Tailwind) */
-  --font-size-xs: 0.75rem;     /* 12px - 辅助信息、标签 */
+  --font-size-xs: 0.8125rem;   /* 13px - 辅助信息、标签 */
   --font-size-sm: 0.875rem;    /* 14px - 表格内容、小标题 */
   --font-size-base: 1rem;      /* 16px - 正文、表头 */
   --font-size-lg: 1.125rem;    /* 18px - 小节标题 */
   --font-size-xl: 1.25rem;     /* 20px - 页面标题 */
   --font-size-2xl: 1.5rem;     /* 24px - 大标题 */
-  --font-size-3xl: 1.875rem;   /* 30px - 特大标题 */
+  --font-size-3xl: 2rem;       /* 32px - 特大标题 */
 
   /* 动态主题颜色（运行时可切换） */
   --price-rise-color: #EF4444;

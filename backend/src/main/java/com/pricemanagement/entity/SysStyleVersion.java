@@ -27,7 +27,7 @@ public class SysStyleVersion {
     @Column(name = "version_no", nullable = false, unique = true, length = 50)
     private String versionNo;
 
-    @Column(name = "config_snapshot", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "config_snapshot", nullable = false, columnDefinition = "LONGTEXT")
     private String configSnapshot;
 
     @Column(name = "change_summary", length = 500)

@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, provide } from 'vue'
+import { ref, provide, onMounted, onUnmounted, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { useStyleSettingsWorkbench } from '@/composables/useStyleSettingsWorkbench'
+import { useHomePreviewState } from '@/composables/useHomePreviewState'
+import { useHomeProductOrderState } from '@/composables/useHomeProductOrderState'
+import { useCategoryPreviewState } from '@/composables/useCategoryPreviewState'
 import { getVersionList, rollbackToVersion } from '@/api/style'
 import type { StyleVersion } from '@/types/theme'
 
@@ -13,19 +17,82 @@ import ColorSchemePanel from '@/components/style-settings/ColorSchemePanel.vue'
 import TypographyPanel from '@/components/style-settings/TypographyPanel.vue'
 import LayoutStylePanel from '@/components/style-settings/LayoutStylePanel.vue'
 import HomeExperiencePanel from '@/components/style-settings/HomeExperiencePanel.vue'
+import HomeSortPanel from '@/components/style-settings/HomeSortPanel.vue'
 import CategoryVisualPanel from '@/components/style-settings/CategoryVisualPanel.vue'
 import StylePreviewPanel from '@/components/style-settings/StylePreviewPanel.vue'
 
 // 工作台状态
 const workbench = useStyleSettingsWorkbench()
+const route = useRoute()
+const router = useRouter()
+
+// 首页和分类状态
+const homeState = useHomePreviewState()
+const productOrderState = useHomeProductOrderState()
+const categoryState = useCategoryPreviewState()
 
 // 当前激活的配置域
 const activeSection = ref('overview')
+const validSections = new Set(['overview', 'brand', 'color', 'typography', 'layout', 'home', 'home-sort', 'category', 'version'])
+
+const setActiveSection = (section: string) => {
+  if (!validSections.has(section)) return
+  activeSection.value = section
+}
 
 // 版本管理
-const showVersionPanel = ref(false)
 const versionList = ref<StyleVersion[]>([])
 const loadingVersions = ref(false)
+const selectedVersion = ref<StyleVersion | null>(null)
+
+// 是否有未保存更改
+const hasUnsavedChanges = () =>
+  workbench.saveStatus.value === 'dirty' ||
+  homeState.hasUnsavedChanges.value ||
+  productOrderState.hasUnsavedChanges.value ||
+  categoryState.hasUnsavedChanges.value
+
+// 路由离开保护
+onBeforeRouteLeave((_to, _from, next) => {
+  if (hasUnsavedChanges()) {
+    showConfirmDialog({
+      title: '未保存的更改',
+      message: '您有未保存的更改，是否放弃修改并离开？'
+    }).then(() => {
+      // 用户确认放弃
+      workbench.discardChanges()
+      homeState.loadConfig()
+      productOrderState.loadOrder()
+      categoryState.discardChanges()
+      next()
+    }).catch(() => {
+      // 用户取消
+      next(false)
+    })
+  } else {
+    next()
+  }
+})
+
+// 浏览器刷新/关闭保护
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (hasUnsavedChanges()) {
+    e.preventDefault()
+    e.returnValue = '您有未保存的更改，确定要离开吗？'
+  }
+}
+
+onMounted(() => {
+  const section = route.query.section
+  if (typeof section === 'string') {
+    setActiveSection(section)
+  }
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 
 // 加载版本列表
 const loadVersions = async () => {
@@ -41,16 +108,9 @@ const loadVersions = async () => {
   }
 }
 
-// 打开版本面板
-const openVersionPanel = async () => {
-  showVersionPanel.value = true
-  await loadVersions()
-}
-
-// 关闭版本面板
-const closeVersionPanel = () => {
-  showVersionPanel.value = false
-  versionList.value = []
+// 选择版本查看
+const selectVersion = (version: StyleVersion) => {
+  selectedVersion.value = version
 }
 
 // 格式化时间（带时分秒）
@@ -78,7 +138,8 @@ const rollback = async (versionId: number, versionNo: string) => {
     await rollbackToVersion(versionId)
     await workbench.loadWorkbenchConfig(true)
     showToast({ message: '回滚成功', position: 'top', duration: 2000 })
-    closeVersionPanel()
+    selectedVersion.value = null
+    await loadVersions()
   } catch (error: any) {
     if (error.message !== 'cancel') {
       console.error('Rollback failed:', error)
@@ -87,60 +148,48 @@ const rollback = async (versionId: number, versionNo: string) => {
   }
 }
 
-// 恢复默认配置
-const resetToDefault = async () => {
-  try {
-    await showConfirmDialog({
-      title: '确认重置',
-      message: '确定要重置为默认配置吗？'
-    })
-    await workbench.resetToDefault()
-    showToast('已重置为默认配置')
-  } catch {
-    // 用户取消
-  }
-}
-
-// 导出配置
-const exportConfig = () => {
-  if (!workbench.draftConfig.value) return
-
-  const config = workbench.draftConfig.value
-  const json = JSON.stringify(config, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `style-config-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-  showToast('配置已导出')
-}
-
 // 导航到指定配置域
 const navigateTo = (section: string) => {
-  activeSection.value = section
+  setActiveSection(section)
 }
 
 // 提供给子组件
 provide('workbench', workbench)
 provide('activeSection', activeSection)
+
+watch(() => route.query.section, (section) => {
+  if (typeof section === 'string') {
+    setActiveSection(section)
+  }
+})
+
+watch(activeSection, (section) => {
+  if (route.query.section === section) return
+  router.replace({
+    query: {
+      ...route.query,
+      section
+    }
+  })
+})
+
+watch(activeSection, (section) => {
+  if (section === 'version') {
+    loadVersions()
+  }
+}, { immediate: true })
 </script>
 
 <template>
   <StyleSettingsShell
     :active-section="activeSection"
-    @update:active-section="activeSection = $event"
-    @open-version="openVersionPanel"
+    @update:active-section="setActiveSection"
   >
     <!-- 中央配置区 -->
     <template #config>
       <!-- 总览 -->
       <StyleOverviewPanel
         v-if="activeSection === 'overview'"
-        @reset-default="resetToDefault"
-        @open-version="openVersionPanel"
-        @export-config="exportConfig"
         @navigate="navigateTo"
       />
 
@@ -158,6 +207,9 @@ provide('activeSection', activeSection)
 
       <!-- 首页体验 -->
       <HomeExperiencePanel v-if="activeSection === 'home'" />
+
+      <!-- 首页排序 -->
+      <HomeSortPanel v-if="activeSection === 'home-sort'" />
 
       <!-- 分类视觉 -->
       <CategoryVisualPanel v-if="activeSection === 'category'" />
@@ -179,15 +231,22 @@ provide('activeSection', activeSection)
             v-for="version in versionList"
             :key="version.id"
             class="version-item"
+            :class="{ selected: selectedVersion?.id === version.id }"
+            @click="selectVersion(version)"
           >
             <div class="version-header">
               <div class="version-info">
                 <span class="version-no">{{ version.versionNo }}</span>
                 <span class="version-time">{{ formatTime(version.createdTime) }}</span>
               </div>
-              <button class="version-rollback-btn" @click="rollback(version.id, version.versionNo)">
-                回滚
-              </button>
+              <div class="version-actions">
+                <button class="version-view-btn" @click.stop="selectVersion(version)">
+                  查看
+                </button>
+                <button class="version-rollback-btn" @click.stop="rollback(version.id, version.versionNo)">
+                  回滚
+                </button>
+              </div>
             </div>
             <div class="version-summary">{{ version.changeSummary || '样式配置更新' }}</div>
             <div class="version-meta">
@@ -203,44 +262,14 @@ provide('activeSection', activeSection)
       <div v-if="!workbench.isLoaded.value" class="preview-loading">
         <span class="loading-text">加载中...</span>
       </div>
-      <StylePreviewPanel v-else :editing-config="workbench.draftConfig.value!" />
+      <StylePreviewPanel
+        v-else
+        :editing-config="workbench.draftConfig.value!"
+        :active-section="activeSection"
+        :target-version="selectedVersion"
+      />
     </template>
   </StyleSettingsShell>
-
-  <!-- 版本历史弹窗（备用） -->
-  <div v-if="showVersionPanel" class="version-panel-overlay" @click.self="closeVersionPanel">
-    <div class="version-panel">
-      <div class="version-panel-header">
-        <h3 class="version-panel-title">历史版本</h3>
-        <button class="version-panel-close" @click="closeVersionPanel">×</button>
-      </div>
-      <div class="version-panel-content">
-        <div v-if="loadingVersions" class="version-loading">加载中...</div>
-        <div v-else-if="versionList.length === 0" class="version-empty">暂无历史版本</div>
-        <div v-else class="version-list">
-          <div
-            v-for="version in versionList"
-            :key="version.id"
-            class="version-item"
-          >
-            <div class="version-header">
-              <div class="version-info">
-                <span class="version-no">{{ version.versionNo }}</span>
-                <span class="version-time">{{ formatTime(version.createdTime) }}</span>
-              </div>
-              <button class="version-rollback-btn" @click="rollback(version.id, version.versionNo)">
-                回滚
-              </button>
-            </div>
-            <div class="version-summary">{{ version.changeSummary || '样式配置更新' }}</div>
-            <div class="version-meta">
-              <span class="version-user">{{ version.changedByName || '系统' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 </template>
 
 <style scoped>
@@ -307,6 +336,39 @@ provide('activeSection', activeSection)
   background: #FAFAFA;
   border-radius: 12px;
   border: 1px solid #E5E5E5;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.version-item:hover {
+  border-color: #0D6E6E;
+}
+
+.version-item.selected {
+  border-color: #F59E0B;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.version-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.version-view-btn {
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  color: #666666;
+  cursor: pointer;
+  transition: all 150ms;
+  flex-shrink: 0;
+}
+
+.version-view-btn:hover {
+  border-color: #F59E0B;
+  color: #F59E0B;
 }
 
 .version-header {
@@ -361,70 +423,6 @@ provide('activeSection', activeSection)
 .version-rollback-btn:hover {
   background: #0D6E6E;
   color: white;
-}
-
-/* 版本面板弹窗 */
-.version-panel-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.version-panel {
-  width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  background: white;
-  border-radius: 16px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.version-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #E5E5E5;
-}
-
-.version-panel-title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0;
-}
-
-.version-panel-close {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: #F5F5F5;
-  border-radius: 8px;
-  font-size: 20px;
-  color: #666666;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.version-panel-close:hover {
-  background: #E5E5E5;
-}
-
-.version-panel-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
 }
 
 /* 预览加载状态 */

@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pricemanagement.dto.*;
 import com.pricemanagement.entity.Price;
 import com.pricemanagement.entity.Product;
+import com.pricemanagement.entity.ProductCategory;
 import com.pricemanagement.entity.SysDict;
 import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.repository.PriceRepository;
+import com.pricemanagement.repository.ProductCategoryRepository;
 import com.pricemanagement.repository.ProductRepository;
 import com.pricemanagement.repository.SysDictRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import java.util.stream.Collectors;
 public class HomeDashboardService {
 
     private final ProductRepository productRepository;
+    private final ProductCategoryRepository productCategoryRepository;
     private final PriceRepository priceRepository;
     private final SysDictRepository sysDictRepository;
     private final ObjectMapper objectMapper;
@@ -58,6 +61,63 @@ public class HomeDashboardService {
         dashboard.setTrendAnalysis(getTrendAnalysis(date, 30));
 
         return dashboard;
+    }
+
+    /**
+     * 获取首页产品列表排序树：启用分类 + 各分类启用产品。
+     */
+    public List<HomeProductOrderDTO> getProductOrder() {
+        List<ProductCategory> categories = productCategoryRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
+        List<Product> activeProducts = productRepository.findByStatus(CommonStatus.ACTIVE);
+
+        Comparator<Product> productComparator = Comparator
+                .comparing((Product product) -> product.getSortOrder() == null ? Integer.MAX_VALUE : product.getSortOrder())
+                .thenComparing(Product::getName, Comparator.nullsLast(String::compareTo))
+                .thenComparing(Product::getId);
+
+        Map<Long, List<Product>> productsByCategory = activeProducts.stream()
+                .filter(product -> product.getCategory() != null && product.getCategory().getId() != null)
+                .collect(Collectors.groupingBy(product -> product.getCategory().getId()));
+
+        List<HomeProductOrderDTO> groups = new ArrayList<>();
+        for (ProductCategory category : categories) {
+            List<HomeProductOrderDTO.ProductOrderItem> products = productsByCategory
+                    .getOrDefault(category.getId(), Collections.emptyList())
+                    .stream()
+                    .sorted(productComparator)
+                    .map(this::toProductOrderItem)
+                    .collect(Collectors.toList());
+
+            groups.add(new HomeProductOrderDTO(
+                    new HomeProductOrderDTO.CategoryOrderItem(
+                            category.getId(),
+                            category.getName(),
+                            category.getCode(),
+                            category.getSortOrder(),
+                            category.getStatus()
+                    ),
+                    null,
+                    category.getName(),
+                    products
+            ));
+        }
+
+        List<HomeProductOrderDTO.ProductOrderItem> uncategorizedProducts = activeProducts.stream()
+                .filter(product -> product.getCategory() == null || product.getCategory().getId() == null)
+                .sorted(productComparator)
+                .map(this::toProductOrderItem)
+                .collect(Collectors.toList());
+
+        if (!uncategorizedProducts.isEmpty()) {
+            groups.add(new HomeProductOrderDTO(
+                    null,
+                    "uncategorized",
+                    "未分类",
+                    uncategorizedProducts
+            ));
+        }
+
+        return groups;
     }
 
     /**
@@ -267,6 +327,7 @@ public class HomeDashboardService {
         metric.setProductId(product.getId());
         metric.setProductName(product.getName());
         metric.setSpecs(product.getSpecs());
+        metric.setOriginIds(product.getOriginIds());
         metric.setUnit(product.getUnit());
         metric.setFeatured(true);
 
@@ -294,7 +355,7 @@ public class HomeDashboardService {
             if (diff.compareTo(BigDecimal.ZERO) > 0) {
                 metric.setPriceDirection("up");
                 if (prev.getCurrentPrice().compareTo(BigDecimal.ZERO) > 0) {
-                    double percent = diff.divide(prev.getCurrentPrice(), 4, BigDecimal.ROUND_HALF_UP)
+                    double percent = diff.divide(prev.getCurrentPrice(), 4, RoundingMode.HALF_UP)
                             .multiply(new BigDecimal(100)).doubleValue();
                     metric.setPriceChangePercent(percent);
                     metric.setFormattedChange("+" + formatPercent(percent));
@@ -302,7 +363,7 @@ public class HomeDashboardService {
             } else if (diff.compareTo(BigDecimal.ZERO) < 0) {
                 metric.setPriceDirection("down");
                 if (prev.getCurrentPrice().compareTo(BigDecimal.ZERO) > 0) {
-                    double percent = Math.abs(diff.divide(prev.getCurrentPrice(), 4, BigDecimal.ROUND_HALF_UP)
+                    double percent = Math.abs(diff.divide(prev.getCurrentPrice(), 4, RoundingMode.HALF_UP)
                             .multiply(new BigDecimal(100)).doubleValue());
                     metric.setPriceChangePercent(-percent);
                     metric.setFormattedChange("-" + formatPercent(percent));
@@ -318,6 +379,23 @@ public class HomeDashboardService {
         }
 
         return metric;
+    }
+
+    private HomeProductOrderDTO.ProductOrderItem toProductOrderItem(Product product) {
+        Long categoryId = product.getCategory() != null ? product.getCategory().getId() : null;
+        return new HomeProductOrderDTO.ProductOrderItem(
+                product.getId(),
+                product.getName(),
+                product.getCode(),
+                product.getSpecs(),
+                product.getOriginIds(),
+                product.getSortOrder(),
+                product.getShowOnHome(),
+                product.getStatus(),
+                product.getUnit(),
+                product.getCurrency(),
+                categoryId
+        );
     }
 
     private List<PriceAlertDTO> checkPercentageAlert(LocalDate date, double threshold,
@@ -341,7 +419,7 @@ public class HomeDashboardService {
             BigDecimal diff = today.getCurrentPrice().subtract(prev.getCurrentPrice());
             if (prev.getCurrentPrice().compareTo(BigDecimal.ZERO) <= 0) continue;
 
-            double percent = Math.abs(diff.divide(prev.getCurrentPrice(), 4, BigDecimal.ROUND_HALF_UP)
+            double percent = Math.abs(diff.divide(prev.getCurrentPrice(), 4, RoundingMode.HALF_UP)
                     .multiply(new BigDecimal(100)).doubleValue());
 
             if (percent >= threshold) {

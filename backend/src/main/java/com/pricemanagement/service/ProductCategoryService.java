@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -83,8 +85,37 @@ public class ProductCategoryService {
         log.info("Deleted category with id: {}", id);
     }
 
+    @Transactional
+    public void batchUpdateSort(List<Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        List<Long> ids = items.stream()
+                .map(item -> ((Number) item.get("id")).longValue())
+                .collect(Collectors.toList());
+        List<ProductCategory> categories = productCategoryRepository.findAllById(ids);
+        Map<Long, ProductCategory> categoryMap = categories.stream()
+                .collect(Collectors.toMap(ProductCategory::getId, category -> category));
+
+        if (categoryMap.size() != ids.size()) {
+            throw new IllegalArgumentException("部分分类不存在");
+        }
+
+        List<ProductCategory> toSave = new java.util.ArrayList<>();
+        for (Map<String, Object> item : items) {
+            Long id = ((Number) item.get("id")).longValue();
+            Integer sortOrder = ((Number) item.get("sortOrder")).intValue();
+            ProductCategory category = categoryMap.get(id);
+            category.setSortOrder(sortOrder);
+            toSave.add(category);
+        }
+
+        productCategoryRepository.saveAll(toSave);
+        log.info("Batch updated sort order for {} categories", toSave.size());
+    }
+
     public boolean existsByCode(String code) {
         return productCategoryRepository.existsByCode(code);
     }
 }
-

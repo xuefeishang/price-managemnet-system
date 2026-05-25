@@ -3,14 +3,17 @@ package com.pricemanagement.controller;
 
 import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.Result;
+import com.pricemanagement.entity.OperationLog;
 import com.pricemanagement.entity.ProductCategory;
 import com.pricemanagement.service.ProductCategoryService;
+import com.pricemanagement.util.OperationLogHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -19,6 +22,7 @@ import java.util.List;
 public class ProductCategoryController {
 
     private final ProductCategoryService productCategoryService;
+    private final OperationLogHelper operationLogHelper;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
@@ -75,6 +79,21 @@ public class ProductCategoryController {
             return Result.success("删除分类成功");
         } catch (IllegalArgumentException e) {
             return Result.error(404, e.getMessage());
+        }
+    }
+
+    @PostMapping("/batch-sort")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public Result<Void> batchUpdateSort(@RequestBody List<Map<String, Object>> items) {
+        try {
+            productCategoryService.batchUpdateSort(items);
+            operationLogHelper.logSuccess("产品分类管理", OperationLog.OperationType.UPDATE,
+                    "批量更新分类排序", "数量：" + (items == null ? 0 : items.size()));
+            return Result.success("批量更新分类排序成功");
+        } catch (Exception e) {
+            operationLogHelper.logError("产品分类管理", OperationLog.OperationType.UPDATE,
+                    "批量更新分类排序失败", "", e.getMessage());
+            return Result.error(500, "批量更新分类排序失败: " + e.getMessage());
         }
     }
 }

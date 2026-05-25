@@ -189,7 +189,12 @@
       "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management -e \"UPDATE sys_dict SET extra_value = '{\\\\\"categoryCode\\\\\":\\\\\"BLACK_METAL\\\\\",\\\\\"primaryColor\\\\\":\\\\\"#DC2626\\\\\",\\\\\"secondaryColor\\\\\":\\\\\"#EF4444\\\\\",\\\\\"textColor\\\\\":\\\\\"#7F1D1D\\\\\",\\\\\"borderColor\\\\\":\\\\\"#DC2626\\\\\",\\\\\"glowColor\\\\\":\\\\\"rgba\\(220,38,38,0.25\\)\\\\\"}' WHERE category='category_visual_config' AND dict_key='CAT_BLACK_METAL';\")",
       "PowerShell(Get-Content \"E:\\\\ClaudeCodeProject\\\\price-management-system\\\\backend\\\\src\\\\main\\\\resources\\\\update_category_visual_colors.sql\" | & \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -p\"Root@2026\" price_management)",
       "Bash(dir \"%TEMP%\\\\logos\")",
-      "PowerShell(gh pr *)"
+      "PowerShell(gh pr *)",
+      "Bash(powershell *)",
+      "PowerShell(mysql -u root -p\"$env:DB_PASSWORD\" -e \"ALTER TABLE price_management.sys_style_version MODIFY COLUMN config_snapshot LONGTEXT NOT NULL COMMENT '配置快照JSON（完整StyleConfigDTO）';\")",
+      "Bash(Get-Command docker *)",
+      "PowerShell(mysql -h 10.7.5.175 -u root -p'Root@2026' price_management -e \"INSERT INTO sys_dict \\(id, category, dict_key, dict_value, extra_value, sort_order, status, created_time, updated_time\\) VALUES \\(123, 'category_visual_config', 'BLACK_METAL', '黑色金属', '{\\\\\"categoryId\\\\\":1,\\\\\"categoryCode\\\\\":\\\\\"BLACK_METAL\\\\\",\\\\\"presetId\\\\\":\\\\\"ore_neutral\\\\\",\\\\\"presetVersion\\\\\":1,\\\\\"customized\\\\\":true,\\\\\"icon\\\\\":\\\\\"cube_ore\\\\\",\\\\\"iconType\\\\\":\\\\\"builtin\\\\\",\\\\\"primaryColor\\\\\":\\\\\"#1b2736\\\\\",\\\\\"secondaryColor\\\\\":\\\\\"#F8FAFC\\\\\",\\\\\"textColor\\\\\":\\\\\"#3F5064\\\\\",\\\\\"borderColor\\\\\":\\\\\"#d7dbe1\\\\\",\\\\\"surfaceColor\\\\\":\\\\\"#e3e6ea\\\\\",\\\\\"chartLineColor\\\\\":\\\\\"#4b5c73\\\\\",\\\\\"chartAreaColor\\\\\":\\\\\"rgba\\(88, 107, 132, 0.12\\)\\\\\",\\\\\"glowColor\\\\\":\\\\\"rgba\\(88, 107, 132, 0.15\\)\\\\\"}', 1, 'ACTIVE', '2026-05-19 14:56:25.000000', '2026-05-24 20:48:25.242712'\\);\" 2>$null)",
+      "PowerShell(mysqldump *)"
     ]
   },
   "enabledMcpjsonServers": [

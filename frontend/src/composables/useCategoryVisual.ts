@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { getDictByCategory } from '@/composables/useDict'
 import type { CategoryVisualConfig } from '@/types'
+import { getCategoryVisualPreset, buildCategoryVisualConfigFromPreset } from '@/constants/categoryVisualPresets'
 
 // 分类视觉配置缓存（避免重复解析JSON）
 const visualCacheById = new Map<number, CategoryVisualConfig>()
@@ -12,18 +13,51 @@ const categoryCodeMap = new Map<number, string>()
 // 默认视觉配置
 const DEFAULT_VISUAL: CategoryVisualConfig = {
   categoryCode: 'DEFAULT',
-  primaryColor: '#165DFF',
-  secondaryColor: '#3C7EFF',
-  textColor: '#1D2129',
-  borderColor: '#165DFF',
-  glowColor: 'rgba(22, 93, 255, 0.15)',
-  icon: 'default',
+  presetId: 'blue_ore',
+  presetVersion: 1,
+  customized: false,
+  primaryColor: '#2563EB',
+  secondaryColor: '#DBEAFE',
+  textColor: '#1D4ED8',
+  borderColor: '#BFDBFE',
+  surfaceColor: '#EFF6FF',
+  chartLineColor: '#2563EB',
+  chartAreaColor: 'rgba(37, 99, 235, 0.12)',
+  glowColor: 'rgba(37, 99, 235, 0.14)',
+  icon: 'cube_ore',
   iconType: 'builtin',
   darkMode: {
-    primaryColor: '#3C7EFF',
-    textColor: '#F5F7FA',
-    borderColor: '#165DFF',
-    glowColor: 'rgba(60, 126, 255, 0.2)'
+    primaryColor: '#93C5FD',
+    textColor: '#DBEAFE',
+    borderColor: '#1D4ED8',
+    surfaceColor: '#0B1F45',
+    glowColor: 'rgba(147, 197, 253, 0.16)'
+  }
+}
+
+const withVisualFallbacks = (config: CategoryVisualConfig): CategoryVisualConfig => {
+  const presetBase = config.presetId
+    ? buildCategoryVisualConfigFromPreset(
+      { id: config.categoryId || 0, code: config.categoryCode || 'DEFAULT' },
+      getCategoryVisualPreset(config.presetId)
+    )
+    : DEFAULT_VISUAL
+
+  const merged = {
+    ...presetBase,
+    ...config
+  }
+
+  return {
+    ...merged,
+    secondaryColor: merged.secondaryColor || merged.surfaceColor || presetBase.secondaryColor || DEFAULT_VISUAL.secondaryColor,
+    surfaceColor: merged.surfaceColor || merged.secondaryColor || presetBase.surfaceColor || DEFAULT_VISUAL.surfaceColor,
+    chartLineColor: merged.chartLineColor || merged.primaryColor || presetBase.chartLineColor || DEFAULT_VISUAL.chartLineColor,
+    chartAreaColor: merged.chartAreaColor || merged.glowColor || presetBase.chartAreaColor || DEFAULT_VISUAL.chartAreaColor,
+    glowColor: merged.glowColor || presetBase.glowColor || DEFAULT_VISUAL.glowColor,
+    icon: merged.icon || presetBase.icon || DEFAULT_VISUAL.icon,
+    iconType: merged.iconType || 'builtin',
+    darkMode: merged.darkMode || presetBase.darkMode || DEFAULT_VISUAL.darkMode
   }
 }
 
@@ -57,10 +91,11 @@ export const parseCategoryVisualByCode = (categoryCode: string): CategoryVisualC
   for (const dict of configs) {
     try {
       const config = JSON.parse(dict.extraValue || '{}') as CategoryVisualConfig
-      if (config.categoryCode === categoryCode) {
+      if (config.categoryCode === categoryCode || dict.dictKey === categoryCode) {
         // 存入缓存
-        visualCacheByCode.set(categoryCode, config)
-        return config
+        const normalized = withVisualFallbacks(config)
+        visualCacheByCode.set(categoryCode, normalized)
+        return normalized
       }
     } catch (e) {
       console.warn(`Failed to parse category visual config: ${dict.dictKey}`, e)
@@ -97,8 +132,9 @@ export const parseCategoryVisualConfig = (categoryId: number): CategoryVisualCon
     try {
       const config = JSON.parse(dict.extraValue || '{}') as CategoryVisualConfig
       if (config.categoryId === categoryId) {
-        visualCacheById.set(categoryId, config)
-        return config
+        const normalized = withVisualFallbacks(config)
+        visualCacheById.set(categoryId, normalized)
+        return normalized
       }
     } catch (e) {
       console.warn(`Failed to parse category visual config: ${dict.dictKey}`, e)
@@ -175,86 +211,32 @@ export const inferVisualFromName = (name: string): CategoryVisualConfig => {
 
   // 黄金
   if (nameLower.includes('金') || nameLower.includes('gold')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#D4A574',
-      secondaryColor: '#C4956A',
-      textColor: '#8B5A2B',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(212, 165, 116, 0.15)',
-      icon: 'gold_ingot',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'GOLD' }, getCategoryVisualPreset('gold_precious'))
   }
 
   // 白银
   if (nameLower.includes('银') || nameLower.includes('silver')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#A8B5C4',
-      secondaryColor: '#9AA8B7',
-      textColor: '#6B7B8A',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(168, 181, 196, 0.15)',
-      icon: 'silver_bar',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'SILVER' }, getCategoryVisualPreset('silver_neutral'))
   }
 
   // 铜
   if (nameLower.includes('铜') || nameLower.includes('copper')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#B87333',
-      secondaryColor: '#A66628',
-      textColor: '#8B4513',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(184, 115, 51, 0.15)',
-      icon: 'copper_coil',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'COPPER' }, getCategoryVisualPreset('green_energy'))
   }
 
   // 铁
   if (nameLower.includes('铁') || nameLower.includes('iron')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#8B4513',
-      secondaryColor: '#7A3D11',
-      textColor: '#5C3317',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(139, 69, 19, 0.15)',
-      icon: 'iron_ore',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'IRON' }, getCategoryVisualPreset('orange_index'))
   }
 
   // 铝
   if (nameLower.includes('铝') || nameLower.includes('aluminum')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#C0C0C0',
-      secondaryColor: '#B0B0B0',
-      textColor: '#808080',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(192, 192, 192, 0.12)',
-      icon: 'aluminum_block',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'ALUMINUM' }, getCategoryVisualPreset('blue_ore'))
   }
 
   // 稀土
   if (nameLower.includes('稀土') || nameLower.includes('rare')) {
-    return {
-      categoryId: 0,
-      primaryColor: '#8B5CF6',
-      secondaryColor: '#7C3AED',
-      textColor: '#6D28D9',
-      borderColor: '#165DFF',
-      glowColor: 'rgba(139, 92, 246, 0.15)',
-      icon: 'rare_element',
-      iconType: 'builtin'
-    }
+    return buildCategoryVisualConfigFromPreset({ id: 0, code: 'RARE_EARTH' }, getCategoryVisualPreset('violet_alloy'))
   }
 
   return DEFAULT_VISUAL
@@ -266,7 +248,6 @@ export const inferVisualFromName = (name: string): CategoryVisualConfig => {
 export const clearCategoryVisualCache = () => {
   visualCacheById.clear()
   visualCacheByCode.clear()
-  categoryCodeMap.clear()
 }
 
 /**
@@ -282,9 +263,12 @@ export const getCategoryCardStyle = (
   return {
     '--category-primary': visual.primaryColor,
     '--category-secondary': visual.secondaryColor,
+    '--category-surface': visual.surfaceColor || visual.secondaryColor,
     '--category-text': visual.textColor,
     '--category-border': visual.borderColor,
-    '--category-glow': visual.glowColor
+    '--category-glow': visual.glowColor,
+    '--category-chart-line': visual.chartLineColor || visual.primaryColor,
+    '--category-chart-area': visual.chartAreaColor || visual.glowColor
   }
 }
 
@@ -301,9 +285,12 @@ export const getCategoryCardStyleByCode = (
   return {
     '--category-primary': visual.primaryColor,
     '--category-secondary': visual.secondaryColor,
+    '--category-surface': visual.surfaceColor || visual.secondaryColor,
     '--category-text': visual.textColor,
     '--category-border': visual.borderColor,
-    '--category-glow': visual.glowColor
+    '--category-glow': visual.glowColor,
+    '--category-chart-line': visual.chartLineColor || visual.primaryColor,
+    '--category-chart-area': visual.chartAreaColor || visual.glowColor
   }
 }
 

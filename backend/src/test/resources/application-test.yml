@@ -33,6 +33,8 @@ spring:
       host: localhost
       port: 6379
       timeout: 5000ms
+      repositories:
+        enabled: false
 
 jwt:
   secret: test-secret-key-for-unit-testing-minimum-256-bits-required

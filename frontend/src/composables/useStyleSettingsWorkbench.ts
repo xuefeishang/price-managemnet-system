@@ -1,12 +1,14 @@
 /**
  * 样式设置工作台状态管理
  * 实现三层状态模型：serverConfig / draftConfig / appliedConfig
- * 核心原则：选择即生效，后台自动保存，失败自动回滚
+ * 核心原则：配置变化只更新预览，点击保存后才持久化并创建版本快照
  */
 
 import { ref, computed } from 'vue'
-import { getStyleConfig, updateStyleConfig, switchColorScheme, switchLayoutStyle, switchFontPreset } from '@/api/style'
-import type { StyleConfig } from '@/types/theme'
+import { getStyleConfig, updateStyleConfig, getColorSchemes, getLayoutStyles, getFontPresets } from '@/api/style'
+import type { StyleConfig, StylePreset } from '@/types/theme'
+import { resolveLayoutTokens, applyLayoutTokensToCSS } from '@/utils/layoutTokenResolver'
+import { FONT_SIZE_PRESETS, PRESET_THEMES } from '@/types/theme'
 
 // 保存状态类型
 export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed'
@@ -14,12 +16,18 @@ export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed'
 // 工作台状态接口
 export interface StyleWorkbenchState {
   serverConfig: StyleConfig | null    // 最近一次服务端确认的配置
-  draftConfig: StyleConfig | null     // 当前页面正在展示和操作的配置
-  appliedConfig: StyleConfig | null   // 已写入 CSS 变量的配置
+  draftConfig: StyleConfig | null     // 当前页面正在展示和操作的配置（预览数据源）
+  appliedConfig: StyleConfig | null   // 已写入 CSS 变量的配置（全局生效）
   saveStatus: SaveStatus
   lastSavedAt: string | null
   lastError: string | null
 }
+
+// 预设缓存
+const colorSchemesCache = ref<StylePreset[]>([])
+const layoutStylesCache = ref<StylePreset[]>([])
+const fontPresetsCache = ref<StylePreset[]>([])
+const presetsLoaded = ref(false)
 
 // 默认配置
 const DEFAULT_CONFIG: StyleConfig = {
@@ -39,13 +47,23 @@ const DEFAULT_CONFIG: StyleConfig = {
   activeColorScheme: '',
   activeLayoutStyle: 'layout_top_nav',
   fontSizePreset: 'standard',
-  fontSizeXs: '0.75rem',
+  fontSizeXs: '0.8125rem',
   fontSizeSm: '0.875rem',
   fontSizeBase: '1rem',
   fontSizeLg: '1.125rem',
   fontSizeXl: '1.25rem',
   fontSize2xl: '1.5rem',
-  fontSize3xl: '1.875rem'
+  fontSize3xl: '2rem',
+  // 双Logo配置
+  logoUrlLogin: '',
+  logoUrlNav: '',
+  logoSizeLogin: '',
+  logoSizeNav: '',
+  // 副标题配置
+  subtitleText: '价格展示与管理平台',
+  subtitleFont: 'body',
+  subtitleFontWeight: '400',
+  subtitleColor: 'rgba(255, 255, 255, 0.75)'
 }
 
 // 全局状态
@@ -101,44 +119,31 @@ const applyThemeToCSS = (config: StyleConfig) => {
   applyLayoutVariables(config.activeLayoutStyle || 'layout_top_nav')
 }
 
-// 应用布局 CSS 变量
+// 应用布局 CSS 变量（使用统一 resolver）
 const applyLayoutVariables = (layoutStyle: string) => {
-  const root = document.documentElement
+  const tokens = resolveLayoutTokens(layoutStyle)
+  applyLayoutTokensToCSS(tokens)
+}
 
-  let navPosition = 'top'
-  let navBgColor = '#FFFFFF'
-  let navTextColor = '#1A1A1A'
-  let pageBgColor = '#FAFAFA'
-  let cardBgColor = '#FFFFFF'
-  let cardShadow = '0 1px 3px rgba(0,0,0,0.1)'
-  let borderRadius = '12px'
+/**
+ * 加载预设配置缓存
+ */
+const loadPresets = async (): Promise<void> => {
+  if (presetsLoaded.value) return
 
-  switch (layoutStyle) {
-    case 'layout_left_nav':
-      navPosition = 'left'
-      break
-    case 'layout_dashboard':
-      navPosition = 'left'
-      navBgColor = '#1E3A5F'
-      navTextColor = '#FFFFFF'
-      pageBgColor = '#F5F5F5'
-      borderRadius = '8px'
-      break
-    case 'layout_minimal':
-      navPosition = 'top-minimal'
-      navBgColor = 'transparent'
-      cardShadow = '0 4px 6px rgba(0,0,0,0.1)'
-      borderRadius = '16px'
-      break
+  try {
+    const [colorRes, layoutRes, fontRes] = await Promise.all([
+      getColorSchemes(),
+      getLayoutStyles(),
+      getFontPresets()
+    ])
+    colorSchemesCache.value = colorRes.data || []
+    layoutStylesCache.value = layoutRes.data || []
+    fontPresetsCache.value = fontRes.data || []
+    presetsLoaded.value = true
+  } catch (error) {
+    console.error('Failed to load presets:', error)
   }
-
-  root.style.setProperty('--app-nav-position', navPosition)
-  root.style.setProperty('--app-nav-bg', navBgColor)
-  root.style.setProperty('--app-nav-text', navTextColor)
-  root.style.setProperty('--app-page-bg', pageBgColor)
-  root.style.setProperty('--app-card-bg', cardBgColor)
-  root.style.setProperty('--app-card-shadow', cardShadow)
-  root.style.setProperty('--app-card-radius', borderRadius)
 }
 
 /**
@@ -151,7 +156,12 @@ const loadWorkbenchConfig = async (_forceRefresh: boolean = false): Promise<void
   isLoading.value = true
 
   try {
-    const response = await getStyleConfig()
+    // 并行加载配置和预设
+    const [response] = await Promise.all([
+      getStyleConfig(),
+      loadPresets()
+    ])
+
     if (response.data) {
       const config = response.data as StyleConfig & { chartColors?: string | string[] }
 
@@ -182,124 +192,173 @@ const loadWorkbenchConfig = async (_forceRefresh: boolean = false): Promise<void
 }
 
 /**
- * 应用配置变更并持久化
- * 核心方法：选择即生效，后台自动保存
+ * 仅更新草稿配置（预览响应，不保存）
+ * 用于配置面板的表单变化
+ */
+const updateDraft = (patch: Partial<StyleConfig>): void => {
+  if (!draftConfig.value) return
+  Object.assign(draftConfig.value, patch)
+  saveStatus.value = 'dirty'
+}
+
+/**
+ * 保存配置（持久化 + 创建快照 + 全局生效）
+ * 用户点击保存按钮时调用
+ */
+const saveConfig = async (): Promise<void> => {
+  if (!draftConfig.value || saveStatus.value === 'saving') return
+
+  saveStatus.value = 'saving'
+  lastError.value = null
+
+  try {
+    await updateStyleConfig(draftConfig.value)
+    serverConfig.value = clone(draftConfig.value)
+    appliedConfig.value = clone(draftConfig.value)
+    applyThemeToCSS(draftConfig.value)
+    saveStatus.value = 'saved'
+    lastSavedAt.value = new Date().toISOString()
+  } catch (error) {
+    console.error('Failed to save config:', error)
+    saveStatus.value = 'failed'
+    lastError.value = '保存失败'
+    throw error
+  }
+}
+
+/**
+ * 放弃修改（恢复到服务端配置）
+ */
+const discardChanges = (): void => {
+  if (!serverConfig.value) return
+  draftConfig.value = clone(serverConfig.value)
+  saveStatus.value = 'idle'
+  lastError.value = null
+}
+
+/**
+ * 应用配置变更并持久化（已废弃）
+ * @deprecated 请使用 updateDraft() + saveConfig() 替代
  */
 const applyAndPersist = async (
   patch: Partial<StyleConfig>
 ): Promise<void> => {
   if (!draftConfig.value) return
 
-  const previous = clone(draftConfig.value)
-
-  // 1. 更新 draftConfig
+  // 更新草稿
   Object.assign(draftConfig.value, patch)
-
-  // 2. 立即应用到 CSS 变量
-  applyThemeToCSS(draftConfig.value)
-  appliedConfig.value = clone(draftConfig.value)
-
-  // 3. 标记为脏状态
   saveStatus.value = 'dirty'
 
-  // 4. 保存到服务端
-  saveStatus.value = 'saving'
-
-  try {
-    await updateStyleConfig(draftConfig.value)
-    serverConfig.value = clone(draftConfig.value)
-    saveStatus.value = 'saved'
-    lastSavedAt.value = new Date().toISOString()
-    lastError.value = null
-  } catch (error) {
-    console.error('Failed to save config:', error)
-
-    // 回滚到服务端配置
-    draftConfig.value = previous
-    applyThemeToCSS(previous)
-    appliedConfig.value = clone(previous)
-    saveStatus.value = 'failed'
-    lastError.value = '保存失败，已恢复'
-  }
+  // 立即保存
+  await saveConfig()
 }
 
 /**
- * 切换色彩方案（立即生效）
+ * 切换色彩方案（只更新草稿，不立即保存）
+ * 从预设配置中合并颜色到 draftConfig
  */
-const applyColorScheme = async (schemeKey: string): Promise<void> => {
+const applyColorScheme = (schemeKey: string): void => {
   if (!draftConfig.value) return
 
-  const previousKey = draftConfig.value.activeColorScheme
-
-  try {
-    await switchColorScheme(schemeKey)
-    draftConfig.value.activeColorScheme = schemeKey
-
-    // 重新加载配置以获取新颜色
-    await loadWorkbenchConfig(true)
-    saveStatus.value = 'saved'
-    lastSavedAt.value = new Date().toISOString()
-  } catch (error) {
-    console.error('Failed to switch color scheme:', error)
-    draftConfig.value.activeColorScheme = previousKey
-    saveStatus.value = 'failed'
-    lastError.value = '切换色彩方案失败'
-    throw error
+  // 从缓存中查找预设配置
+  const preset = colorSchemesCache.value.find(p => p.key === schemeKey)
+  if (!preset?.config) {
+    // 如果缓存中没有，尝试从 PRESET_THEMES 中查找
+    const theme = PRESET_THEMES.find(t => t.key === schemeKey)
+    if (theme) {
+      draftConfig.value.activeColorScheme = schemeKey
+      draftConfig.value.priceRiseColor = theme.colors.priceRise
+      draftConfig.value.priceFallColor = theme.colors.priceFall
+      draftConfig.value.priceFlatColor = theme.colors.priceFlat || draftConfig.value.priceFlatColor
+      draftConfig.value.chartPrimaryColor = theme.colors.chartPrimary
+      draftConfig.value.chartBudgetColor = theme.colors.chartBudget
+      draftConfig.value.chartColors = theme.colors.chartColors
+      saveStatus.value = 'dirty'
+    }
+    return
   }
+
+  const config = preset.config as Record<string, unknown>
+  draftConfig.value.activeColorScheme = schemeKey
+
+  // 合并预设颜色配置
+  if (config.priceRiseColor) draftConfig.value.priceRiseColor = config.priceRiseColor as string
+  if (config.priceFallColor) draftConfig.value.priceFallColor = config.priceFallColor as string
+  if (config.priceFlatColor) draftConfig.value.priceFlatColor = config.priceFlatColor as string
+  if (config.chartPrimaryColor) draftConfig.value.chartPrimaryColor = config.chartPrimaryColor as string
+  if (config.chartBudgetColor) draftConfig.value.chartBudgetColor = config.chartBudgetColor as string
+  if (config.chartColors) {
+    draftConfig.value.chartColors = Array.isArray(config.chartColors)
+      ? config.chartColors as string[]
+      : (config.chartColors as string).split(',')
+  }
+
+  saveStatus.value = 'dirty'
 }
 
 /**
- * 切换布局方案（立即生效）
+ * 切换布局方案（只更新草稿，不立即保存）
  */
-const applyLayoutStyle = async (layoutKey: string): Promise<void> => {
+const applyLayoutStyle = (layoutKey: string): void => {
   if (!draftConfig.value) return
 
-  const previousKey = draftConfig.value.activeLayoutStyle
-
-  try {
-    await switchLayoutStyle(layoutKey)
-    draftConfig.value.activeLayoutStyle = layoutKey
-    applyLayoutVariables(layoutKey)
-    appliedConfig.value = clone(draftConfig.value)
-    saveStatus.value = 'saved'
-    lastSavedAt.value = new Date().toISOString()
-  } catch (error) {
-    console.error('Failed to switch layout style:', error)
-    draftConfig.value.activeLayoutStyle = previousKey
-    applyLayoutVariables(previousKey || 'layout_top_nav')
-    saveStatus.value = 'failed'
-    lastError.value = '切换布局方案失败'
-    throw error
-  }
+  draftConfig.value.activeLayoutStyle = layoutKey
+  saveStatus.value = 'dirty'
 }
 
 /**
- * 切换字号预设（立即生效）
+ * 切换字号预设（只更新草稿，不立即保存）
+ * 从预设配置中合并字号到 draftConfig
  */
-const applyFontPreset = async (presetKey: string): Promise<void> => {
+const applyFontPreset = (presetKey: string): void => {
   if (!draftConfig.value) return
 
-  const previousKey = draftConfig.value.fontSizePreset
+  // 从缓存中查找预设配置
+  const preset = fontPresetsCache.value.find(p => p.key === presetKey)
+  if (preset?.config) {
+    const config = preset.config as Record<string, unknown>
+    draftConfig.value.fontSizePreset = presetKey
+    const sizes = {
+      xs: config.fontSizeXs || config.xs,
+      sm: config.fontSizeSm || config.sm,
+      base: config.fontSizeBase || config.base,
+      lg: config.fontSizeLg || config.lg,
+      xl: config.fontSizeXl || config.xl,
+      '2xl': config.fontSize2xl || config['2xl'],
+      '3xl': config.fontSize3xl || config['3xl']
+    }
+    if (sizes.xs) draftConfig.value.fontSizeXs = sizes.xs as string
+    if (sizes.sm) draftConfig.value.fontSizeSm = sizes.sm as string
+    if (sizes.base) draftConfig.value.fontSizeBase = sizes.base as string
+    if (sizes.lg) draftConfig.value.fontSizeLg = sizes.lg as string
+    if (sizes.xl) draftConfig.value.fontSizeXl = sizes.xl as string
+    if (sizes['2xl']) draftConfig.value.fontSize2xl = sizes['2xl'] as string
+    if (sizes['3xl']) draftConfig.value.fontSize3xl = sizes['3xl'] as string
+    saveStatus.value = 'dirty'
+    return
+  }
 
-  try {
-    await switchFontPreset(presetKey)
-    await loadWorkbenchConfig(true)
-    saveStatus.value = 'saved'
-    lastSavedAt.value = new Date().toISOString()
-  } catch (error) {
-    console.error('Failed to switch font preset:', error)
-    draftConfig.value.fontSizePreset = previousKey
-    saveStatus.value = 'failed'
-    lastError.value = '切换字号预设失败'
-    throw error
+  // 从 FONT_SIZE_PRESETS 中查找
+  const fontPreset = FONT_SIZE_PRESETS.find(p => p.key === presetKey)
+  if (fontPreset) {
+    draftConfig.value.fontSizePreset = presetKey
+    draftConfig.value.fontSizeXs = fontPreset.sizes.xs
+    draftConfig.value.fontSizeSm = fontPreset.sizes.sm
+    draftConfig.value.fontSizeBase = fontPreset.sizes.base
+    draftConfig.value.fontSizeLg = fontPreset.sizes.lg
+    draftConfig.value.fontSizeXl = fontPreset.sizes.xl
+    draftConfig.value.fontSize2xl = fontPreset.sizes['2xl']
+    draftConfig.value.fontSize3xl = fontPreset.sizes['3xl']
+    saveStatus.value = 'dirty'
   }
 }
 
 /**
- * 恢复默认配置
+ * 恢复默认配置（只更新草稿，不立即保存）
  */
-const resetToDefault = async (): Promise<void> => {
-  await applyAndPersist(clone(DEFAULT_CONFIG))
+const resetToDefault = (): void => {
+  draftConfig.value = clone(DEFAULT_CONFIG)
+  saveStatus.value = 'dirty'
 }
 
 /**
@@ -343,6 +402,26 @@ const logoUrl = computed(() => draftConfig.value?.logoUrl || '')
 const logoSize = computed(() => draftConfig.value?.logoSize || 'medium')
 
 /**
+ * 计算属性：登录页Logo URL
+ */
+const logoUrlLogin = computed(() => draftConfig.value?.logoUrlLogin || '')
+
+/**
+ * 计算属性：导航栏Logo URL
+ */
+const logoUrlNav = computed(() => draftConfig.value?.logoUrlNav || '')
+
+/**
+ * 计算属性：登录页Logo尺寸
+ */
+const logoSizeLogin = computed(() => draftConfig.value?.logoSizeLogin || '')
+
+/**
+ * 计算属性：导航栏Logo尺寸
+ */
+const logoSizeNav = computed(() => draftConfig.value?.logoSizeNav || '')
+
+/**
  * 计算属性：是否已加载
  */
 const isLoaded = computed(() => serverConfig.value !== null)
@@ -362,6 +441,11 @@ export function useStyleSettingsWorkbench() {
     isLoading: computed(() => isLoading.value),
     isLoaded,
 
+    // 预设缓存
+    colorSchemes: computed(() => colorSchemesCache.value),
+    layoutStyles: computed(() => layoutStylesCache.value),
+    fontPresets: computed(() => fontPresetsCache.value),
+
     // 计算属性（便捷访问）
     activeColorSchemeKey,
     activeLayoutStyleKey,
@@ -369,10 +453,17 @@ export function useStyleSettingsWorkbench() {
     currentSystemName,
     logoUrl,
     logoSize,
+    logoUrlLogin,
+    logoUrlNav,
+    logoSizeLogin,
+    logoSizeNav,
 
     // 方法
     loadWorkbenchConfig,
-    applyAndPersist,
+    updateDraft,
+    saveConfig,
+    discardChanges,
+    applyAndPersist, // @deprecated - 请使用 updateDraft() + saveConfig()
     applyColorScheme,
     applyLayoutStyle,
     applyFontPreset,

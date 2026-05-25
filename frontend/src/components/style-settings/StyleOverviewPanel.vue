@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useStyleSettingsWorkbench } from '@/composables/useStyleSettingsWorkbench'
+import { resolveStylePresetName } from '@/utils/stylePresetNames'
 
 const emit = defineEmits<{
-  (e: 'reset-default'): void
-  (e: 'open-version'): void
-  (e: 'export-config'): void
   (e: 'navigate', section: string): void
 }>()
 
@@ -14,10 +12,13 @@ const workbench = useStyleSettingsWorkbench()
 // 当前方案摘要
 const currentScheme = computed(() => {
   if (!workbench.isLoaded.value) return null
+  const colorKey = workbench.activeColorSchemeKey.value
+  const layoutKey = workbench.activeLayoutStyleKey.value
+  const fontKey = workbench.activeFontPresetKey.value
   return {
-    colorScheme: workbench.activeColorSchemeKey.value || '默认',
-    layoutStyle: workbench.activeLayoutStyleKey.value || '顶部导航',
-    fontPreset: workbench.activeFontPresetKey.value || '标准',
+    colorScheme: resolveStylePresetName(workbench.colorSchemes.value, colorKey, '默认'),
+    layoutStyle: resolveStylePresetName(workbench.layoutStyles.value, layoutKey, '默认'),
+    fontPreset: resolveStylePresetName(workbench.fontPresets.value, fontKey, '标准'),
     systemName: workbench.currentSystemName.value,
     hasLogo: !!workbench.logoUrl.value
   }
@@ -31,27 +32,6 @@ const healthChecks = computed(() => [
   { label: '首页组件配置', status: 'ok' },
   { label: '分类视觉配置', status: 'ok' }
 ])
-
-// 快捷操作
-const quickActions = [
-  { label: '恢复默认', action: 'reset', icon: '🔄' },
-  { label: '历史版本', action: 'version', icon: '⏪' },
-  { label: '导出配置', action: 'export', icon: '📥' }
-]
-
-const handleAction = (action: string) => {
-  switch (action) {
-    case 'reset':
-      emit('reset-default')
-      break
-    case 'version':
-      emit('open-version')
-      break
-    case 'export':
-      emit('export-config')
-      break
-  }
-}
 
 const navigateTo = (section: string) => {
   emit('navigate', section)
@@ -98,12 +78,12 @@ const navigateTo = (section: string) => {
           </span>
         </div>
         <div class="status-row">
-          <span class="status-label">自动保存</span>
-          <span class="status-value status-ok">已开启</span>
+          <span class="status-label">变更方式</span>
+          <span class="status-value">先进入草稿</span>
         </div>
         <div class="status-row">
-          <span class="status-label">失败处理</span>
-          <span class="status-value">自动回滚到上一版</span>
+          <span class="status-label">生效方式</span>
+          <span class="status-value">点击顶部保存配置</span>
         </div>
       </div>
     </section>
@@ -124,21 +104,6 @@ const navigateTo = (section: string) => {
       </div>
     </section>
 
-    <!-- 快捷操作 -->
-    <section class="overview-section">
-      <h2 class="section-title">快捷操作</h2>
-      <div class="quick-actions">
-        <button
-          v-for="action in quickActions"
-          :key="action.action"
-          class="quick-action-btn"
-          @click="handleAction(action.action)"
-        >
-          <span class="action-icon">{{ action.icon }}</span>
-          <span class="action-label">{{ action.label }}</span>
-        </button>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -277,47 +242,9 @@ const navigateTo = (section: string) => {
   color: #1A1A1A;
 }
 
-/* 快捷操作 */
-.quick-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.quick-action-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 150ms;
-}
-
-.quick-action-btn:hover {
-  border-color: #0D6E6E;
-  background: rgba(13, 110, 110, 0.05);
-}
-
-.action-icon {
-  font-size: 24px;
-}
-
-.action-label {
-  font-size: var(--font-size-sm);
-  color: #666666;
-}
-
 @media (max-width: 768px) {
   .scheme-cards {
     grid-template-columns: 1fr;
-  }
-
-  .quick-actions {
-    flex-direction: column;
   }
 }
 </style>

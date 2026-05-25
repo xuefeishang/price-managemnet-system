@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCategory, createCategory, updateCategory } from '@/api/categories'
 import { getStatusLabel, loadAllDicts } from '@/composables/useDict'
+import { useLayout } from '@/composables/useLayout'
 import type { CategoryStatus } from '@/types'
 
 const route = useRoute()
@@ -13,14 +14,7 @@ const isEdit = !!categoryId
 
 const loading = ref(false)
 const saving = ref(false)
-
-// 判断是否为PC布局
-const isPCLayout = computed(() => {
-  if (typeof window !== 'undefined') {
-    return window.innerWidth >= 1024
-  }
-  return false
-})
+const { isPCLayout } = useLayout()
 
 // 表单数据
 const form = reactive<{
@@ -155,7 +149,7 @@ onMounted(() => {
               />
             </div>
 
-            <div class="form-group">
+            <div class="form-group form-group-wide">
               <label class="form-label">备注</label>
               <textarea
                 v-model="form.remark"
@@ -276,18 +270,22 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 .category-edit-page {
-  
+  width: 100%;
+  display: flex;
+  flex-direction: column;
   background-color: var(--gray-50, #FAFAFA);
 }
 
 /* ==================== PC布局 ==================== */
 .pc-edit {
-  padding: 32px;
-  max-width: 600px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
 .pc-header {
-  margin-bottom: 32px;
+  margin-bottom: 0;
 }
 
 .page-title-pc {
@@ -309,6 +307,9 @@ onMounted(() => {
   border-radius: 12px;
   padding: 24px;
   border: 1px solid #E5E5E5;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
 }
 
 .pc-actions {
@@ -318,13 +319,6 @@ onMounted(() => {
 }
 
 /* ==================== 移动端布局 ==================== */
-.category-edit-page {
-  display: flex;
-  flex-direction: column;
-  max-width: 402px;
-  margin: 0 auto;
-}
-
 .navbar {
   height: 56px;
   background: var(--bg-card, #FFFFFF);
@@ -406,11 +400,11 @@ onMounted(() => {
 }
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
+.form-group-wide {
+  grid-column: 1 / -1;
 }
 
 .form-label {
@@ -498,9 +492,22 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
+  .category-edit-page {
+    max-width: 402px;
+    margin: 0 auto;
+  }
+
   .pc-edit {
     display: none;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group:last-child {
+    margin-bottom: 0;
   }
 }
 

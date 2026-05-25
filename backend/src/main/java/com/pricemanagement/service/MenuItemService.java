@@ -229,12 +229,9 @@ public class MenuItemService {
             createMenuItem(basicMgmt, "审批管理", "/approval", "check-circle", 4, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
 
             // Create child menus under 基础运维 - 字典管理
-            createMenuItem(basicMgmt, "字典管理", null, "dict", 5, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
-            MenuItem dictMgmt = menuItemRepository.findByPath("/dict").orElse(null);
-            if (dictMgmt != null) {
-                createMenuItem(dictMgmt, "产地管理", "/origins", null, 1, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
-                createMenuItem(dictMgmt, "客户管理", "/customers", null, 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
-            }
+            MenuItem dictMgmt = createMenuItem(basicMgmt, "字典管理", null, "dict", 5, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(dictMgmt, "产地管理", "/origins", null, 1, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(dictMgmt, "客户管理", "/customers", null, 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
 
             log.info("Default menu items initialized");
         }

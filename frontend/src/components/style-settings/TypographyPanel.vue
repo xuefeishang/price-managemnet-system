@@ -24,21 +24,17 @@ const loadFontPresets = async () => {
   }
 }
 
-// 切换字号预设
-const switchPreset = async (presetKey: string) => {
-  try {
-    await workbench.applyFontPreset(presetKey)
-    showToast({ message: '字号预设已切换', position: 'top', duration: 1500 })
-  } catch (error) {
-    showToast({ message: '切换失败，已恢复原设置', position: 'top', duration: 2000 })
-  }
+// 切换字号预设（只更新草稿，需保存才生效）
+const switchPreset = (presetKey: string) => {
+  workbench.applyFontPreset(presetKey)
+  showToast({ message: '字号预设已进入草稿，请点击顶部保存配置', position: 'top', duration: 1500 })
 }
 
 // 更新字体
-const updateFont = async (key: 'headingFont' | 'bodyFont' | 'numberFont', value: string) => {
+const updateFont = (key: 'headingFont' | 'bodyFont' | 'numberFont', value: string) => {
   if (!workbench.draftConfig.value) return
   workbench.draftConfig.value[key] = value
-  await workbench.applyAndPersist({ [key]: value })
+  workbench.updateDraft({ [key]: value })
 }
 
 // rem 转 px
@@ -64,7 +60,7 @@ onMounted(() => {
         字号预设
         <span class="section-status">当前：{{ activeKey || '标准' }}</span>
       </h2>
-      <p class="section-hint">选择预设字号方案，影响全局文本显示</p>
+      <p class="section-hint">选择预设字号方案后进入草稿，点击顶部保存配置后生效</p>
 
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
@@ -91,7 +87,7 @@ onMounted(() => {
     <!-- 字体族配置 -->
     <section class="config-section" v-if="workbench.draftConfig.value">
       <h2 class="section-title">字体族</h2>
-      <p class="section-hint">即时生效，自动保存</p>
+      <p class="section-hint">修改后进入草稿，点击顶部保存配置后生效</p>
 
       <div class="font-config">
         <div class="font-row">

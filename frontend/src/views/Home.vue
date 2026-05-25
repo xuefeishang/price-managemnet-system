@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -8,15 +8,22 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { getProducts, getPricesByDate, getPriceTrend } from '@/api/products'
 import { getCategories } from '@/api/categories'
+import { getHomeDashboard, getHomeSummary, getPriceAlerts } from '@/api/home'
 import { usePermission, Permission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
 import { useHomeConfig } from '@/composables/useHomeConfig'
-import { loadAllDicts, getCurrencySymbol, getDictByCategory } from '@/composables/useDict'
+import { loadAllDicts, getCurrencySymbol, getOriginName } from '@/composables/useDict'
 import { getCategoryVisual, getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
+import { eventBus } from '@/utils/eventBus'
 import CategoryFilterPanel from '@/components/CategoryFilterPanel.vue'
 import CategoryIcons from '@/components/icons/CategoryIcons.vue'
-import type { Product, Price } from '@/types'
+import SummarySection from '@/components/home/SummarySection.vue'
+import TrendAnalysisChart from '@/components/home/TrendAnalysisChart.vue'
+import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
+import type { HomeSummary, PriceAlert } from '@/api/home'
+import type { ProductTrendItem } from '@/components/home/TrendAnalysisChart.vue'
+import type { Product, Price, ProductCategory } from '@/types'
 
 // ECharts 注册
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -25,7 +32,7 @@ const router = useRouter()
 const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
 const { isPCLayout, windowWidth } = useLayout()
-const { layoutConfig, loadHomeConfig } = useHomeConfig()
+const { layoutConfig, widgets, chartRanges, loadHomeConfig } = useHomeConfig()
 
 // 状态
 const loading = ref(false)
@@ -36,10 +43,13 @@ const selectedCategoryIds = ref<number[]>([])
 
 // 产品数据
 const products = ref<Product[]>([])
+const categories = ref<ProductCategory[]>([])
 const priceMap = ref<Map<number, Price>>(new Map())
 const previousPriceMap = ref<Map<number, Price>>(new Map())
 const priceHistoryMap = ref<Map<number, any[]>>(new Map())
 const chartOptionsMap = ref<Map<number, any>>(new Map())
+const homeSummary = ref<HomeSummary | null>(null)
+const priceAlerts = ref<PriceAlert[]>([])
 
 // 日期选择
 const getYesterday = () => {
@@ -57,16 +67,49 @@ const gridCols = computed(() => {
   return layoutConfig.value.cardColumnsMobile
 })
 
+const visibleHomeSections = computed(() => {
+  const configured = widgets.value.length > 0
+    ? widgets.value.filter(widget => widget.enabled)
+    : [
+        { key: 'summary_stats', name: '经营摘要', enabled: true, order: 1 },
+        { key: 'core_metrics', name: '核心指标', enabled: true, order: 2 },
+        { key: 'trend_chart', name: '重点走势', enabled: true, order: 3 },
+        { key: 'product_list', name: '产品列表', enabled: true, order: 4 },
+        { key: 'risk_alerts', name: '风险预警', enabled: true, order: 5 }
+      ]
+
+  return configured
+    .map(widget => ({ ...widget, key: widget.key === 'price_alerts' ? 'risk_alerts' : widget.key }))
+    .filter(widget => {
+      if (widget.key === 'trend_chart') return layoutConfig.value.showTrendChart
+      if (widget.key === 'risk_alerts') return layoutConfig.value.showAlerts
+      return ['summary_stats', 'core_metrics', 'trend_chart', 'product_list', 'risk_alerts'].includes(widget.key)
+    })
+    .sort((a, b) => a.order - b.order)
+})
+
+const getCategorySortOrder = (product: Product) => {
+  const categoryId = getProductCategoryId(product)
+  if (!categoryId) return Number.MAX_SAFE_INTEGER
+  return categoryMap.value.get(categoryId)?.sortOrder ?? product.category?.sortOrder ?? Number.MAX_SAFE_INTEGER
+}
+
+const sortProductsByHomeOrder = (items: Product[]) =>
+  [...items].sort((a, b) =>
+    getCategorySortOrder(a) - getCategorySortOrder(b) ||
+    (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+    a.name.localeCompare(b.name, 'zh-CN') ||
+    a.id - b.id
+  )
+
 const filteredProducts = computed(() => {
-  const active = products.value.filter(p => p.status === 'ACTIVE')
-  console.log('[Home] filteredProducts: active products =', active.length)
+  const active = sortProductsByHomeOrder(products.value.filter(p => p.status === 'ACTIVE'))
 
   // 分类筛选
   if (selectedCategoryIds.value.length > 0) {
     const filtered = active.filter(p =>
-      p.categoryId && selectedCategoryIds.value.includes(p.categoryId)
+      getProductCategoryId(p) && selectedCategoryIds.value.includes(getProductCategoryId(p)!)
     )
-    if (filtered.length === 0 && !searchQueryDebounced.value) return active
     if (filtered.length === 0) return []
     if (!searchQueryDebounced.value) return filtered
     const q = searchQueryDebounced.value.toLowerCase()
@@ -80,8 +123,53 @@ const filteredProducts = computed(() => {
 })
 
 const homeProducts = computed(() =>
-  products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
+  sortProductsByHomeOrder(products.value.filter(p => p.showOnHome && p.status === 'ACTIVE'))
 )
+
+const categoryMap = computed(() => {
+  const map = new Map<number, ProductCategory>()
+  categories.value.forEach(category => map.set(category.id, category))
+  return map
+})
+
+const filteredProductGroups = computed(() => {
+  const groups = new Map<number | string, {
+    id: number | string
+    name: string
+    category?: ProductCategory
+    products: Product[]
+  }>()
+
+  filteredProducts.value.forEach(product => {
+    const categoryId = getProductCategoryId(product)
+    const category = categoryId ? (categoryMap.value.get(categoryId) || product.category) : undefined
+    const groupId = categoryId || 'uncategorized'
+    const groupName = category?.name || '未分类'
+
+    if (!groups.has(groupId)) {
+      groups.set(groupId, {
+        id: groupId,
+        name: groupName,
+        category,
+        products: []
+      })
+    }
+    groups.get(groupId)!.products.push(product)
+  })
+
+  groups.forEach(group => {
+    group.products = sortProductsByHomeOrder(group.products)
+  })
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.id === 'uncategorized') return 1
+    if (b.id === 'uncategorized') return -1
+    return (categoryMap.value.get(Number(a.id))?.sortOrder ?? a.category?.sortOrder ?? 0) -
+      (categoryMap.value.get(Number(b.id))?.sortOrder ?? b.category?.sortOrder ?? 0) ||
+      a.name.localeCompare(b.name, 'zh-CN') ||
+      Number(a.id) - Number(b.id)
+  })
+})
 
 const priceChangeCache = computed(() => {
   const cache = new Map<number, ReturnType<typeof getPriceChangeInfo>>()
@@ -94,6 +182,97 @@ const lastPriceCache = computed(() => {
   products.value.forEach(p => cache.set(p.id, getLastPriceInfo(p.id)))
   return cache
 })
+
+const summaryForDisplay = computed<HomeSummary>(() => {
+  if (homeSummary.value) return homeSummary.value
+
+  const activeProducts = products.value.filter(p => p.status === 'ACTIVE')
+  const changes = activeProducts
+    .map(product => {
+      const current = priceMap.value.get(product.id)?.currentPrice
+      const previous = previousPriceMap.value.get(product.id)?.currentPrice
+      if (current == null || previous == null || previous === 0) return null
+      return ((current - previous) / previous) * 100
+    })
+    .filter((value): value is number => value != null)
+
+  const risingCount = changes.filter(value => value > 0).length
+  const fallingCount = changes.filter(value => value < 0).length
+  const avgPriceChange = changes.length
+    ? changes.reduce((sum, value) => sum + value, 0) / changes.length
+    : 0
+
+  return {
+    totalProducts: activeProducts.length,
+    priceUpdatedToday: priceMap.value.size,
+    avgPriceChange,
+    risingCount,
+    fallingCount,
+    flatCount: Math.max(changes.length - risingCount - fallingCount, 0)
+  }
+})
+
+const trendRangesForDisplay = computed(() => chartRanges.value.length > 0
+  ? chartRanges.value
+  : [
+      { key: '7d', label: '7日', days: 7 },
+      { key: '30d', label: '30日', days: 30 },
+      { key: '90d', label: '90日', days: 90 }
+    ])
+
+const normalizeTrendDirection = (direction?: string): ProductTrendItem['direction'] => {
+  if (direction === 'up' || direction === 'down') return direction
+  return 'flat'
+}
+
+const parseOriginIds = (originIds?: string) => {
+  if (!originIds) return []
+  try {
+    const parsed = JSON.parse(originIds)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+const getProductOriginLabel = (product: Pick<Product, 'originIds'>) => {
+  const originNames = parseOriginIds(product.originIds)
+    .map(key => getOriginName(key))
+    .filter(Boolean)
+    .join(' / ')
+  return originNames
+}
+
+const hasProductOrigin = (product: Pick<Product, 'originIds'>) => getProductOriginLabel(product).length > 0
+
+const trendProductItems = computed<ProductTrendItem[]>(() =>
+  homeProducts.value
+    .slice(0, Math.min(layoutConfig.value.featuredProductCount, 4))
+    .map(product => {
+      const history = priceHistoryMap.value.get(product.id) || buildFallbackTrend(product.id)
+      const change = priceChangeCache.value.get(product.id)
+      const categoryVisual = getCategoryVisual(getProductCategoryId(product))
+
+      return {
+        id: product.id,
+        name: product.name,
+        specs: product.specs,
+        originLabel: getProductOriginLabel(product),
+        hasOrigin: hasProductOrigin(product),
+        currencySymbol: getCurrencySymbolLocal(product.currency),
+        unit: getTodayPrice(product.id)?.unit || product.unit,
+        direction: normalizeTrendDirection(change?.direction),
+        formattedDiff: change?.formattedDiff || '0',
+        currentPrice: getTodayPrice(product.id)?.currentPrice ?? null,
+        points: history.map(item => ({
+          date: item.date || item.effectiveDate || item.createdTime,
+          price: item.currentPrice ?? item.newPrice ?? null
+        })).filter(point => point.date),
+        lineColor: categoryVisual.chartLineColor || categoryVisual.primaryColor,
+        areaColor: categoryVisual.chartAreaColor || categoryVisual.glowColor
+      }
+    })
+)
 
 // 方法
 const getPriceChangeInfo = (productId: number) => {
@@ -126,8 +305,30 @@ const getLastPriceInfo = (productId: number): string | null => {
 
 const getTodayPrice = (productId: number) => priceMap.value.get(productId)
 
+const buildFallbackTrend = (productId: number) => {
+  const current = priceMap.value.get(productId)
+  const previous = previousPriceMap.value.get(productId)
+  const points = []
+
+  if (previous?.currentPrice != null) {
+    points.push({
+      date: getPreviousDate(selectedDate.value),
+      currentPrice: previous.currentPrice
+    })
+  }
+
+  if (current?.currentPrice != null) {
+    points.push({
+      date: selectedDate.value,
+      currentPrice: current.currentPrice
+    })
+  }
+
+  return points
+}
+
 const generateChartOption = (productId: number) => {
-  const history = priceHistoryMap.value.get(productId) || []
+  const history = priceHistoryMap.value.get(productId) || buildFallbackTrend(productId)
   if (history.length === 0) return null
 
   const recent = history.slice(-30)
@@ -135,17 +336,13 @@ const generateChartOption = (productId: number) => {
     const d = new Date(h.date)
     return `${d.getMonth() + 1}/${d.getDate()}`
   })
-  const prices = recent.map(h => h.currentPrice)
+  const prices = recent.map(h => h.currentPrice).filter((price: number | null | undefined) => price != null)
+  if (prices.length === 0) return null
 
-  let lineColor = themeConfig.value.chartPrimaryColor || '#0D6E6E'
-  if (prices.length >= 2) {
-    const first = prices[0]
-    const last = prices[prices.length - 1]
-    if (first != null && last != null) {
-      if (last > first) lineColor = themeConfig.value.priceRiseColor
-      else if (last < first) lineColor = themeConfig.value.priceFallColor
-    }
-  }
+  const product = products.value.find(item => item.id === productId)
+  const categoryVisual = getCategoryVisual(product ? getProductCategoryId(product) : undefined)
+  const lineColor = categoryVisual.chartLineColor || categoryVisual.primaryColor || themeConfig.value.chartPrimaryColor || '#0D6E6E'
+  const areaColor = categoryVisual.chartAreaColor || categoryVisual.glowColor || 'rgba(13, 110, 110, 0.12)'
 
   return {
     grid: { left: 0, right: 0, top: 2, bottom: 0 },
@@ -165,14 +362,15 @@ const generateChartOption = (productId: number) => {
       data: prices,
       smooth: true,
       symbol: 'none',
+      itemStyle: { color: lineColor },
       lineStyle: { width: 1.5, color: lineColor },
       areaStyle: {
         color: {
           type: 'linear',
           x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: lineColor + '30' },
-            { offset: 1, color: lineColor + '05' }
+            { offset: 0, color: areaColor },
+            { offset: 1, color: 'rgba(255, 255, 255, 0)' }
           ]
         }
       }
@@ -191,9 +389,25 @@ const getPreviousDate = (dateStr: string) => {
   return date.toISOString().split('T')[0]
 }
 
+const loadHomeDashboardData = async () => {
+  try {
+    const dashboardRes = await getHomeDashboard(selectedDate.value)
+    homeSummary.value = dashboardRes.data?.summary || null
+    priceAlerts.value = dashboardRes.data?.alerts || []
+  } catch (dashboardError) {
+    console.warn('Failed to load dashboard aggregate, fallback to separate APIs:', dashboardError)
+    const [summaryRes, alertsRes] = await Promise.allSettled([
+      getHomeSummary(selectedDate.value),
+      getPriceAlerts(selectedDate.value)
+    ])
+
+    homeSummary.value = summaryRes.status === 'fulfilled' ? summaryRes.value.data : null
+    priceAlerts.value = alertsRes.status === 'fulfilled' ? (alertsRes.value.data || []) : []
+  }
+}
+
 const loadData = async () => {
   loading.value = true
-  console.log('[Home] loadData: loading=true, isPCLayout=', isPCLayout.value)
   error.value = null
   try {
     const prevDate = getPreviousDate(selectedDate.value)
@@ -202,10 +416,9 @@ const loadData = async () => {
       getPricesByDate(selectedDate.value),
       getPricesByDate(prevDate)
     ])
+    await loadHomeDashboardData()
 
     products.value = productsRes.data.content || []
-    console.log('[Home] Loaded products:', products.value.length)
-    console.log('[Home] First product full:', JSON.stringify(products.value[0], null, 2))
     priceMap.value.clear()
     previousPriceMap.value.clear()
     chartOptionsMap.value.clear()
@@ -230,7 +443,9 @@ const loadData = async () => {
       await Promise.all(batch.map(async (product) => {
         try {
           const trendRes = await getPriceTrend(product.id, 30)
-          const trendData = trendRes.data || []
+          const trendData = (trendRes.data && trendRes.data.length > 0)
+            ? trendRes.data
+            : buildFallbackTrend(product.id)
           priceHistoryMap.value.set(product.id, trendData)
           const option = generateChartOption(product.id)
           if (option) chartOptionsMap.value.set(product.id, option)
@@ -245,7 +460,6 @@ const loadData = async () => {
     console.error('Failed to load data:', err)
   } finally {
     loading.value = false
-    console.log('[Home] loadData: loading=false, products=', products.value.length)
   }
 }
 
@@ -258,7 +472,9 @@ const onTrendRangeChange = async (days: number) => {
   for (const product of homeProducts.value.slice(0, 6)) {
     try {
       const trendRes = await getPriceTrend(product.id, days)
-      const trendData = trendRes.data || []
+      const trendData = (trendRes.data && trendRes.data.length > 0)
+        ? trendRes.data
+        : buildFallbackTrend(product.id)
       priceHistoryMap.value.set(product.id, trendData)
       const option = generateChartOption(product.id)
       if (option) chartOptionsMap.value.set(product.id, option)
@@ -298,9 +514,7 @@ const clearCategoryFilter = () => {
 
 // 获取产品的分类ID
 const getProductCategoryId = (product: Product): number | undefined => {
-  const catId = product.categoryId || product.category?.id
-  console.log(`[Home] getProductCategoryId for ${product.name}: categoryId=${product.categoryId}, category.id=${product.category?.id}, result=${catId}`)
-  return catId
+  return product.categoryId || product.category?.id
 }
 
 // 获取产品卡片分类样式
@@ -318,28 +532,44 @@ const getCardClass = (product: Product) => {
 
 const activeTab = ref('home')
 const getCurrencySymbolLocal = getCurrencySymbol
+let unsubscribeProductSort: (() => void) | null = null
+let unsubscribeCategorySort: (() => void) | null = null
 
-onMounted(async () => {
-  // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
+const loadCategories = async () => {
   try {
     const catRes = await getCategories('ACTIVE')
-    const cats = catRes.data || []
-    console.log('[Home] Loaded categories:', cats.map(c => ({ id: c.id, code: c.code })))
+    const cats = [...(catRes.data || [])].sort((a, b) =>
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+      a.name.localeCompare(b.name, 'zh-CN') ||
+      a.id - b.id
+    )
+    categories.value = cats
     registerCategoryCodes(cats.map(c => ({ id: c.id, code: c.code })))
   } catch (e) {
     console.error('Failed to load categories:', e)
   }
+}
+
+onMounted(async () => {
+  // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
+  await loadCategories()
 
   await Promise.all([
     loadAllDicts(),
     loadHomeConfig()
   ])
 
-  // 调试：检查字典数据
-  const visualConfigs = getDictByCategory('category_visual_config')
-  console.log('[Home] category_visual_config dicts:', visualConfigs.length, visualConfigs.map(d => ({ key: d.dictKey, code: JSON.parse(d.extraValue || '{}').categoryCode })))
-
   loadData()
+  unsubscribeProductSort = eventBus.on('product-sort-updated', loadData)
+  unsubscribeCategorySort = eventBus.on('category-sort-updated', async () => {
+    await loadCategories()
+    await loadData()
+  })
+})
+
+onUnmounted(() => {
+  unsubscribeProductSort?.()
+  unsubscribeCategorySort?.()
 })
 </script>
 
@@ -393,8 +623,14 @@ onMounted(async () => {
         </template>
 
         <template v-else>
+          <template v-for="section in visibleHomeSections" :key="section.key">
+          <SummarySection
+            v-if="section.key === 'summary_stats'"
+            :summary="summaryForDisplay"
+          />
+
           <!-- 重点关注指标区 - 大卡片 -->
-          <div class="home-featured-pc" v-if="homeProducts.length > 0">
+          <div class="home-featured-pc" v-else-if="section.key === 'core_metrics' && homeProducts.length > 0">
             <div class="section-header-pc">
               <h2 class="section-title-pc">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -404,7 +640,7 @@ onMounted(async () => {
               </h2>
               <div class="trend-range-tabs">
                 <button
-                  v-for="range in [{ key: '7d', label: '7日', days: 7 }, { key: '30d', label: '30日', days: 30 }, { key: '90d', label: '90日', days: 90 }]"
+                  v-for="range in trendRangesForDisplay"
                   :key="range.key"
                   class="range-tab"
                   :class="{ active: trendDays === range.days }"
@@ -419,18 +655,33 @@ onMounted(async () => {
                 v-for="product in homeProducts.slice(0, layoutConfig.featuredProductCount)"
                 :key="product.id"
                 class="product-card-pc featured"
+                :class="getCardClass(product)"
+                :style="getCardStyle(product)"
                 @click="viewProduct(product)"
               >
+                <div class="card-category-icon" v-if="getProductCategoryId(product)">
+                  <CategoryIcons
+                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                    :size="16"
+                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                  />
+                </div>
                 <div class="card-top">
                   <div class="card-title-row">
-                    <span class="product-name">{{ product.name }}</span>
+                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
                     <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
                       {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
                       {{ priceChangeCache.get(product.id)?.formattedDiff }}
                     </span>
                     <span class="trend-badge flat" v-else>—</span>
                   </div>
-                  <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                  <div class="product-meta-stack">
+                    <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                    <div class="product-origin" v-if="hasProductOrigin(product)">
+                      <span class="origin-label">产地</span>
+                      <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                    </div>
+                  </div>
                 </div>
                 <div class="card-bottom">
                   <div class="price-row">
@@ -443,15 +694,25 @@ onMounted(async () => {
                     </span>
                   </div>
                   <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" />
+                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
+          <TrendAnalysisChart
+            v-else-if="section.key === 'trend_chart' && trendProductItems.length > 0"
+            class="featured-trend-cards"
+            title="重点走势"
+            :show-overview="false"
+            :products="trendProductItems"
+            :columns="2"
+            @range-change="onTrendRangeChange"
+          />
+
           <!-- 产品列表区 -->
-          <div class="product-section-pc">
+          <div class="product-section-pc" v-else-if="section.key === 'product_list'">
             <div class="section-header-pc">
               <h2 class="section-title-pc">产品列表</h2>
               <div class="search-area-pc">
@@ -477,54 +738,84 @@ onMounted(async () => {
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/><path d="M3 5h18M3 19h18M12 9v4"/>
               </svg>
-              <p>{{ searchQuery ? '未找到匹配的产品' : '暂无产品数据' }}</p>
+              <p>{{ searchQuery ? '未找到匹配的产品' : selectedCategoryIds.length > 0 ? '当前分类暂无产品' : '暂无产品数据' }}</p>
             </div>
 
             <!-- 产品网格 -->
-            <div v-else class="product-grid-pc" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
-              <div
-                v-for="product in filteredProducts"
-                :key="product.id"
-                class="product-card-pc"
-                :class="getCardClass(product)"
-                :style="getCardStyle(product)"
-                @click="viewProduct(product)"
+            <div v-else class="category-product-groups">
+              <section
+                v-for="group in filteredProductGroups"
+                :key="group.id"
+                class="category-product-group"
               >
-                <!-- 分类图标 -->
-                <div class="card-category-icon" v-if="getProductCategoryId(product)">
+                <div class="category-group-header" :style="group.category ? getCategoryCardStyle(group.category.id) : {}">
                   <CategoryIcons
-                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                    v-if="group.category"
+                    :icon="getCategoryVisual(group.category.id).icon"
                     :size="16"
-                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                    :color="getCategoryVisual(group.category.id).primaryColor"
                   />
+                  <span class="category-group-name">{{ group.name }}</span>
+                  <span class="category-group-count">{{ group.products.length }} 个产品</span>
                 </div>
-                <div class="card-top">
-                  <div class="card-title-row">
-                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
-                    <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
-                      {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
-                      {{ priceChangeCache.get(product.id)?.formattedDiff }}
-                    </span>
+                <div class="product-grid-pc" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
+                  <div
+                    v-for="product in group.products"
+                    :key="product.id"
+                    class="product-card-pc"
+                    :class="getCardClass(product)"
+                    :style="getCardStyle(product)"
+                    @click="viewProduct(product)"
+                  >
+                    <!-- 分类图标 -->
+                    <div class="card-category-icon" v-if="getProductCategoryId(product)">
+                      <CategoryIcons
+                        :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                        :size="16"
+                        :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                      />
+                    </div>
+                    <div class="card-top">
+                      <div class="card-title-row">
+                        <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
+                        <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
+                          {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
+                          {{ priceChangeCache.get(product.id)?.formattedDiff }}
+                        </span>
+                      </div>
+                      <div class="product-meta-stack">
+                        <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                        <div class="product-origin" v-if="hasProductOrigin(product)">
+                          <span class="origin-label">产地</span>
+                          <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="card-bottom">
+                      <div class="price-row">
+                        <span class="price-value" v-if="lastPriceCache.get(product.id)">
+                          {{ getCurrencySymbolLocal(product.currency) }}{{ lastPriceCache.get(product.id) }}
+                        </span>
+                        <span class="price-value empty" v-else>--</span>
+                        <span class="price-unit" v-if="getTodayPrice(product.id)?.unit || product.unit">
+                          / {{ getTodayPrice(product.id)?.unit || product.unit }}
+                        </span>
+                      </div>
+                      <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
+                        <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                      </div>
+                    </div>
                   </div>
-                  <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
                 </div>
-                <div class="card-bottom">
-                  <div class="price-row">
-                    <span class="price-value" v-if="lastPriceCache.get(product.id)">
-                      {{ getCurrencySymbolLocal(product.currency) }}{{ lastPriceCache.get(product.id) }}
-                    </span>
-                    <span class="price-value empty" v-else>--</span>
-                    <span class="price-unit" v-if="getTodayPrice(product.id)?.unit || product.unit">
-                      / {{ getTodayPrice(product.id)?.unit || product.unit }}
-                    </span>
-                  </div>
-                  <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" />
-                  </div>
-                </div>
-              </div>
+              </section>
             </div>
           </div>
+
+          <RiskAlertsPanel
+            v-else-if="section.key === 'risk_alerts'"
+            :alerts="priceAlerts"
+          />
+          </template>
         </template>
       </div>
     </template>
@@ -564,22 +855,43 @@ onMounted(async () => {
         </div>
 
         <template v-else>
-          <div class="home-featured-mobile" v-if="homeProducts.length > 0">
+          <template v-for="section in visibleHomeSections" :key="section.key">
+          <SummarySection
+            v-if="section.key === 'summary_stats'"
+            :summary="summaryForDisplay"
+          />
+
+          <div class="home-featured-mobile" v-else-if="section.key === 'core_metrics' && homeProducts.length > 0">
             <div class="section-header">
               <h2 class="section-title">重点关注指标</h2>
             </div>
             <div class="home-featured-scroll">
               <div
-                v-for="product in homeProducts"
+                v-for="product in homeProducts.slice(0, layoutConfig.featuredProductCount)"
                 :key="product.id"
                 class="home-featured-item-mobile"
+                :class="getCardClass(product)"
+                :style="getCardStyle(product)"
                 @click="viewProduct(product)"
               >
+                <div class="item-category-icon" v-if="getProductCategoryId(product)">
+                  <CategoryIcons
+                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                    :size="14"
+                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                  />
+                </div>
                 <div class="card-top">
                   <div class="card-title-row">
-                    <span class="product-name">{{ product.name }}</span>
+                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
                   </div>
-                  <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                  <div class="product-meta-stack">
+                    <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                    <div class="product-origin" v-if="hasProductOrigin(product)">
+                      <span class="origin-label">产地</span>
+                      <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                    </div>
+                  </div>
                 </div>
                 <div class="card-bottom">
                   <div class="price-row">
@@ -596,11 +908,24 @@ onMounted(async () => {
                     {{ priceChangeCache.get(product.id)?.formattedDiff }}
                   </span>
                 </div>
+                <div class="chart-area-sm featured-mobile-chart" v-if="chartOptionsMap.get(product.id)">
+                  <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" autoresize />
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="product-section">
+          <TrendAnalysisChart
+            v-else-if="section.key === 'trend_chart' && trendProductItems.length > 0"
+            class="featured-trend-cards"
+            title="重点走势"
+            :show-overview="false"
+            :products="trendProductItems"
+            :columns="1"
+            @range-change="onTrendRangeChange"
+          />
+
+          <div class="product-section" v-else-if="section.key === 'product_list'">
             <div class="section-header">
               <h2 class="section-title">产品列表</h2>
               <button class="add-btn" @click="goToPriceMaintenance" v-if="hasPermission(Permission.PRODUCT_EDIT)">
@@ -617,57 +942,94 @@ onMounted(async () => {
               <input v-model="searchQuery" type="text" placeholder="搜索产品..." class="search-input" />
             </div>
 
+            <CategoryFilterPanel
+              :selected-ids="selectedCategoryIds"
+              :multi-select="true"
+              @select="handleCategorySelect"
+              @clear="clearCategoryFilter"
+            />
+
             <div v-if="filteredProducts.length === 0" class="empty-state-mobile">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/><path d="M3 5h18M3 19h18M12 9v4"/>
               </svg>
-              <p>{{ searchQuery ? '未找到匹配的产品' : '暂无产品数据' }}</p>
+              <p>{{ searchQuery ? '未找到匹配的产品' : selectedCategoryIds.length > 0 ? '当前分类暂无产品' : '暂无产品数据' }}</p>
             </div>
 
-            <div v-else class="product-list">
-              <div
-                v-for="product in filteredProducts"
-                :key="product.id"
-                class="product-item"
-                :class="getCardClass(product)"
-                :style="getCardStyle(product)"
-                @click="viewProduct(product)"
+            <div v-else class="category-product-groups mobile">
+              <section
+                v-for="group in filteredProductGroups"
+                :key="group.id"
+                class="category-product-group"
               >
-                <!-- 分类图标 -->
-                <div class="item-category-icon" v-if="getProductCategoryId(product)">
+                <div class="category-group-header" :style="group.category ? getCategoryCardStyle(group.category.id) : {}">
                   <CategoryIcons
-                    :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                    v-if="group.category"
+                    :icon="getCategoryVisual(group.category.id).icon"
                     :size="14"
-                    :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                    :color="getCategoryVisual(group.category.id).primaryColor"
                   />
+                  <span class="category-group-name">{{ group.name }}</span>
+                  <span class="category-group-count">{{ group.products.length }} 个产品</span>
                 </div>
-                <div class="item-main">
-                  <div class="item-header">
-                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
-                    <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
-                      {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
-                      {{ priceChangeCache.get(product.id)?.formattedDiff }}
-                    </span>
+                <div class="product-list">
+                  <div
+                    v-for="product in group.products"
+                    :key="product.id"
+                    class="product-item"
+                    :class="getCardClass(product)"
+                    :style="getCardStyle(product)"
+                    @click="viewProduct(product)"
+                  >
+                    <!-- 分类图标 -->
+                    <div class="item-category-icon" v-if="getProductCategoryId(product)">
+                      <CategoryIcons
+                        :icon="getCategoryVisual(getProductCategoryId(product)).icon"
+                        :size="14"
+                        :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
+                      />
+                    </div>
+                    <div class="item-main">
+                      <div class="item-header">
+                        <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
+                        <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
+                          {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
+                          {{ priceChangeCache.get(product.id)?.formattedDiff }}
+                        </span>
+                      </div>
+                      <div class="product-meta-stack">
+                        <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
+                        <div class="product-origin" v-if="hasProductOrigin(product)">
+                          <span class="origin-label">产地</span>
+                          <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="item-aside">
+                      <div class="price-row">
+                        <span class="price-value" v-if="lastPriceCache.get(product.id)">
+                          {{ getCurrencySymbolLocal(product.currency) }}{{ lastPriceCache.get(product.id) }}
+                        </span>
+                        <span class="price-value empty" v-else>--</span>
+                        <span class="price-unit" v-if="getTodayPrice(product.id)?.unit || product.unit">
+                          / {{ getTodayPrice(product.id)?.unit || product.unit }}
+                        </span>
+                      </div>
+                      <div class="chart-area-sm" v-if="chartOptionsMap.get(product.id)">
+                        <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" autoresize />
+                      </div>
+                    </div>
                   </div>
-                  <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
                 </div>
-                <div class="item-aside">
-                  <div class="price-row">
-                    <span class="price-value" v-if="lastPriceCache.get(product.id)">
-                      {{ getCurrencySymbolLocal(product.currency) }}{{ lastPriceCache.get(product.id) }}
-                    </span>
-                    <span class="price-value empty" v-else>--</span>
-                    <span class="price-unit" v-if="getTodayPrice(product.id)?.unit || product.unit">
-                      / {{ getTodayPrice(product.id)?.unit || product.unit }}
-                    </span>
-                  </div>
-                  <div class="chart-area-sm" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" />
-                  </div>
-                </div>
-              </div>
+              </section>
             </div>
           </div>
+
+          <RiskAlertsPanel
+            v-else-if="section.key === 'risk_alerts'"
+            :alerts="priceAlerts"
+          />
+          </template>
         </template>
       </main>
 
@@ -880,7 +1242,7 @@ onMounted(async () => {
   transition: all var(--transition-fast);
   display: flex;
   flex-direction: column;
-  min-height: 160px;
+  min-height: 176px;
   overflow: hidden;
   position: relative;
 }
@@ -900,7 +1262,7 @@ onMounted(async () => {
 /* 有分类的产品卡片 - 分类视觉样式 */
 .product-card-pc.has-category {
   border-color: var(--category-border);
-  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-secondary) 8%, transparent) 100%);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-surface) 70%, var(--bg-card)) 100%);
 }
 
 .product-card-pc.has-category:hover {
@@ -947,10 +1309,48 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.card-top .product-specs {
+.product-meta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.product-specs {
   font-family: var(--font-body);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 8px 2px 3px;
+  border: 1px solid color-mix(in srgb, var(--category-primary, var(--primary-color)) 22%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--category-surface, var(--primary-color)) 14%, var(--bg-card));
+  color: var(--category-primary, var(--primary-color));
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.origin-label {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--category-primary, var(--primary-color)) 12%, transparent);
+  color: var(--category-primary, var(--primary-color));
+  font-weight: 600;
+}
+
+.origin-value {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1083,6 +1483,42 @@ onMounted(async () => {
   border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
   border: 1px solid var(--border-color);
+}
+
+.category-product-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.category-product-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.category-group-header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--category-border, var(--border-color));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--category-surface, var(--bg-card)) 70%, var(--bg-card));
+  color: var(--category-primary, var(--text-primary));
+}
+
+.category-group-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--category-primary, var(--text-primary));
+}
+
+.category-group-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 
 .search-area-pc {
@@ -1279,8 +1715,17 @@ onMounted(async () => {
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  min-height: 140px;
+  min-height: 156px;
   flex-shrink: 0;
+}
+
+.home-featured-item-mobile.has-category {
+  border-color: var(--category-border);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-surface) 70%, var(--bg-card)) 100%);
+}
+
+.home-featured-item-mobile.has-category .product-name.category-name {
+  color: var(--category-primary);
 }
 
 .section-header {
@@ -1373,7 +1818,7 @@ onMounted(async () => {
 /* 有分类的产品项 - 分类视觉样式 */
 .product-item.has-category {
   border-color: var(--category-border);
-  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-secondary) 8%, transparent) 100%);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-surface) 70%, var(--bg-card)) 100%);
 }
 
 .product-item.has-category:hover {
@@ -1418,7 +1863,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.item-header .product-specs {
+.item-main .product-specs {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   overflow: hidden;
@@ -1443,9 +1888,20 @@ onMounted(async () => {
   height: 30px;
 }
 
+.featured-mobile-chart {
+  width: 100%;
+  height: 34px;
+  margin-top: var(--spacing-xs);
+}
+
 .mini-chart-sm {
   width: 70px;
   height: 30px;
+}
+
+.featured-mobile-chart .mini-chart-sm {
+  width: 100%;
+  height: 34px;
 }
 
 /* 底部标签栏 */

@@ -203,6 +203,10 @@ public class ProductService {
         Map<Long, Product> productMap = products.stream()
                 .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
 
+        if (productMap.size() != ids.size()) {
+            throw new IllegalArgumentException("部分产品不存在");
+        }
+
         // 批量更新
         List<Product> toSave = new java.util.ArrayList<>();
         for (java.util.Map<String, Object> item : items) {

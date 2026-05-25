@@ -23,14 +23,10 @@ const loadLayoutStyles = async () => {
   }
 }
 
-// 切换布局方案
-const switchLayout = async (layoutKey: string) => {
-  try {
-    await workbench.applyLayoutStyle(layoutKey)
-    showToast({ message: '布局方案已切换', position: 'top', duration: 1500 })
-  } catch (error) {
-    showToast({ message: '切换失败，已恢复原设置', position: 'top', duration: 2000 })
-  }
+// 切换布局方案（只更新草稿，需保存才生效）
+const switchLayout = (layoutKey: string) => {
+  workbench.applyLayoutStyle(layoutKey)
+  showToast({ message: '布局方案已进入草稿，请点击顶部保存配置', position: 'top', duration: 1500 })
 }
 
 // 获取布局图标
@@ -74,7 +70,7 @@ onMounted(() => {
         布局方案
         <span class="section-status">当前：{{ activeKey || '默认' }}</span>
       </h2>
-      <p class="section-hint">选择页面布局风格，影响导航位置和整体视觉效果</p>
+      <p class="section-hint">选择页面布局风格后进入草稿，点击顶部保存配置后生效</p>
 
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
@@ -123,7 +119,7 @@ onMounted(() => {
       <p class="section-hint">控制表格行高、卡片间距、表单间距</p>
 
       <div class="density-options">
-        <div class="density-option" @click="workbench.applyAndPersist({ activeLayoutStyle: workbench.draftConfig?.value?.activeLayoutStyle })">
+        <div class="density-option" @click="workbench.updateDraft({ fontSizePreset: 'compact' })">
           <span class="density-label">紧凑</span>
           <span class="density-desc">适合数据密集型后台</span>
         </div>
@@ -131,7 +127,7 @@ onMounted(() => {
           <span class="density-label">标准</span>
           <span class="density-desc">通用场景</span>
         </div>
-        <div class="density-option">
+        <div class="density-option" @click="workbench.updateDraft({ fontSizePreset: 'large' })">
           <span class="density-label">舒展</span>
           <span class="density-desc">适合演示或大屏</span>
         </div>
