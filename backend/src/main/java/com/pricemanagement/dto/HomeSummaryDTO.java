@@ -10,8 +10,17 @@ public class HomeSummaryDTO {
     /** 产品总数 */
     private int totalProducts;
 
-    /** 今日已更新价格数 */
+    /** 所选日期已更新报价的产品数 */
     private int priceUpdatedToday;
+
+    /** 当前启用产品覆盖的品类数 */
+    private int coveredCategoryCount;
+
+    /** 启用品类总数 */
+    private int activeCategoryCount;
+
+    /** 发生价格变化的产品数（上涨 + 下跌） */
+    private int changedProductCount;
 
     /** 平均价格变动百分比 */
     private double avgPriceChange;

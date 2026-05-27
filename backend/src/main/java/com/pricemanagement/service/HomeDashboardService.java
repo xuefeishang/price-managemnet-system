@@ -129,10 +129,25 @@ public class HomeDashboardService {
         // 产品总数（启用状态）
         List<Product> allProducts = productRepository.findByStatus(CommonStatus.ACTIVE);
         summary.setTotalProducts(allProducts.size());
+        List<ProductCategory> activeCategories = productCategoryRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
+        summary.setActiveCategoryCount(activeCategories.size());
+        long coveredCategoryCount = allProducts.stream()
+                .map(Product::getCategory)
+                .filter(Objects::nonNull)
+                .map(ProductCategory::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+        summary.setCoveredCategoryCount((int) coveredCategoryCount);
 
-        // 当日价格数据
+        // 所选日期价格数据
         List<Price> todayPrices = priceRepository.findValidPricesByDate(date);
-        summary.setPriceUpdatedToday(todayPrices.size());
+        int quotedProductCount = (int) todayPrices.stream()
+                .filter(p -> p.getProduct() != null && p.getProduct().getId() != null)
+                .map(p -> p.getProduct().getId())
+                .distinct()
+                .count();
+        summary.setPriceUpdatedToday(quotedProductCount);
 
         // 前一日价格数据
         LocalDate prevDate = date.minusDays(1);
@@ -187,6 +202,7 @@ public class HomeDashboardService {
         summary.setRisingCount(risingCount);
         summary.setFallingCount(fallingCount);
         summary.setFlatCount(flatCount);
+        summary.setChangedProductCount(risingCount + fallingCount);
         summary.setAvgPriceChange(changeCount > 0 ? totalChange / changeCount : 0);
 
         return summary;
@@ -512,12 +528,13 @@ public class HomeDashboardService {
         Optional<SysDict> dict = sysDictRepository.findByCategoryAndDictKey(CATEGORY_HOME_LAYOUT, "featured_product_count");
         if (dict.isPresent()) {
             try {
-                return Integer.parseInt(dict.get().getExtraValue());
+                int count = Integer.parseInt(dict.get().getExtraValue());
+                return Math.max(1, Math.min(count, 4));
             } catch (NumberFormatException e) {
-                return 6;
+                return 4;
             }
         }
-        return 6;
+        return 4;
     }
 
     private String formatPercent(double percent) {

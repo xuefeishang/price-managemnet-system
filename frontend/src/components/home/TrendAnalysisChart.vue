@@ -26,6 +26,7 @@ export interface ProductTrendItem {
   unit?: string
   direction: 'up' | 'down' | 'flat'
   formattedDiff?: string
+  formattedPercent?: string
   currentPrice: number | null
   points: ProductTrendPoint[]
   lineColor?: string
@@ -310,6 +311,7 @@ watch(() => props.trend, (newTrend) => {
             <span class="trend-badge" :class="product.direction">
               {{ product.direction === 'up' ? '↑' : product.direction === 'down' ? '↓' : '—' }}
               {{ product.formattedDiff || '0' }}
+              <template v-if="product.formattedPercent">（{{ product.formattedPercent }}）</template>
             </span>
           </div>
         </div>

@@ -100,6 +100,7 @@ EXIT;
 > 已部署环境通过 Flyway 执行 `V14__rebalance_font_size_presets.sql` 更新样式设置字号预设；新环境执行 `init.sql` 时已包含同样的字号刻度。
 
 > 首页产品产地展示复用既有 `product.origin_ids` 与 `origin` 字典数据，不需要新增数据库迁移；升级时重新打包后端和前端即可。
+> 首页产品表新增 `home_layout.product_list_mode` 与 `home_layout.product_table_page_size` 配置项，由启动初始化补齐；如生产环境已有字典数据，升级后重启后端即可自动补充缺失项。
 
 > 注意：`init.sql` 包含完整的表结构创建和数据初始化，推荐使用此脚本一步完成初始化。
 

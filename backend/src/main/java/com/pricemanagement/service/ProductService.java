@@ -19,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,29 +47,37 @@ public class ProductService {
     public Page<Product> getProducts(int page, int size, String keyword, Long categoryId,
                                      CommonStatus status, String sortBy, String sortDirection) {
         Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Sort sort = Sort.by(direction, sortBy != null ? sortBy : "id");
+        String sortProperty = mapProductSortProperty(sortBy);
+        Sort sort = Sort.by(direction, sortProperty);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        // 优先按关键字搜索
+        Specification<Product> spec = (root, query, cb) -> cb.conjunction();
         if (keyword != null && !keyword.isBlank()) {
-            Page<Product> products = productRepository.findByNameContaining(keyword, pageable);
-            log.debug("Found {} products matching keyword: {}", products.getTotalElements(), keyword);
-            return products;
+            String keywordLike = "%" + keyword.trim().toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("name")), keywordLike));
+        }
+        if (categoryId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("category").get("id"), categoryId));
+        }
+        if (status != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));
         }
 
-        // 按分类和状态筛选
-        if (categoryId != null && status != null) {
-            return productRepository.findByCategoryIdAndStatus(categoryId, status, pageable);
-        } else if (categoryId != null) {
-            return productRepository.findByCategoryId(categoryId, pageable);
-        } else if (status != null) {
-            return productRepository.findByStatus(status, pageable);
-        }
-
-        // 无筛选条件
-        Page<Product> products = productRepository.findAll(pageable);
-        log.debug("Found {} products", products.getTotalElements());
+        Page<Product> products = productRepository.findAll(spec, pageable);
+        log.debug("Found {} products by filters: keyword={}, categoryId={}, status={}",
+                products.getTotalElements(), keyword, categoryId, status);
         return products;
+    }
+
+    private String mapProductSortProperty(String sortBy) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "id";
+        }
+        return switch (sortBy) {
+            case "categoryId" -> "category.id";
+            case "name", "sortOrder", "updatedTime", "createdTime", "status", "code" -> sortBy;
+            default -> "id";
+        };
     }
 
     @Transactional(readOnly = true)

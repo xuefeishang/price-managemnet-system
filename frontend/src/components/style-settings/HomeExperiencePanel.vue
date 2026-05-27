@@ -14,16 +14,12 @@ onMounted(() => {
   <div class="home-experience-panel">
     <!-- 首页布局配置 -->
     <section class="config-section">
-      <h2 class="section-title">
-        首页布局
-        <span class="section-status">当前：{{ homeState.layoutConfig.value.layoutMode === 'dashboard' ? '驾驶舱' : '简洁' }}</span>
-      </h2>
+      <h2 class="section-title">首页展示</h2>
       <p class="section-hint">修改后进入草稿，点击顶部保存配置后生效</p>
 
       <div class="layout-config">
-        <!-- PC 卡片列数 -->
         <div class="config-row">
-          <span class="config-label">PC 卡片列数</span>
+          <span class="config-label">产品卡片列数</span>
           <div class="stepper">
             <button class="stepper-btn" @click="homeState.decrement('cardColumns', 2)">-</button>
             <span class="stepper-value">{{ homeState.layoutConfig.value.cardColumns }}</span>
@@ -31,68 +27,36 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 移动端卡片列数 -->
-        <div class="config-row">
-          <span class="config-label">移动端卡片列数</span>
-          <div class="stepper">
-            <button class="stepper-btn" @click="homeState.decrement('cardColumnsMobile', 1)">-</button>
-            <span class="stepper-value">{{ homeState.layoutConfig.value.cardColumnsMobile }}</span>
-            <button class="stepper-btn" @click="homeState.increment('cardColumnsMobile', 3)">+</button>
-          </div>
-        </div>
-
-        <!-- 重点产品数量 -->
         <div class="config-row">
           <span class="config-label">重点产品数量</span>
           <div class="stepper">
-            <button class="stepper-btn" @click="homeState.decrement('featuredProductCount', 0)">-</button>
+            <button class="stepper-btn" @click="homeState.decrement('featuredProductCount', 1)">-</button>
             <span class="stepper-value">{{ homeState.layoutConfig.value.featuredProductCount }}</span>
-            <button class="stepper-btn" @click="homeState.increment('featuredProductCount', 12)">+</button>
+            <button class="stepper-btn" @click="homeState.increment('featuredProductCount', 4)">+</button>
           </div>
         </div>
 
-        <!-- 显示重点走势 -->
         <div class="config-row">
-          <span class="config-label">显示重点走势</span>
-          <div class="switch-control" :class="{ active: homeState.layoutConfig.value.showTrendChart }" @click="homeState.toggleSwitch('showTrendChart')">
-            <span class="switch-slider"></span>
+          <span class="config-label">产品列表模式</span>
+          <div class="segmented-control">
+            <button
+              v-for="mode in ['table', 'cards', 'auto']"
+              :key="mode"
+              class="segment-btn"
+              :class="{ active: homeState.layoutConfig.value.productListMode === mode }"
+              @click="homeState.setProductListMode(mode as 'table' | 'cards' | 'auto')"
+            >
+              {{ mode === 'table' ? '表格' : mode === 'cards' ? '卡片' : '自动' }}
+            </button>
           </div>
         </div>
 
-        <!-- 显示预警区 -->
         <div class="config-row">
-          <span class="config-label">显示预警区</span>
-          <div class="switch-control" :class="{ active: homeState.layoutConfig.value.showAlerts }" @click="homeState.toggleSwitch('showAlerts')">
-            <span class="switch-slider"></span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 首页组件配置 -->
-    <section class="config-section">
-      <h2 class="section-title">
-        首页组件
-        <span class="section-status">已启用 {{ homeState.enabledCount.value }}/{{ homeState.widgets.value.length }}</span>
-      </h2>
-      <p class="section-hint">修改后进入草稿，点击顶部保存配置后生效</p>
-
-      <div class="widget-list">
-        <div
-          v-for="widget in homeState.widgets.value"
-          :key="widget.key"
-          class="widget-item"
-          :class="{ disabled: !widget.enabled }"
-        >
-          <div class="widget-info">
-            <div class="widget-switch" :class="{ active: widget.enabled }" @click="homeState.toggleWidget(widget)">
-              <span class="switch-slider"></span>
-            </div>
-            <span class="widget-name">{{ widget.name }}</span>
-          </div>
-          <div class="widget-actions">
-            <button class="action-btn" @click="homeState.moveUp(widget)" :disabled="widget.order === 1">上移</button>
-            <button class="action-btn" @click="homeState.moveDown(widget)" :disabled="widget.order === homeState.widgets.value.length">下移</button>
+          <span class="config-label">产品表每页条数</span>
+          <div class="stepper">
+            <button class="stepper-btn" @click="homeState.decrement('productTablePageSize', 10)">-</button>
+            <span class="stepper-value">{{ homeState.layoutConfig.value.productTablePageSize }}</span>
+            <button class="stepper-btn" @click="homeState.increment('productTablePageSize', 50)">+</button>
           </div>
         </div>
       </div>
@@ -187,6 +151,31 @@ onMounted(() => {
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: #1A1A1A;
+}
+
+.segmented-control {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  background: #F8FAFA;
+}
+
+.segment-btn {
+  min-width: 48px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #666666;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.segment-btn.active {
+  background: #0D6E6E;
+  color: #FFFFFF;
 }
 
 /* Switch */

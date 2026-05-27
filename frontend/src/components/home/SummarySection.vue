@@ -1,70 +1,68 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { HomeSummary } from '@/api/home'
 
-defineProps<{
+const props = defineProps<{
   summary: HomeSummary
   loading?: boolean
 }>()
 
-const formatPercent = (val: number) => {
-  const sign = val >= 0 ? '+' : ''
-  return `${sign}${val.toFixed(1)}%`
-}
+const summaryCards = computed(() => [
+  {
+    key: 'products',
+    icon: 'products',
+    value: props.summary.totalProducts,
+    label: '产品总数'
+  },
+  {
+    key: 'updated',
+    icon: 'updated',
+    value: props.summary.priceUpdatedToday,
+    label: '当日更新'
+  },
+  {
+    key: 'coverage',
+    icon: 'changes',
+    value: props.summary.totalProducts
+      ? `${Math.round(((props.summary.priceUpdatedToday || 0) / props.summary.totalProducts) * 100)}%`
+      : '0%',
+    label: '更新率'
+  },
+  {
+    key: 'categories',
+    icon: 'categories',
+    value: props.summary.coveredCategoryCount ?? 0,
+    label: '覆盖品类'
+  }
+])
 </script>
 
 <template>
   <div class="summary-section">
     <div v-if="loading" class="summary-loading">
-      <div v-for="i in 4" :key="i" class="skeleton-stat"></div>
+      <div v-for="i in 3" :key="i" class="skeleton-stat"></div>
     </div>
     <div v-else class="summary-grid">
-      <div class="stat-card">
-        <div class="stat-icon products">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div v-for="card in summaryCards" :key="card.key" class="stat-card">
+        <div class="stat-icon" :class="card.icon">
+          <svg v-if="card.icon === 'products'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/>
           </svg>
-        </div>
-        <div class="stat-content">
-          <span class="stat-value">{{ summary.totalProducts }}</span>
-          <span class="stat-label">产品总数</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon updated">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+          <svg v-else-if="card.icon === 'updated'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+          </svg>
+          <svg v-else-if="card.icon === 'categories'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/>
           </svg>
         </div>
         <div class="stat-content">
-          <span class="stat-value">{{ summary.priceUpdatedToday }}</span>
-          <span class="stat-label">今日更新</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon avg">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/>
-          </svg>
-        </div>
-        <div class="stat-content">
-          <span class="stat-value" :class="summary.avgPriceChange >= 0 ? 'rise' : 'fall'">
-            {{ formatPercent(summary.avgPriceChange) }}
+          <span class="stat-label">{{ card.label }}</span>
+          <span class="stat-main">
+            <span class="stat-value">{{ card.value }}</span>
           </span>
-          <span class="stat-label">平均变动</span>
-        </div>
-      </div>
-
-      <div class="stat-card split">
-        <div class="split-item rise">
-          <span class="split-value">{{ summary.risingCount }}</span>
-          <span class="split-label">上涨</span>
-        </div>
-        <div class="split-divider"></div>
-        <div class="split-item fall">
-          <span class="split-value">{{ summary.fallingCount }}</span>
-          <span class="split-label">下跌</span>
         </div>
       </div>
     </div>
@@ -73,23 +71,25 @@ const formatPercent = (val: number) => {
 
 <style scoped>
 .summary-section {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: var(--spacing-md);
 }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--spacing-md);
 }
 
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: 12px;
+  min-height: 58px;
+  min-width: 0;
   transition: all var(--transition-fast);
 }
 
@@ -99,9 +99,9 @@ const formatPercent = (val: number) => {
 }
 
 .stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -118,78 +118,57 @@ const formatPercent = (val: number) => {
   color: #3B82F6;
 }
 
-.stat-icon.avg {
+.stat-icon.categories {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8B5CF6;
+}
+
+.stat-icon.changes {
   background: rgba(245, 158, 11, 0.1);
   color: #F59E0B;
 }
 
 .stat-content {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding-right: clamp(10px, 1.5vw, 24px);
+}
+
+.stat-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .stat-value {
   font-family: var(--font-mono);
-  font-size: var(--font-size-2xl);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.stat-value.rise {
-  color: var(--price-rise-color);
-}
-
-.stat-value.fall {
-  color: var(--price-fall-color);
+  font-size: clamp(1.45rem, 1.4vw, 1.85rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary-color);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .stat-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
-}
-
-.stat-card.split {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: var(--spacing-md);
-}
-
-.split-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.split-value {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xl);
   font-weight: 700;
-}
-
-.split-item.rise .split-value {
-  color: var(--price-rise-color);
-}
-
-.split-item.fall .split-value {
-  color: var(--price-fall-color);
-}
-
-.split-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.split-divider {
-  width: 1px;
-  height: 40px;
-  background: var(--border-color);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skeleton-stat {
-  height: 80px;
+  height: 58px;
   background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 50%, var(--gray-100) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -208,16 +187,22 @@ const formatPercent = (val: number) => {
   }
 
   .stat-card {
-    padding: var(--spacing-md);
+    padding: 10px 12px;
   }
 
   .stat-icon {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
   }
 
   .stat-value {
     font-size: var(--font-size-xl);
+  }
+}
+
+@media (max-width: 560px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -2,319 +2,403 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
-import { VueDraggable } from 'vue-draggable-plus'
-import { getProducts } from '@/api/products'
-import { addProductPrice, updatePrice, getPricesByDateWithStats, batchUpdateProductSort } from '@/api/products'
-import type { Product, Price } from '@/types'
+import { getCategories } from '@/api/categories'
+import { addProductPrice, updatePrice, getPricesByDateWithStats, getProducts, batchUpdateProductSort } from '@/api/products'
+import type { PageResponse, Price, Product, ProductCategory } from '@/types'
 import { eventBus } from '@/utils/eventBus'
 import { useLayout } from '@/composables/useLayout'
-import { getOriginName, loadAllDicts } from '@/composables/useDict'
+import { getCurrencySymbol, getOriginName, loadAllDicts } from '@/composables/useDict'
+import { getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
 
 const router = useRouter()
 const { isPCLayout } = useLayout()
 
 const loading = ref(false)
+const tableLoading = ref(false)
 const saving = ref(false)
+const products = ref<Product[]>([])
+const categories = ref<ProductCategory[]>([])
+const tablePage = ref(0)
+const tableSize = ref(10)
+const tableTotalElements = ref(0)
+const tableTotalPages = ref(0)
+const searchQuery = ref('')
+const searchQueryDebounced = ref('')
+const selectedCategoryId = ref<number | ''>('')
+const sorting = ref(false)
+const draggingProductId = ref<number | null>(null)
+const dragOverProductId = ref<number | null>(null)
+const dragOverPosition = ref<'before' | 'after'>('before')
 
-// 格式化日期显示
-const formatDateDisplay = (dateStr: string) => {
-  const date = new Date(dateStr)
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+const getYesterday = () => {
+  const date = new Date()
+  date.setDate(date.getDate() - 1)
+  return date.toISOString().split('T')[0]
 }
 
-// 选中的日期
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+const selectedDate = ref(getYesterday())
 
-// 产品列表
-const products = ref<Product[]>([])
-
-// 价格映射 (productId -> price)
 const priceMap = ref<Map<number, Price>>(new Map())
-
-// 昨日价格映射 (productId -> price)
 const yesterdayPriceMap = ref<Map<number, Price>>(new Map())
-
-// 月均价映射 (productId -> average price)
 const monthlyAverageMap = ref<Map<number, number>>(new Map())
-
-// 继承价格映射 (productId -> inheritedPrice)，当天无维护价格时取最近一次价格
 const inheritedPriceMap = ref<Map<number, number>>(new Map())
-
-// 继承预算价格映射 (productId -> inheritedBudgetPrice)，当天无维护预算价格时取最近一次预算价格
 const inheritedBudgetPriceMap = ref<Map<number, number>>(new Map())
-
-// 编辑中的价格
 const editingPrices = ref<Map<number, string>>(new Map())
+const originalPriceTextMap = ref<Map<number, string>>(new Map())
 
-// 是否有修改
+const productById = computed(() => {
+  const map = new Map<number, Product>()
+  products.value.forEach(product => map.set(product.id, product))
+  priceMap.value.forEach(price => {
+    if (price.product && !map.has(price.product.id)) {
+      map.set(price.product.id, price.product)
+    }
+  })
+  return map
+})
+
 const hasChanges = computed(() => {
   for (const [productId, editPrice] of editingPrices.value) {
-    const original = priceMap.value.get(productId)
-    if (!original) {
-      if (editPrice) return true
-    } else {
-      if (editPrice !== String(original.currentPrice || '')) return true
-    }
+    if (editPrice !== (originalPriceTextMap.value.get(productId) || '')) return true
   }
   return false
 })
 
-// 计算价格变化
-const getPriceChange = (productId: number) => {
-  const editPrice = editingPrices.value.get(productId)
-  // 当前价格：优先使用用户编辑的价格，否则使用继承价格
-  const currentPrice = editPrice ? parseFloat(editPrice) : inheritedPriceMap.value.get(productId) ?? null
-  // 昨日价格：优先使用精确的昨日价格，否则使用继承价格
-  const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice ?? inheritedPriceMap.value.get(productId) ?? null
-
-  if (currentPrice === null || yesterdayPrice === null) {
-    return null
-  }
-  return currentPrice - yesterdayPrice
+const formatDateDisplay = (dateStr: string) => {
+  const date = new Date(dateStr + 'T00:00:00')
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
-// 加载产品列表和价格
-const loadData = async () => {
-  loading.value = true
-  try {
-    // 并行加载产品列表和价格数据
-    const [productResponse, priceResponse] = await Promise.all([
-      getProducts({ page: 0, size: 1000, status: 'ACTIVE' }),
-      getPricesByDateWithStats(selectedDate.value)
-    ])
-
-    const productList = productResponse.data.content || []
-    // 按 sortOrder 排序
-    productList.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    products.value = productList
-
-    // 处理价格数据
-    priceMap.value = new Map()
-    yesterdayPriceMap.value = new Map()
-    monthlyAverageMap.value = new Map()
-    inheritedPriceMap.value = new Map()
-    inheritedBudgetPriceMap.value = new Map()
-    editingPrices.value = new Map()
-
-    const items = priceResponse.data || []
-    for (const item of items) {
-      if (item.price && item.price.product) {
-        const productId = item.price.product.id
-        priceMap.value.set(productId, item.price)
-        if (item.price.currentPrice != null) {
-          editingPrices.value.set(productId, String(item.price.currentPrice))
-        } else {
-          editingPrices.value.set(productId, '')
-        }
-        if (item.yesterdayPrice) {
-          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
-        }
-        if (item.monthlyAveragePrice != null) {
-          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
-        }
-        if (item.inheritedPrice != null) {
-          inheritedPriceMap.value.set(productId, item.inheritedPrice)
-        }
-        if (item.inheritedBudgetPrice != null) {
-          inheritedBudgetPriceMap.value.set(productId, item.inheritedBudgetPrice)
-        }
-      }
-    }
-
-    // 为没有价格的产品初始化编辑数据
-    products.value.forEach(product => {
-      if (!editingPrices.value.has(product.id)) {
-        editingPrices.value.set(product.id, '')
-      }
-    })
-  } catch (error) {
-    console.error('Failed to load data:', error)
-    showToast('加载数据失败')
-  } finally {
-    loading.value = false
-  }
+const normalizePriceText = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return ''
+  return String(value)
 }
 
-// 仅重新加载价格数据（日期切换时使用）
-const loadPrices = async () => {
-  loading.value = true
-  try {
-    const response = await getPricesByDateWithStats(selectedDate.value)
-    const items = response.data || []
-    priceMap.value = new Map()
-    yesterdayPriceMap.value = new Map()
-    monthlyAverageMap.value = new Map()
-    inheritedPriceMap.value = new Map()
-    inheritedBudgetPriceMap.value = new Map()
-    editingPrices.value = new Map()
-
-    for (const item of items) {
-      if (item.price && item.price.product) {
-        const productId = item.price.product.id
-        priceMap.value.set(productId, item.price)
-        if (item.price.currentPrice != null) {
-          editingPrices.value.set(productId, String(item.price.currentPrice))
-        } else {
-          editingPrices.value.set(productId, '')
-        }
-        if (item.yesterdayPrice) {
-          yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
-        }
-        if (item.monthlyAveragePrice != null) {
-          monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
-        }
-        if (item.inheritedPrice != null) {
-          inheritedPriceMap.value.set(productId, item.inheritedPrice)
-        }
-        if (item.inheritedBudgetPrice != null) {
-          inheritedBudgetPriceMap.value.set(productId, item.inheritedBudgetPrice)
-        }
-      }
-    }
-
-    // 为没有价格的产品初始化编辑数据
-    products.value.forEach(product => {
-      if (!editingPrices.value.has(product.id)) {
-        editingPrices.value.set(product.id, '')
-      }
-    })
-  } catch (error) {
-    console.error('Failed to load prices:', error)
-    showToast('加载价格数据失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 拖拽排序后自动保存
-const savingSort = ref(false)
-const handleDragEnd = async () => {
-  savingSort.value = true
-  try {
-    const items = products.value.map((product, index) => ({
-      id: product.id,
-      sortOrder: index + 1
-    }))
-    await batchUpdateProductSort(items)
-    products.value.forEach((p, i) => { p.sortOrder = i + 1 })
-    showToast('排序已保存')
-    eventBus.emit('product-sort-updated')
-  } catch (error) {
-    console.error('Failed to save sort order:', error)
-    showToast('排序保存失败，请重试')
-    // 恢复原始顺序
-    loadData()
-  } finally {
-    savingSort.value = false
-  }
-}
-
-// 初始化编辑数据
 const initEditingData = (product: Product) => {
   if (!editingPrices.value.has(product.id)) {
-    const existingPrice = priceMap.value.get(product.id)
-    editingPrices.value.set(product.id, existingPrice ? String(existingPrice.currentPrice || '') : '')
+    const text = normalizePriceText(priceMap.value.get(product.id)?.currentPrice)
+    editingPrices.value.set(product.id, text)
+    originalPriceTextMap.value.set(product.id, text)
   }
 }
 
-// 获取编辑中的价格数据
 const getEditData = (productId: number) => {
-  initEditingData(products.value.find(p => p.id === productId)!)
+  const product = productById.value.get(productId)
+  if (product) initEditingData(product)
   return editingPrices.value.get(productId) || ''
 }
 
-// 更新价格
 const updateEditPrice = (productId: number, value: string) => {
   editingPrices.value.set(productId, value)
 }
 
-// 格式化预算价格显示值（不含货币符号）
-const formatBudgetPriceValue = (productId: number): string => {
-  const price = priceMap.value.get(productId)
-  if (price?.budgetPrice != null) return price.budgetPrice.toFixed(2)
-  const inherited = inheritedBudgetPriceMap.value.get(productId)
-  if (inherited != null) return inherited.toFixed(2)
-  const product = products.value.find(p => p.id === productId)
-  if (product?.budgetPrice != null) return product.budgetPrice.toFixed(2)
-  return '-'
+const getPriceChange = (productId: number) => {
+  const editPrice = editingPrices.value.get(productId)
+  const currentPrice = editPrice ? Number(editPrice) : inheritedPriceMap.value.get(productId) ?? null
+  const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice ?? inheritedPriceMap.value.get(productId) ?? null
+
+  if (currentPrice === null || yesterdayPrice === null || Number.isNaN(currentPrice)) return null
+  return currentPrice - yesterdayPrice
 }
 
-// 格式化预算价格显示（兼容旧调用，含货币符号）
-const formatBudgetPrice = (productId: number): string => {
+const formatPriceWithCurrency = (productId: number, price: number | null | undefined) => {
+  if (price === null || price === undefined) return '-'
+  return `${getProductCurrencySymbol(productId)}${price.toFixed(2)}`
+}
+
+const formatPriceChange = (productId: number, change: number | null | undefined) => {
+  if (change === null || change === undefined) return '-'
   const symbol = getProductCurrencySymbol(productId)
-  const price = priceMap.value.get(productId)
-  if (price?.budgetPrice != null) return symbol + price.budgetPrice.toFixed(2)
-  const inherited = inheritedBudgetPriceMap.value.get(productId)
-  if (inherited != null) return symbol + inherited.toFixed(2)
-  const product = products.value.find(p => p.id === productId)
-  if (product?.budgetPrice != null) return symbol + product.budgetPrice.toFixed(2)
-  return '-'
+  if (change > 0) return `+${symbol}${change.toFixed(2)}`
+  if (change < 0) return `-${symbol}${Math.abs(change).toFixed(2)}`
+  return `${symbol}0.00`
 }
 
-// 获取显示的昨日价格（优先精确昨日价格，否则使用继承价格）
+const getPriceChangeClass = (change: number | null | undefined) => {
+  if (change === null || change === undefined) return 'flat'
+  if (change > 0) return 'up'
+  if (change < 0) return 'down'
+  return 'flat'
+}
+
+const getProductCurrencySymbol = (productId: number): string => {
+  const product = productById.value.get(productId)
+  return getCurrencySymbol(product?.currency)
+}
+
+const getProductOriginLabel = (product: Product): string => {
+  if (!product.originIds) return ''
+  try {
+    const keys = JSON.parse(product.originIds)
+    return Array.isArray(keys)
+      ? keys.map((key: string) => getOriginName(key)).filter(Boolean).join('、')
+      : ''
+  } catch {
+    return ''
+  }
+}
+
 const getDisplayYesterdayPrice = (productId: number): number | null | undefined => {
   const yesterdayPrice = yesterdayPriceMap.value.get(productId)?.currentPrice
   if (yesterdayPrice != null) return yesterdayPrice
   return inheritedPriceMap.value.get(productId) ?? null
 }
 
-// 获取显示的月均价（优先精确月均价，否则使用继承价格）
 const getDisplayMonthlyAvg = (productId: number): number | null | undefined => {
   const avg = monthlyAverageMap.value.get(productId)
   if (avg != null) return avg
   return inheritedPriceMap.value.get(productId) ?? null
 }
 
-// 获取价格输入框的 placeholder
 const getPricePlaceholder = (productId: number): string => {
   const inherited = inheritedPriceMap.value.get(productId)
-  if (inherited != null) return inherited.toFixed(2)
-  return '0.00'
-}
-const formatPrice = (price: number | null | undefined) => {
-  if (price === null || price === undefined) return '-'
-  return price.toFixed(2)
+  return inherited != null ? inherited.toFixed(2) : '0.00'
 }
 
-// 获取货币符号（从字典服务获取）
-import { getCurrencySymbol as _getCurrencySymbol } from '@/composables/useDict'
-const getCurrencySymbol = _getCurrencySymbol
-
-// 获取产品的货币符号
-const getProductCurrencySymbol = (productId: number): string => {
-  const product = products.value.find(p => p.id === productId)
-  return getCurrencySymbol(product?.currency)
+const formatBudgetPrice = (productId: number): string => {
+  const symbol = getProductCurrencySymbol(productId)
+  const price = priceMap.value.get(productId)
+  if (price?.budgetPrice != null) return `${symbol}${price.budgetPrice.toFixed(2)}`
+  const product = productById.value.get(productId)
+  if (product?.budgetPrice != null) return `${symbol}${product.budgetPrice.toFixed(2)}`
+  const inherited = inheritedBudgetPriceMap.value.get(productId)
+  if (inherited != null) return `${symbol}${inherited.toFixed(2)}`
+  return '-'
 }
 
-// 获取产品的产地名称列表
-const getProductOriginNames = (productId: number): string => {
-  const product = products.value.find(p => p.id === productId)
-  if (!product?.originIds) return '-'
+const getPriceUnit = (product: Product) => priceMap.value.get(product.id)?.unit || product.unit || '-'
+
+const getProductCategoryId = (product: Product): number | undefined => {
+  return product.categoryId || product.category?.id
+}
+
+const getCardStyle = (product: Product) => {
+  const categoryId = getProductCategoryId(product)
+  return categoryId ? getCategoryCardStyle(categoryId) : {}
+}
+
+const getCardClass = (product: Product) => {
+  return getProductCategoryId(product) ? 'has-category' : ''
+}
+
+const loadCategories = async () => {
+  const response = await getCategories('ACTIVE')
+  categories.value = (response.data || []).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  registerCategoryCodes(categories.value.map(category => ({ id: category.id, code: category.code })))
+}
+
+const applyPriceStats = (items: Awaited<ReturnType<typeof getPricesByDateWithStats>>['data']) => {
+  priceMap.value = new Map()
+  yesterdayPriceMap.value = new Map()
+  monthlyAverageMap.value = new Map()
+  inheritedPriceMap.value = new Map()
+  inheritedBudgetPriceMap.value = new Map()
+  editingPrices.value = new Map()
+  originalPriceTextMap.value = new Map()
+
+  for (const item of items || []) {
+    if (!item.price?.product) continue
+    const productId = item.price.product.id
+    priceMap.value.set(productId, item.price)
+    const text = normalizePriceText(item.price.currentPrice)
+    editingPrices.value.set(productId, text)
+    originalPriceTextMap.value.set(productId, text)
+    if (item.yesterdayPrice) yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
+    if (item.monthlyAveragePrice != null) monthlyAverageMap.value.set(productId, item.monthlyAveragePrice)
+    if (item.inheritedPrice != null) inheritedPriceMap.value.set(productId, item.inheritedPrice)
+    if (item.inheritedBudgetPrice != null) inheritedBudgetPriceMap.value.set(productId, item.inheritedBudgetPrice)
+  }
+
+  products.value.forEach(initEditingData)
+}
+
+const loadPrices = async () => {
+  tableLoading.value = true
   try {
-    const keys = JSON.parse(product.originIds)
-    return keys.map((key: string) => getOriginName(key)).filter(Boolean).join('、')
-  } catch {
-    return '-'
+    const response = await getPricesByDateWithStats(selectedDate.value)
+    applyPriceStats(response.data || [])
+  } catch (error) {
+    console.error('Failed to load prices:', error)
+    showToast('加载价格数据失败')
+  } finally {
+    tableLoading.value = false
   }
 }
 
-// 格式化价格变化显示
-const formatPriceChange = (change: number | null | undefined) => {
-  if (change === null || change === undefined) return '-'
-  if (change > 0) return `+${change.toFixed(2)}`
-  if (change < 0) return change.toFixed(2)
-  return '0.00'
+const loadProducts = async (options: { silent?: boolean } = {}) => {
+  if (!options.silent) tableLoading.value = true
+  try {
+    const response = await getProducts({
+      page: tablePage.value,
+      size: tableSize.value,
+      keyword: searchQueryDebounced.value || undefined,
+      categoryId: selectedCategoryId.value || undefined,
+      status: 'ACTIVE',
+      sortBy: 'sortOrder',
+      sortDirection: 'asc'
+    })
+    const pageData = response.data as PageResponse<Product>
+    products.value = pageData.content || []
+    tableTotalElements.value = pageData.totalElements || 0
+    tableTotalPages.value = pageData.totalPages || 0
+    products.value.forEach(initEditingData)
+  } catch (error) {
+    console.error('Failed to load products:', error)
+    showToast('加载产品数据失败')
+  } finally {
+    if (!options.silent) tableLoading.value = false
+  }
 }
 
-// 获取价格变化样式
-const getPriceChangeClass = (change: number | null | undefined) => {
-  if (change === null || change === undefined) return ''
-  if (change > 0) return 'positive'
-  if (change < 0) return 'negative'
-  return ''
+const loadData = async () => {
+  loading.value = true
+  try {
+    await Promise.all([loadCategories(), loadPrices()])
+    await loadProducts({ silent: true })
+  } finally {
+    loading.value = false
+  }
 }
 
-// 保存所有价格
+const ensureCanChangeDate = async () => {
+  if (!hasChanges.value) return true
+  try {
+    await showConfirmDialog({
+      title: '存在未保存价格',
+      message: '切换日期会重新加载价格数据，未保存的修改将被覆盖。',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+const onCategoryChange = async (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value
+  selectedCategoryId.value = value ? Number(value) : ''
+  tablePage.value = 0
+  await loadProducts()
+}
+
+const onTableSizeChange = async (event: Event) => {
+  tableSize.value = Number((event.target as HTMLSelectElement).value)
+  tablePage.value = 0
+  await loadProducts()
+}
+
+const goToPage = async (page: number) => {
+  if (page < 0 || page >= tableTotalPages.value || page === tablePage.value) return
+  tablePage.value = page
+  await loadProducts()
+}
+
+const createProductDragImage = (product: Product) => {
+  if (typeof document === 'undefined') return null
+  const preview = document.createElement('div')
+  preview.textContent = `${product.name} · ${product.category?.name || '未分类'}`
+  preview.style.position = 'fixed'
+  preview.style.top = '-1000px'
+  preview.style.left = '-1000px'
+  preview.style.maxWidth = '280px'
+  preview.style.padding = '10px 14px'
+  preview.style.border = '1px solid var(--primary-color)'
+  preview.style.borderRadius = '10px'
+  preview.style.background = 'var(--bg-card)'
+  preview.style.color = 'var(--text-primary)'
+  preview.style.boxShadow = '0 14px 32px rgba(15, 23, 42, 0.18)'
+  preview.style.fontSize = '13px'
+  preview.style.fontWeight = '700'
+  preview.style.whiteSpace = 'nowrap'
+  preview.style.pointerEvents = 'none'
+  document.body.appendChild(preview)
+  return preview
+}
+
+const onProductDragStart = (product: Product, event: DragEvent) => {
+  const productId = product.id
+  draggingProductId.value = productId
+  dragOverProductId.value = null
+  dragOverPosition.value = 'before'
+  event.dataTransfer?.setData('text/plain', String(productId))
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    const preview = createProductDragImage(product)
+    if (preview) {
+      event.dataTransfer.setDragImage(preview, 18, 18)
+      window.setTimeout(() => preview.remove(), 0)
+    }
+  }
+}
+
+const onProductDragOver = (productId: number, event: DragEvent) => {
+  if (draggingProductId.value === null || draggingProductId.value === productId) return
+  event.preventDefault()
+  const target = event.currentTarget as HTMLElement | null
+  if (target) {
+    const rect = target.getBoundingClientRect()
+    dragOverPosition.value = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  }
+  dragOverProductId.value = productId
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+const clearProductDrag = () => {
+  draggingProductId.value = null
+  dragOverProductId.value = null
+  dragOverPosition.value = 'before'
+}
+
+const persistProductOrder = async (nextProducts: Product[], previousProducts: Product[]) => {
+  const pageOffset = tablePage.value * tableSize.value
+  const items = nextProducts.map((product, index) => ({
+    id: product.id,
+    sortOrder: pageOffset + index + 1
+  }))
+
+  products.value = nextProducts.map((product, index) => ({
+    ...product,
+    sortOrder: items[index].sortOrder
+  }))
+
+  sorting.value = true
+  try {
+    await batchUpdateProductSort(items)
+    eventBus.emit('product-sort-updated')
+    showToast('产品排序已同步到首页')
+  } catch (error) {
+    console.error('Failed to update product sort:', error)
+    products.value = previousProducts
+    showToast('产品排序保存失败')
+  } finally {
+    sorting.value = false
+  }
+}
+
+const onProductDrop = async (targetProductId: number, event: DragEvent) => {
+  event.preventDefault()
+  const sourceProductId = draggingProductId.value
+  const dropPosition = dragOverPosition.value
+  clearProductDrag()
+  if (sourceProductId === null || sourceProductId === targetProductId || sorting.value) return
+
+  const previousProducts = [...products.value]
+  const sourceIndex = products.value.findIndex(product => product.id === sourceProductId)
+  const targetIndex = products.value.findIndex(product => product.id === targetProductId)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const nextProducts = [...products.value]
+  const [movedProduct] = nextProducts.splice(sourceIndex, 1)
+  let insertIndex = targetIndex + (dropPosition === 'after' ? 1 : 0)
+  if (sourceIndex < insertIndex) insertIndex--
+  if (insertIndex === sourceIndex) return
+  nextProducts.splice(insertIndex, 0, movedProduct)
+  await persistProductOrder(nextProducts, previousProducts)
+}
+
 const handleSave = async () => {
   if (!hasChanges.value) {
     showToast('没有修改，无需保存')
@@ -326,46 +410,39 @@ const handleSave = async () => {
   let failCount = 0
 
   try {
-    // 收集所有需要保存的变更
     const saveTasks: Promise<void>[] = []
     for (const [productId, priceStr] of editingPrices.value) {
-      const currentPrice = priceStr ? parseFloat(priceStr) : undefined
+      if (priceStr === (originalPriceTextMap.value.get(productId) || '')) continue
+      if (!priceStr) continue
 
-      // 如果没有填写价格，跳过
-      if (!priceStr) {
+      const currentPrice = Number(priceStr)
+      if (Number.isNaN(currentPrice)) {
+        failCount++
         continue
       }
 
       const existingPrice = priceMap.value.get(productId)
-
-      if (existingPrice && existingPrice.id != null) {
-        saveTasks.push(
-          updatePrice(existingPrice.id, {
-            currentPrice,
-            effectiveDate: selectedDate.value
-          }).then(() => { successCount++ }).catch((error) => {
-            console.error(`Failed to save price for product ${productId}:`, error)
-            failCount++
-          })
-        )
+      if (existingPrice?.id != null) {
+        saveTasks.push(updatePrice(existingPrice.id, {
+          currentPrice,
+          effectiveDate: selectedDate.value
+        }).then(() => { successCount++ }).catch((error) => {
+          console.error(`Failed to update price for product ${productId}:`, error)
+          failCount++
+        }))
       } else {
-        saveTasks.push(
-          addProductPrice(productId, {
-            currentPrice,
-            effectiveDate: selectedDate.value
-          } as Price).then(() => { successCount++ }).catch((error) => {
-            console.error(`Failed to save price for product ${productId}:`, error)
-            failCount++
-          })
-        )
+        saveTasks.push(addProductPrice(productId, {
+          currentPrice,
+          effectiveDate: selectedDate.value
+        } as Price).then(() => { successCount++ }).catch((error) => {
+          console.error(`Failed to add price for product ${productId}:`, error)
+          failCount++
+        }))
       }
     }
 
     await Promise.allSettled(saveTasks)
-
-    // 无论成功还是部分失败，都刷新价格数据，确保priceMap中的id是最新的
-    // 这样后续保存时才能正确判断是新增还是更新
-    loadPrices()
+    await loadPrices()
     eventBus.emit('prices-updated')
 
     if (failCount === 0) {
@@ -381,7 +458,6 @@ const handleSave = async () => {
   }
 }
 
-// 返回
 const goBack = () => {
   if (hasChanges.value) {
     showConfirmDialog({
@@ -389,86 +465,87 @@ const goBack = () => {
       message: '有未保存的修改，确定要返回吗？',
       confirmButtonText: '确定',
       cancelButtonText: '取消'
-    }).then(() => {
-      router.push('/products')
-    }).catch(() => {})
-  } else {
-    router.push('/products')
+    }).then(() => router.push('/products')).catch(() => {})
+    return
   }
+  router.push('/products')
 }
 
-// 日期变化时重新加载
-watch(selectedDate, () => {
-  loadPrices()
-})
-
-// 前一天
-const goToPrevDate = () => {
-  const date = new Date(selectedDate.value)
+const goToPrevDate = async () => {
+  if (!await ensureCanChangeDate()) return
+  const date = new Date(selectedDate.value + 'T00:00:00')
   date.setDate(date.getDate() - 1)
   selectedDate.value = date.toISOString().split('T')[0]
 }
 
-// 后一天
-const goToNextDate = () => {
-  const date = new Date(selectedDate.value)
+const goToNextDate = async () => {
+  if (!await ensureCanChangeDate()) return
+  const date = new Date(selectedDate.value + 'T00:00:00')
   date.setDate(date.getDate() + 1)
   selectedDate.value = date.toISOString().split('T')[0]
 }
 
-onMounted(() => {
-  loadAllDicts()
-  loadData()
+const onDateInputChange = async (event: Event) => {
+  const nextDate = (event.target as HTMLInputElement).value
+  if (!nextDate || nextDate === selectedDate.value) return
+  if (!await ensureCanChangeDate()) {
+    ;(event.target as HTMLInputElement).value = selectedDate.value
+    return
+  }
+  selectedDate.value = nextDate
+}
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, (value) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(async () => {
+    searchQueryDebounced.value = value.trim()
+    tablePage.value = 0
+    await loadProducts()
+  }, 300)
+})
+
+watch(selectedDate, async () => {
+  await loadPrices()
+})
+
+onMounted(async () => {
+  await loadAllDicts()
+  await loadData()
 })
 </script>
 
 <template>
   <div class="price-maintenance-page">
-    <!-- ==================== PC布局 ==================== -->
     <template v-if="isPCLayout">
       <div class="pc-maintenance">
-        <!-- 页面标题区 -->
         <div class="pc-header">
           <div class="header-content">
-            <button class="back-button" @click="goBack">
+            <button class="back-button" type="button" @click="goBack" title="返回产品列表">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
             </button>
             <div class="header-text">
               <h1 class="page-title-pc">{{ formatDateDisplay(selectedDate) }} 价格维护</h1>
-              <p class="page-subtitle">按日期维护产品价格，支持批量更新</p>
+              <p class="page-subtitle">按当前日期录入当日售价，保留昨日售价、价格变化与月均价对照</p>
             </div>
           </div>
           <div class="header-actions">
             <div class="date-picker">
-              <button class="date-nav-btn" @click="goToPrevDate" title="前一天">
+              <button class="date-nav-btn" type="button" @click="goToPrevDate" title="前一天">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="15 18 9 12 15 6"/>
                 </svg>
               </button>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <input
-                type="date"
-                v-model="selectedDate"
-                class="date-input"
-              />
-              <button class="date-nav-btn" @click="goToNextDate" title="后一天">
+              <input type="date" :value="selectedDate" class="date-input" @change="onDateInputChange" />
+              <button class="date-nav-btn" type="button" @click="goToNextDate" title="后一天">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </button>
             </div>
-            <button
-              class="btn-save"
-              @click="handleSave"
-              :disabled="saving || !hasChanges"
-            >
+            <button class="btn-save" type="button" @click="handleSave" :disabled="saving || !hasChanges">
               <svg v-if="!saving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                 <polyline points="17 21 17 13 7 13 7 21"/>
@@ -480,393 +557,437 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 价格表格 -->
-        <div class="price-table" v-if="!loading">
-          <div class="table-header">
-            <div class="table-cell seq-col">序号</div>
-            <div class="table-cell product">产品信息</div>
-            <div class="table-cell origin-col">产地</div>
-            <div class="table-cell price-col">当日售价</div>
-            <div class="table-cell price-col">预算价格</div>
-            <div class="table-cell price-col">昨日售价</div>
-            <div class="table-cell price-col">价格变化</div>
-            <div class="table-cell price-col">月均价</div>
-            <div class="table-cell unit">单位</div>
-          </div>
-          <VueDraggable
-            v-model="products"
-            tag="div"
-            class="table-body"
-            :animation="150"
-            handle=".drag-handle"
-            ghost-class="drag-ghost"
-            @end="handleDragEnd"
-          >
-            <div
-              v-for="(product, index) in products"
-              :key="product.id"
-              class="table-row"
-            >
-              <div class="table-cell seq-col">
-                <span class="drag-handle" title="拖拽排序">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="5.5" cy="3" r="1.2"/>
-                    <circle cx="10.5" cy="3" r="1.2"/>
-                    <circle cx="5.5" cy="8" r="1.2"/>
-                    <circle cx="10.5" cy="8" r="1.2"/>
-                    <circle cx="5.5" cy="13" r="1.2"/>
-                    <circle cx="10.5" cy="13" r="1.2"/>
-                  </svg>
-                </span>
-                <span class="seq-number">{{ index + 1 }}</span>
-              </div>
-              <div class="table-cell product">
-                <div class="product-info">
-                  <span class="product-name">{{ product.name }}</span>
-                  <span class="product-specs" v-if="product.specs">{{ product.specs }}</span>
-                </div>
-              </div>
-              <div class="table-cell origin-col">
-                <span class="origin-text">{{ getProductOriginNames(product.id) }}</span>
-              </div>
-              <div class="table-cell price-col">
-                <div class="price-input-wrapper">
-                  <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
-                  <input
-                    type="number"
-                    :value="getEditData(product.id)"
-                    @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
-                    class="price-input"
-                    :placeholder="getPricePlaceholder(product.id)"
-                  />
-                </div>
-              </div>
-              <div class="table-cell price-col">
-                <span class="budget-price-value">
-                  {{ getProductCurrencySymbol(product.id) }}{{ formatBudgetPriceValue(product.id) }}
-                </span>
-              </div>
-              <div class="table-cell price-col">
-                <span class="price-value">
-                  {{ formatPrice(getDisplayYesterdayPrice(product.id)) }}
-                </span>
-              </div>
-              <div class="table-cell price-col">
-                <span class="price-change" :class="getPriceChangeClass(getPriceChange(product.id))">
-                  {{ formatPriceChange(getPriceChange(product.id)) }}
-                </span>
-              </div>
-              <div class="table-cell price-col">
-                <span class="price-value">
-                  {{ formatPrice(getDisplayMonthlyAvg(product.id)) }}
-                </span>
-              </div>
-              <div class="table-cell unit">
-                <span class="unit-text">{{ priceMap.get(product.id)?.unit || '-' }}</span>
-              </div>
+        <section class="maintenance-table-section">
+          <div class="product-table-toolbar">
+            <div>
+              <h2 class="section-title-pc">产品价格表</h2>
             </div>
-          </VueDraggable>
-
-          <div v-if="products.length === 0" class="empty-state">
-            暂无产品数据
+            <div class="table-filters">
+              <div class="search-box-pc">
+                <span class="search-icon-text">⌕</span>
+                <input v-model="searchQuery" type="text" placeholder="搜索产品名称" class="search-input-pc" />
+              </div>
+              <select class="table-select category-select" :value="selectedCategoryId" @change="onCategoryChange" aria-label="产品分类筛选">
+                <option value="">全部分类</option>
+                <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              </select>
+              <select :value="tableSize" class="table-select" @change="onTableSizeChange">
+                <option :value="10">10条/页</option>
+                <option :value="20">20条/页</option>
+                <option :value="50">50条/页</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div v-else class="loading-state">
-          <div class="loading-spinner"></div>
-          <span>加载中...</span>
-        </div>
+          <div class="product-table-shell">
+            <table class="maintenance-product-table">
+              <colgroup>
+                <col class="col-drag" />
+                <col class="col-product" />
+                <col class="col-category" />
+                <col class="col-spec" />
+                <col class="col-current" />
+                <col class="col-budget" />
+                <col class="col-yesterday" />
+                <col class="col-change" />
+                <col class="col-month" />
+                <col class="col-unit" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="drag-header" aria-label="拖拽排序"></th>
+                  <th>产品名称</th>
+                  <th>类别</th>
+                  <th>规格</th>
+                  <th>当日售价</th>
+                  <th>预算价格</th>
+                  <th>昨日售价</th>
+                  <th>价格变化</th>
+                  <th>月均价</th>
+                  <th>单位</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading || tableLoading">
+                  <td colspan="10" class="table-state-cell">正在加载产品...</td>
+                </tr>
+                <tr v-else-if="products.length === 0">
+                  <td colspan="10" class="table-state-cell">{{ searchQuery || selectedCategoryId ? '未找到匹配产品' : '暂无产品数据' }}</td>
+                </tr>
+                <tr
+                  v-for="product in products"
+                  v-else
+                  :key="product.id"
+                  :class="[getCardClass(product), {
+                    dragging: draggingProductId === product.id,
+                    'drag-over': dragOverProductId === product.id,
+                    'drag-before': dragOverProductId === product.id && dragOverPosition === 'before',
+                    'drag-after': dragOverProductId === product.id && dragOverPosition === 'after'
+                  }]"
+                  :style="getCardStyle(product)"
+                  @dragover="onProductDragOver(product.id, $event)"
+                  @drop="onProductDrop(product.id, $event)"
+                  @dragend="clearProductDrag"
+                >
+                  <td class="drag-cell">
+                    <button
+                      class="drag-handle"
+                      type="button"
+                      draggable="true"
+                      :disabled="sorting"
+                      title="拖拽调整产品顺序"
+                      @click.prevent
+                      @dragstart="onProductDragStart(product, $event)"
+                      @dragend="clearProductDrag"
+                    >⋮⋮</button>
+                  </td>
+                  <td>
+                    <div class="table-product-name">
+                      <span class="table-category-dot"></span>
+                      <div class="table-product-main">
+                        <strong>{{ product.name }}</strong>
+                        <span class="table-origin-chip" v-if="getProductOriginLabel(product)">{{ getProductOriginLabel(product) }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{{ product.category?.name || '-' }}</td>
+                  <td>
+                    <div class="table-spec-marquee" :title="product.specs || '-'">
+                      <span class="table-spec-text">{{ product.specs || '-' }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="price-input-wrapper">
+                      <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
+                      <input
+                        type="number"
+                        :value="getEditData(product.id)"
+                        @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
+                        class="price-input"
+                        :placeholder="getPricePlaceholder(product.id)"
+                      />
+                    </div>
+                  </td>
+                  <td><span class="budget-price-value">{{ formatBudgetPrice(product.id) }}</span></td>
+                  <td><span class="table-price-muted">{{ formatPriceWithCurrency(product.id, getDisplayYesterdayPrice(product.id)) }}</span></td>
+                  <td>
+                    <span class="table-change" :class="getPriceChangeClass(getPriceChange(product.id))">
+                      {{ formatPriceChange(product.id, getPriceChange(product.id)) }}
+                    </span>
+                  </td>
+                  <td><span class="table-price-muted">{{ formatPriceWithCurrency(product.id, getDisplayMonthlyAvg(product.id)) }}</span></td>
+                  <td>{{ getPriceUnit(product) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="table-pagination">
+            <span>第 {{ tableTotalPages === 0 ? 0 : tablePage + 1 }} / {{ tableTotalPages }} 页</span>
+            <div class="pagination-actions">
+              <button class="page-btn" type="button" :disabled="tablePage <= 0" @click="goToPage(tablePage - 1)">上一页</button>
+              <button class="page-btn" type="button" :disabled="tablePage + 1 >= tableTotalPages" @click="goToPage(tablePage + 1)">下一页</button>
+            </div>
+          </div>
+        </section>
       </div>
     </template>
 
-    <!-- ==================== 移动端布局 ==================== -->
     <template v-else>
-      <!-- 顶部导航栏 -->
       <header class="navbar">
         <div class="navbar-left">
-          <button class="back-btn" @click="goBack">
+          <button class="back-btn" type="button" @click="goBack">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
           <h1 class="navbar-title">{{ formatDateDisplay(selectedDate) }}</h1>
         </div>
-        <button
-          class="save-btn"
-          @click="handleSave"
-          :disabled="saving || !hasChanges"
-        >
+        <button class="save-btn" type="button" @click="handleSave" :disabled="saving || !hasChanges">
           {{ saving ? '保存中...' : '保存' }}
         </button>
       </header>
 
-      <!-- 日期选择 -->
-      <div class="date-section">
+      <div class="mobile-toolbar">
         <div class="date-nav">
-          <button class="date-nav-btn-mobile" @click="goToPrevDate" title="前一天">
+          <button class="date-nav-btn-mobile" type="button" @click="goToPrevDate" title="前一天">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
-          <div class="date-center">
-            <label class="date-label">选择日期</label>
-            <input
-              type="date"
-              v-model="selectedDate"
-              class="date-input-mobile"
-            />
-          </div>
-          <button class="date-nav-btn-mobile" @click="goToNextDate" title="后一天">
+          <input type="date" :value="selectedDate" class="date-input-mobile" @change="onDateInputChange" />
+          <button class="date-nav-btn-mobile" type="button" @click="goToNextDate" title="后一天">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"/>
             </svg>
           </button>
         </div>
+        <div class="mobile-filters">
+          <input v-model="searchQuery" type="text" placeholder="搜索产品名称" class="mobile-search-input" />
+          <select class="table-select mobile-select" :value="selectedCategoryId" @change="onCategoryChange">
+            <option value="">全部分类</option>
+            <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+          </select>
+        </div>
       </div>
 
-      <!-- 产品价格列表 -->
-      <main class="content" v-if="!loading">
-        <VueDraggable
-          v-model="products"
-          tag="div"
-          class="price-list"
-          :animation="150"
-          handle=".drag-handle"
-          ghost-class="drag-ghost-mobile"
-          @end="handleDragEnd"
-        >
-            <div
-              v-for="(product, index) in products"
-              :key="product.id"
-              class="price-card"
-            >
-              <div class="card-header">
-                <span class="drag-handle" title="拖拽排序">
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="5.5" cy="3" r="1.2"/>
-                    <circle cx="10.5" cy="3" r="1.2"/>
-                    <circle cx="5.5" cy="8" r="1.2"/>
-                    <circle cx="10.5" cy="8" r="1.2"/>
-                    <circle cx="5.5" cy="13" r="1.2"/>
-                    <circle cx="10.5" cy="13" r="1.2"/>
-                  </svg>
-                </span>
-                <span class="card-seq">{{ index + 1 }}</span>
-                <div class="product-info">
-                  <span class="product-name">{{ product.name }}</span>
-                </div>
+      <main class="content">
+        <div v-if="loading || tableLoading" class="table-state-card">正在加载产品...</div>
+        <div v-else-if="products.length === 0" class="table-state-card">{{ searchQuery || selectedCategoryId ? '未找到匹配产品' : '暂无产品数据' }}</div>
+        <div v-else class="price-list">
+          <article
+            v-for="product in products"
+            :key="product.id"
+            class="price-card"
+            :class="[getCardClass(product), {
+              dragging: draggingProductId === product.id,
+              'drag-over': dragOverProductId === product.id,
+              'drag-before': dragOverProductId === product.id && dragOverPosition === 'before',
+              'drag-after': dragOverProductId === product.id && dragOverPosition === 'after'
+            }]"
+            :style="getCardStyle(product)"
+            @dragover="onProductDragOver(product.id, $event)"
+            @drop="onProductDrop(product.id, $event)"
+            @dragend="clearProductDrag"
+          >
+            <div class="card-header">
+              <div class="table-product-main">
+                <button
+                  class="drag-handle mobile-drag-handle"
+                  type="button"
+                  draggable="true"
+                  :disabled="sorting"
+                  title="拖拽调整产品顺序"
+                  @click.prevent
+                  @dragstart="onProductDragStart(product, $event)"
+                  @dragend="clearProductDrag"
+                >⋮⋮</button>
+                <strong class="product-name">{{ product.name }}</strong>
+                <span class="table-origin-chip" v-if="getProductOriginLabel(product)">{{ getProductOriginLabel(product) }}</span>
               </div>
+              <span class="product-category">{{ product.category?.name || '未分类' }}</span>
+            </div>
 
-            <!-- 主要价格信息 -->
+            <div class="card-meta-row">
+              <span>{{ product.specs || '-' }}</span>
+              <span>{{ getPriceUnit(product) }}</span>
+            </div>
+
             <div class="main-price-section">
-              <div class="main-price-field">
-                <label class="field-label">当日售价</label>
-                <div class="price-input-wrapper">
-                  <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
-                  <input
-                    type="number"
-                    :value="getEditData(product.id)"
-                    @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
-                    class="price-input"
-                    :placeholder="getPricePlaceholder(product.id)"
-                  />
-                </div>
-              </div>
-              <div class="main-price-field">
-                <label class="field-label">预算价格</label>
-                <span class="budget-price-value budget-price-mobile">
-                  {{ formatBudgetPrice(product.id) }}
-                </span>
+              <label class="field-label">当日售价</label>
+              <div class="price-input-wrapper">
+                <span class="price-unit">{{ getProductCurrencySymbol(product.id) }}</span>
+                <input
+                  type="number"
+                  :value="getEditData(product.id)"
+                  @input="updateEditPrice(product.id, ($event.target as HTMLInputElement).value)"
+                  class="price-input"
+                  :placeholder="getPricePlaceholder(product.id)"
+                />
               </div>
             </div>
 
-            <!-- 价格对比信息 -->
             <div class="price-compare-row">
               <div class="compare-item">
+                <span class="compare-label">预算价格</span>
+                <span class="compare-value">{{ formatBudgetPrice(product.id) }}</span>
+              </div>
+              <div class="compare-item">
                 <span class="compare-label">昨日售价</span>
-                <span class="compare-value">{{ formatPrice(getDisplayYesterdayPrice(product.id)) }}</span>
+                <span class="compare-value">{{ formatPriceWithCurrency(product.id, getDisplayYesterdayPrice(product.id)) }}</span>
               </div>
               <div class="compare-item">
                 <span class="compare-label">价格变化</span>
-                <span class="compare-value" :class="getPriceChangeClass(getPriceChange(product.id))">
-                  {{ formatPriceChange(getPriceChange(product.id)) }}
+                <span class="compare-value table-change" :class="getPriceChangeClass(getPriceChange(product.id))">
+                  {{ formatPriceChange(product.id, getPriceChange(product.id)) }}
                 </span>
               </div>
               <div class="compare-item">
                 <span class="compare-label">月均价</span>
-                <span class="compare-value">{{ formatPrice(getDisplayMonthlyAvg(product.id)) }}</span>
+                <span class="compare-value">{{ formatPriceWithCurrency(product.id, getDisplayMonthlyAvg(product.id)) }}</span>
               </div>
             </div>
+          </article>
+        </div>
 
-            <div class="unit-row">
-              <span class="unit-label">单位：</span>
-              <span class="unit-value">{{ priceMap.get(product.id)?.unit || '-' }}</span>
-            </div>
+        <div class="table-pagination mobile-pagination">
+          <span>第 {{ tableTotalPages === 0 ? 0 : tablePage + 1 }} / {{ tableTotalPages }} 页，共 {{ tableTotalElements }} 个</span>
+          <div class="pagination-actions">
+            <button class="page-btn" type="button" :disabled="tablePage <= 0" @click="goToPage(tablePage - 1)">上一页</button>
+            <button class="page-btn" type="button" :disabled="tablePage + 1 >= tableTotalPages" @click="goToPage(tablePage + 1)">下一页</button>
           </div>
-        </VueDraggable>
-
-        <div v-if="products.length === 0" class="empty-state">
-          暂无产品数据
         </div>
       </main>
-
-      <div v-else class="loading-state">
-        <div class="loading-spinner"></div>
-        <span>加载中...</span>
-      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
-
 .price-maintenance-page {
-  background-color: #F5F5F5;
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  background: var(--bg-page);
 }
 
-/* ==================== PC布局 ==================== */
 .pc-maintenance {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--spacing-xl);
+}
+
+.pc-header,
+.maintenance-table-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .pc-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  background: #FFFFFF;
-  border-radius: 12px;
-  border: 1px solid #E5E5E5;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.header-content,
+.header-actions,
+.product-table-toolbar,
+.table-filters,
+.date-picker,
+.date-nav,
+.pagination-actions,
+.navbar-left,
+.card-header,
+.card-meta-row {
+  display: flex;
+  align-items: center;
 }
 
 .header-content {
-  display: flex;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.header-actions,
+.table-filters {
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.back-button,
+.date-nav-btn,
+.back-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .back-button {
   width: 40px;
   height: 40px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666666;
-  transition: all 150ms;
+  border-radius: var(--radius);
 }
 
-.back-button:hover {
-  background: #F5F5F5;
-  color: #1A1A1A;
-}
-
-.header-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.back-button:hover,
+.date-nav-btn:hover,
+.back-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .page-title-pc {
+  margin: 0;
   font-family: var(--font-heading);
   font-size: var(--font-size-2xl);
-  font-weight: 500;
-  color: #1A1A1A;
-  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.page-subtitle {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  color: #888888;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.page-subtitle,
+.panel-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .date-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  color: #666666;
+  gap: var(--spacing-xs);
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--gray-50);
+}
+
+.date-input,
+.date-input-mobile,
+.mobile-search-input,
+.table-select {
+  height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  outline: none;
 }
 
 .date-input {
-  border: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-  outline: none;
+  width: 150px;
+  padding: 0 var(--spacing-sm);
   cursor: pointer;
 }
 
 .date-nav-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666666;
-  transition: all 150ms;
-  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
 }
 
-.date-nav-btn:hover {
-  background: #F5F5F5;
-  color: #1A1A1A;
-  border-color: #CCCCCC;
+.btn-save,
+.save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--primary-color);
+  color: #FFFFFF;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
 .btn-save {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 150ms;
+  min-height: 40px;
+  padding: 0 var(--spacing-md);
 }
 
-.btn-save:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.btn-save:disabled {
-  opacity: 0.5;
+.btn-save:disabled,
+.save-btn:disabled,
+.page-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .btn-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.32);
   border-top-color: #FFFFFF;
-  border-radius: 50%;
+  border-radius: 999px;
   animation: spin 0.8s linear infinite;
 }
 
@@ -874,604 +995,561 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* 价格表格 */
-.price-table {
-  background: #FFFFFF;
-  border-radius: 12px;
-  border: 1px solid #E5E5E5;
+.maintenance-table-section {
+  padding: var(--spacing-lg);
   overflow: hidden;
 }
 
-.table-header {
+.product-table-toolbar {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.section-title-pc {
   display: flex;
   align-items: center;
-  background: #FAFAFA;
-  border-bottom: 1px solid #E5E5E5;
-  padding: 0 20px;
-}
-
-.table-row {
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid #F3F4F6;
-  transition: background-color 150ms;
-}
-
-.table-row:last-child {
-  border-bottom: none;
-}
-
-.table-row:hover {
-  background: #FAFAFA;
-}
-
-.table-cell {
-  padding: 14px 8px;
+  gap: var(--spacing-sm);
+  margin: 0;
+  color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
 }
 
-.table-cell.product {
-  flex: 2;
-  min-width: 200px;
+.search-box-pc {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: clamp(180px, 24vw, 260px);
+  min-width: 0;
+  padding: 0 var(--spacing-md);
+  height: 40px;
+  background: var(--gray-100);
+  border-radius: var(--radius);
 }
 
-.table-cell.origin-col {
+.search-icon-text {
+  color: var(--text-muted);
+}
+
+.search-input-pc {
   flex: 1;
-  min-width: 100px;
-  color: #666666;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.table-select {
+  min-width: 112px;
+  padding: 0 var(--spacing-sm);
+}
+
+.category-select {
+  min-width: 128px;
+}
+
+.product-table-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.maintenance-product-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
   font-size: var(--font-size-sm);
 }
 
-.origin-text {
+.maintenance-product-table .col-drag { width: 3%; }
+.maintenance-product-table .col-product { width: 18%; }
+.maintenance-product-table .col-category { width: 8%; }
+.maintenance-product-table .col-spec { width: 10%; }
+.maintenance-product-table .col-current { width: 12%; }
+.maintenance-product-table .col-budget { width: 10%; }
+.maintenance-product-table .col-yesterday { width: 10%; }
+.maintenance-product-table .col-change { width: 10%; }
+.maintenance-product-table .col-month { width: 10%; }
+.maintenance-product-table .col-unit { width: 9%; }
+
+.maintenance-product-table th,
+.maintenance-product-table td {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--gray-100);
+  text-align: left;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.table-cell.price-col {
-  flex: 1.2;
-  min-width: 120px;
+.maintenance-product-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  background: var(--gray-50);
 }
 
-.table-cell.unit {
-  flex: 0.6;
-  min-width: 80px;
-  color: #888888;
-  font-size: var(--font-size-xs);
+.maintenance-product-table .drag-header {
+  color: transparent;
+  padding-left: 6px;
+  padding-right: 6px;
+  overflow: visible;
+  text-overflow: clip;
 }
 
-.table-cell.seq-col {
-  flex: 0.7;
-  min-width: 70px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #888888;
-  font-size: var(--font-size-xs);
+.maintenance-product-table tbody tr:hover {
+  background: color-mix(in srgb, var(--category-surface, var(--primary-color)) 42%, var(--bg-card));
+}
+
+.maintenance-product-table tbody tr.dragging,
+.price-card.dragging {
+  opacity: 0.62;
+  filter: saturate(1.1);
+}
+
+.maintenance-product-table tbody tr.dragging td {
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--bg-card));
+}
+
+.maintenance-product-table tbody tr.drag-before td {
+  border-top: 3px solid var(--primary-color);
+}
+
+.maintenance-product-table tbody tr.drag-after td {
+  border-bottom: 3px solid var(--primary-color);
+}
+
+.price-card.dragging {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-md);
+}
+
+.price-card.drag-before {
+  border-top: 3px solid var(--primary-color);
+  box-shadow: 0 -8px 18px color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+
+.price-card.drag-after {
+  border-bottom: 3px solid var(--primary-color);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+
+.maintenance-product-table tbody tr.drag-over td,
+.price-card.drag-over {
+  background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-card));
+}
+
+.maintenance-product-table tbody tr.has-category .table-product-name strong {
+  color: var(--category-primary);
+}
+
+.drag-cell {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  text-align: center !important;
 }
 
 .drag-handle {
-  cursor: grab;
-  color: #C0C4CC;
-  display: flex;
+  width: 26px;
+  height: 30px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
-  border-radius: 4px;
-  transition: color 150ms, background 150ms;
-  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  cursor: grab;
+  transition: all var(--transition-fast);
 }
 
-.drag-handle:hover {
-  color: #0D6E6E;
-  background: #F0F0F0;
+.drag-handle:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-card));
+  color: var(--primary-color);
 }
 
 .drag-handle:active {
   cursor: grabbing;
 }
 
-.seq-number {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  color: #888888;
-  font-weight: 500;
+.drag-handle:disabled {
+  cursor: wait;
+  opacity: 0.45;
 }
 
-.table-body {
+.table-product-name,
+.table-product-main {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.drag-ghost {
-  opacity: 0.4;
-  background: #E8F5F5;
+.table-product-main {
+  overflow: hidden;
 }
 
-.drag-ghost .drag-handle {
-  color: #0D6E6E;
-}
-
-.product-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
+.table-product-name strong,
 .product-name {
-  font-weight: 500;
-  color: #1A1A1A;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.product-specs {
+.table-category-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--category-primary, var(--primary-color));
+}
+
+.table-origin-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 72px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--category-primary, var(--primary-color)) 20%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--category-surface, var(--primary-color)) 38%, var(--bg-card));
+  color: var(--category-primary, var(--primary-color));
   font-size: var(--font-size-xs);
-  color: #999;
+  font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-spec-marquee {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.table-spec-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.table-spec-marquee:hover .table-spec-text {
+  max-width: none;
+  min-width: 100%;
+  animation: spec-marquee 7s linear infinite;
+}
+
+@keyframes spec-marquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(-100%); }
 }
 
 .price-input-wrapper {
   display: flex;
   align-items: center;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--gray-50);
   overflow: hidden;
 }
 
+.price-input-wrapper:focus-within {
+  border-color: var(--primary-color);
+  background: var(--bg-card);
+}
+
 .price-unit {
-  padding: 6px 0 6px 10px;
-  color: #6B7280;
+  flex-shrink: 0;
+  padding-left: 10px;
+  color: var(--text-secondary);
   font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .price-input {
-  flex: 1;
-  padding: 8px 8px 8px 4px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 4px;
   border: none;
   background: transparent;
-  font-family: var(--font-body);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: #1A1A1A;
+  font-weight: 700;
   outline: none;
 }
 
 .price-input::placeholder {
-  color: #D1D5DB;
-}
-
-.price-input:focus {
-  background: #FFFFFF;
-}
-
-.price-input-wrapper:focus-within {
-  border-color: #0D6E6E;
-  background: #FFFFFF;
-}
-
-.price-value {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-}
-
-.budget-price-value {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: #6B7280;
-}
-
-.budget-price-mobile {
-  display: block;
-  padding: 8px 10px;
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  color: #6B7280;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-}
-
-.price-change {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
-.price-change.positive {
+.budget-price-value,
+.table-price-muted,
+.compare-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.table-change {
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+.table-change.up {
   color: var(--price-rise-color);
 }
 
-.price-change.negative {
+.table-change.down {
   color: var(--price-fall-color);
 }
 
-.price-change:not(.positive):not(.negative) {
-  color: #888888;
+.table-change.flat {
+  color: var(--price-flat-color);
 }
 
-.unit-text {
-  font-size: var(--font-size-xs);
-  color: #6B7280;
+.table-state-cell {
+  padding: 32px !important;
+  color: var(--text-muted);
+  text-align: center !important;
 }
 
-/* 加载/空状态 */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px;
-  gap: 16px;
-  background: #FFFFFF;
-  border-radius: 12px;
-  border: 1px solid #E5E5E5;
-  color: #666666;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #E5E5E5;
-  border-top-color: #0D6E6E;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.empty-state {
-  padding: 60px 24px;
+.table-state-card {
+  padding: 32px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
   text-align: center;
-  color: #888888;
-  font-family: var(--font-body);
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  color: var(--text-secondary);
   font-size: var(--font-size-sm);
 }
 
-/* ==================== 移动端布局 ==================== */
-@media (max-width: 1024px) {
-  .pc-maintenance {
-    display: none;
-  }
-}
-
-.price-maintenance-page {
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
+.page-btn {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  cursor: pointer;
 }
 
 .navbar {
-  height: 56px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
   position: sticky;
   top: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
 }
 
 .navbar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: var(--spacing-sm);
+  min-width: 0;
 }
 
 .back-btn {
   width: 36px;
   height: 36px;
   border: none;
-  background: transparent;
-  color: #1A1A1A;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-}
-
-.back-btn:hover {
-  background: #F5F5F5;
+  border-radius: var(--radius);
 }
 
 .navbar-title {
+  margin: 0;
+  color: var(--text-primary);
   font-family: var(--font-heading);
   font-size: var(--font-size-lg);
-  font-weight: 500;
-  color: #1A1A1A;
-  margin: 0;
+  font-weight: 600;
 }
 
 .save-btn {
-  padding: 8px 16px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 150ms;
+  min-height: 36px;
+  padding: 0 var(--spacing-md);
 }
 
-.save-btn:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.date-section {
-  padding: 16px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
+.mobile-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
 }
 
 .date-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.date-center {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.date-nav-btn-mobile {
-  width: 36px;
-  height: 36px;
-  border: 1px solid #E5E5E5;
-  background: #F9FAFB;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666666;
-  transition: all 150ms;
-  flex-shrink: 0;
-}
-
-.date-nav-btn-mobile:active {
-  background: #E8F5F5;
-  color: #0D6E6E;
-  border-color: #0D6E6E;
-}
-
-.date-label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: #6B7280;
-  margin-bottom: 8px;
+  gap: var(--spacing-sm);
 }
 
 .date-input-mobile {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-sm);
+}
+
+.date-nav-btn-mobile {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.mobile-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: var(--spacing-sm);
+}
+
+.mobile-search-input {
+  min-width: 0;
+  padding: 0 var(--spacing-sm);
+}
+
+.mobile-select {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-  background: #FFFFFF;
-  box-sizing: border-box;
+  min-width: 0;
 }
 
 .content {
   flex: 1;
-  padding: 16px;
-  padding-bottom: 100px;
+  padding: var(--spacing-md);
+  padding-bottom: 96px;
 }
 
 .price-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--spacing-sm);
+}
+
+.mobile-sort-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
 }
 
 .price-card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid #E5E5E5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+.price-card.has-category {
+  border-color: var(--category-border);
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--category-surface) 64%, var(--bg-card)) 100%);
+}
+
+.price-card.has-category .product-name {
+  color: var(--category-primary);
 }
 
 .card-header {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #F3F4F6;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  min-width: 0;
 }
 
-.card-header .drag-handle {
-  color: #C0C4CC;
-}
-
-.card-header .drag-handle:hover {
-  color: #0D6E6E;
-  background: #F5F5F5;
-}
-
-.card-seq {
-  font-family: var(--font-body);
+.product-category,
+.compare-label,
+.card-meta-row {
+  color: var(--text-muted);
   font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: #0D6E6E;
-  min-width: 20px;
 }
 
-.drag-ghost-mobile {
-  opacity: 0.4;
-  background: #E8F5F5;
-  border-color: #0D6E6E;
+.product-category {
+  flex-shrink: 0;
+  padding-top: 2px;
 }
 
-.product-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.mobile-drag-handle {
+  flex-shrink: 0;
+  margin-left: -6px;
 }
 
-.product-name {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: #1A1A1A;
+.card-meta-row {
+  justify-content: space-between;
+  gap: var(--spacing-sm);
 }
 
 .main-price-section {
-  margin-bottom: 16px;
-}
-
-.main-price-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
 .field-label {
-  font-family: var(--font-body);
+  color: var(--text-secondary);
   font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: #6B7280;
+  font-weight: 600;
 }
 
 .price-compare-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #F9FAFB;
-  border-radius: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius);
+  background: var(--gray-50);
 }
 
 .compare-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  text-align: center;
+  min-width: 0;
 }
 
-.compare-label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  color: #888888;
-}
-
-.compare-value {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: #1A1A1A;
-}
-
-.compare-value.positive {
-  color: var(--price-rise-color);
-}
-
-.compare-value.negative {
-  color: var(--price-fall-color);
-}
-
-.unit-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  color: #888888;
-}
-
-.unit-value {
-  color: #6B7280;
-}
-
-.price-input-wrapper {
-  display: flex;
-  align-items: center;
-  background: #F9FAFB;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.price-unit {
-  padding: 8px 0 8px 10px;
-  color: #6B7280;
-  font-weight: 500;
-  font-size: var(--font-size-xs);
-}
-
-.price-input {
-  flex: 1;
-  padding: 8px 10px 8px 4px;
-  border: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  color: #1A1A1A;
-  outline: none;
-}
-
-.price-input::placeholder {
-  color: #D1D5DB;
-  font-weight: 400;
-}
-
-.price-input-wrapper:focus-within {
-  border-color: #0D6E6E;
-  background: #FFFFFF;
-}
-
-.loading-state {
-  display: flex;
+.mobile-pagination {
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px;
-  gap: 16px;
-  color: #666666;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-}
-
-.empty-state {
-  padding: 48px 24px;
-  text-align: center;
-  color: #888888;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
+  align-items: flex-start;
 }
 
 @media (max-width: 480px) {
-  .content {
-    padding: 12px;
-  }
-
-  .price-card {
-    padding: 14px;
-    border-radius: 10px;
-  }
-
-  .price-compare-row {
-    grid-template-columns: 1fr 1fr;
+  .mobile-filters {
+    grid-template-columns: 1fr;
   }
 }
 </style>

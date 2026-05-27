@@ -10,12 +10,10 @@ import { updateDict } from '@/api/dict'
 
 // 首页布局配置
 export interface HomeLayoutConfig {
-  layoutMode: 'dashboard' | 'simple'
   cardColumns: number
-  cardColumnsMobile: number
-  showTrendChart: boolean
-  showAlerts: boolean
   featuredProductCount: number
+  productTablePageSize: number
+  productListMode: 'table' | 'cards' | 'auto'
 }
 
 // 首页组件配置
@@ -28,7 +26,7 @@ export interface HomeWidget {
 }
 
 // 数值字段类型
-type NumericField = 'cardColumns' | 'cardColumnsMobile' | 'featuredProductCount'
+type NumericField = 'cardColumns' | 'featuredProductCount' | 'productTablePageSize'
 
 // 预设组件列表
 const defaultWidgets: HomeWidget[] = [
@@ -41,12 +39,10 @@ const defaultWidgets: HomeWidget[] = [
 
 // 全局状态（单例）
 const layoutConfig = ref<HomeLayoutConfig>({
-  layoutMode: 'dashboard',
   cardColumns: 4,
-  cardColumnsMobile: 2,
-  showTrendChart: true,
-  showAlerts: true,
-  featuredProductCount: 6
+  featuredProductCount: 4,
+  productTablePageSize: 10,
+  productListMode: 'table'
 })
 
 const widgets = ref<HomeWidget[]>([])
@@ -75,17 +71,14 @@ const loadConfig = async (): Promise<void> => {
         case 'card_columns':
           layoutConfig.value.cardColumns = parseInt(extraVal) || 4
           break
-        case 'card_columns_mobile':
-          layoutConfig.value.cardColumnsMobile = parseInt(extraVal) || 2
-          break
         case 'featured_product_count':
-          layoutConfig.value.featuredProductCount = parseInt(extraVal) || 6
+          layoutConfig.value.featuredProductCount = Math.min(Math.max(parseInt(extraVal) || 4, 1), 4)
           break
-        case 'show_trend_chart':
-          layoutConfig.value.showTrendChart = extraVal === 'true'
+        case 'product_table_page_size':
+          layoutConfig.value.productTablePageSize = parseInt(extraVal) || 10
           break
-        case 'show_alerts':
-          layoutConfig.value.showAlerts = extraVal === 'true'
+        case 'product_list_mode':
+          layoutConfig.value.productListMode = (['table', 'cards', 'auto'].includes(extraVal) ? extraVal : 'table') as HomeLayoutConfig['productListMode']
           break
       }
     })
@@ -250,8 +243,8 @@ const decrement = (field: NumericField, min: number): void => {
 /**
  * Switch 切换（只更新本地状态，标记为未保存）
  */
-const toggleSwitch = (field: 'showTrendChart' | 'showAlerts'): void => {
-  layoutConfig.value[field] = !layoutConfig.value[field]
+const setProductListMode = (mode: HomeLayoutConfig['productListMode']): void => {
+  layoutConfig.value.productListMode = mode
   hasUnsavedChanges.value = true
 }
 
@@ -267,10 +260,9 @@ const saveAll = async (): Promise<void> => {
     const savePromises: Promise<void>[] = []
 
     savePromises.push(saveLayoutConfig('card_columns', String(layoutConfig.value.cardColumns)))
-    savePromises.push(saveLayoutConfig('card_columns_mobile', String(layoutConfig.value.cardColumnsMobile)))
     savePromises.push(saveLayoutConfig('featured_product_count', String(layoutConfig.value.featuredProductCount)))
-    savePromises.push(saveLayoutConfig('show_trend_chart', layoutConfig.value.showTrendChart ? 'true' : 'false'))
-    savePromises.push(saveLayoutConfig('show_alerts', layoutConfig.value.showAlerts ? 'true' : 'false'))
+    savePromises.push(saveLayoutConfig('product_table_page_size', String(layoutConfig.value.productTablePageSize)))
+    savePromises.push(saveLayoutConfig('product_list_mode', layoutConfig.value.productListMode))
 
     // 保存组件配置
     widgets.value.forEach(widget => {
@@ -320,7 +312,7 @@ export function useHomePreviewState() {
     reorderWidgetToIndex,
     increment,
     decrement,
-    toggleSwitch,
+    setProductListMode,
     saveAll
   }
 }

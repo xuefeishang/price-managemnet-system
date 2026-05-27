@@ -205,12 +205,10 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("style", "active_theme", "当前主题", "theme_red_green", 11, null));
 
             // 首页布局配置 home_layout
-            dicts.add(createDict("home_layout", "layout_mode", "驾驶舱模式", "{\"sections\":[\"summary\",\"metrics\",\"trend\",\"list\",\"alerts\"]}", 1, "Dashboard布局模式"));
-            dicts.add(createDict("home_layout", "card_columns", "PC卡片列数", "4", 2, "PC端每行显示卡片数"));
-            dicts.add(createDict("home_layout", "card_columns_mobile", "移动端卡片列数", "2", 3, "移动端每行显示卡片数"));
-            dicts.add(createDict("home_layout", "featured_product_count", "重点产品数量", "6", 4, "核心指标区显示产品数"));
-            dicts.add(createDict("home_layout", "show_trend_chart", "显示重点走势", "true", 5, "是否显示重点关注指标下方的重点走势小折线图"));
-            dicts.add(createDict("home_layout", "show_alerts", "显示预警区", "true", 6, "是否显示风险预警区"));
+            dicts.add(createDict("home_layout", "card_columns", "产品卡片列数", "4", 1, "首页重点产品卡片每行显示数量"));
+            dicts.add(createDict("home_layout", "featured_product_count", "重点产品数量", "4", 2, "首页重点产品区最多显示4个产品"));
+            dicts.add(createDict("home_layout", "product_list_mode", "产品列表模式", "table", 3, "首页产品列表展示模式：table/cards/auto"));
+            dicts.add(createDict("home_layout", "product_table_page_size", "产品表每页条数", "10", 4, "首页产品表默认分页大小"));
 
             // 首页小组件配置 home_widget
             dicts.add(createDict("home_widget", "summary_stats", "经营摘要", "{\"enabled\":true,\"order\":1}", 1, "顶部摘要统计区"));

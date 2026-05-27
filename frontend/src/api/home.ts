@@ -11,6 +11,9 @@ export interface HomeDashboard {
 export interface HomeSummary {
   totalProducts: number
   priceUpdatedToday: number
+  coveredCategoryCount: number
+  activeCategoryCount: number
+  changedProductCount: number
   avgPriceChange: number
   risingCount: number
   fallingCount: number

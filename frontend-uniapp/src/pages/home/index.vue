@@ -17,37 +17,6 @@
       </view>
     </view>
 
-    <!-- 分类筛选 -->
-    <view class="category-filter" v-if="categories.length > 0">
-      <scroll-view
-        class="category-scroll"
-        scroll-x
-        enable-flex
-        :show-scrollbar="false"
-        @scroll="onCategoryScroll"
-      >
-        <view
-          class="category-tag"
-          :class="{ active: selectedCategoryId === null }"
-          @click="selectCategory(null)"
-        >
-          <text>全部</text>
-        </view>
-        <view
-          class="category-tag"
-          v-for="cat in categories"
-          :key="cat.id"
-          :class="{ active: selectedCategoryId === cat.id }"
-          @click="selectCategory(cat.id)"
-        >
-          <text>{{ cat.name }}</text>
-        </view>
-      </scroll-view>
-      <view class="scroll-indicator" v-if="showScrollIndicator">
-        <text class="indicator-arrow">›</text>
-      </view>
-    </view>
-
     <!-- 错误提示 -->
     <view class="error-msg" v-if="errorMsg">
       <text>{{ errorMsg }}</text>
@@ -60,6 +29,40 @@
     </view>
 
     <template v-else>
+      <!-- 经营摘要 -->
+      <SummarySection :summary="homeSummary" :loading="summaryLoading" />
+
+      <!-- 分类筛选 -->
+      <view class="category-filter" v-if="categories.length > 0">
+        <scroll-view
+          class="category-scroll"
+          scroll-x
+          enable-flex
+          :show-scrollbar="false"
+          @scroll="onCategoryScroll"
+        >
+          <view
+            class="category-tag"
+            :class="{ active: selectedCategoryId === null }"
+            @click="selectCategory(null)"
+          >
+            <text>全部</text>
+          </view>
+          <view
+            class="category-tag"
+            v-for="cat in categories"
+            :key="cat.id"
+            :class="{ active: selectedCategoryId === cat.id }"
+            @click="selectCategory(cat.id)"
+          >
+            <text>{{ cat.name }}</text>
+          </view>
+        </scroll-view>
+        <view class="scroll-indicator" v-if="showScrollIndicator">
+          <text class="indicator-arrow">›</text>
+        </view>
+      </view>
+
       <!-- 重点关注指标 -->
       <view class="featured-section" v-if="homeProducts.length > 0">
         <view class="section-header">
@@ -97,6 +100,13 @@
           </view>
         </scroll-view>
       </view>
+
+      <!-- 重点走势 -->
+      <TrendChart
+        :trend="trendAnalysis"
+        :loading="trendLoading"
+        @range-change="onTrendRangeChange"
+      />
 
       <!-- 产品列表 -->
       <view class="product-section">
@@ -159,6 +169,13 @@
           </view>
         </view>
       </view>
+
+      <!-- 风险预警 -->
+      <RiskAlertsPanel
+        :alerts="priceAlerts"
+        :loading="alertsLoading"
+        @click="onAlertClick"
+      />
     </template>
 
     <!-- 价格维护入口 -->
@@ -173,8 +190,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts, getPricesByDateWithStats } from '@/api/products'
 import { getCategories } from '@/api/categories'
+import { getHomeSummary, getPriceAlerts, getTrendAnalysis } from '@/api/home'
 import type { Product, ProductCategory } from '@/types'
 import type { PriceWithStats } from '@/api/products'
+import type { HomeSummary, PriceAlert, TrendAnalysis } from '@/api/home'
+import SummarySection from '@/components/home/SummarySection.vue'
+import TrendChart from '@/components/home/TrendChart.vue'
+import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
 
 const userStore = useUserStore()
 
@@ -188,6 +210,15 @@ const errorMsg = ref('')
 const searchQuery = ref('')
 const selectedDate = ref(getYesterday())
 const showScrollIndicator = ref(true)
+
+// 新增状态
+const homeSummary = ref<HomeSummary | null>(null)
+const priceAlerts = ref<PriceAlert[]>([])
+const trendAnalysis = ref<TrendAnalysis | null>(null)
+const summaryLoading = ref(false)
+const alertsLoading = ref(false)
+const trendLoading = ref(false)
+const trendDays = ref(30)
 
 // 计算属性
 const homeProducts = computed(() => {
@@ -222,31 +253,9 @@ function getYesterday(): string {
   return date.toISOString().split('T')[0]
 }
 
-function getDateOffset(offset: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + offset)
-  return date.toISOString().split('T')[0]
-}
-
-function formatDateShort(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
-  return `${date.getMonth() + 1}/${date.getDate()}`
-}
-
-function formatDateDisplay(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
-}
-
-function selectDate(date: string) {
-  selectedDate.value = date
-  loadData()
-}
-
 function getPriceInfo(productId: number) {
   const data = priceDataMap.value.get(productId)
 
-  // 当前价格：优先今日维护价格，否则继承价格
   let current: number | null = null
   if (data?.price?.currentPrice != null) {
     current = data.price.currentPrice
@@ -256,23 +265,19 @@ function getPriceInfo(productId: number) {
 
   if (current == null) return null
 
-  // 昨日价格：优先昨日维护价格，否则继承价格（与PC端一致）
   let previous: number | null = null
   if (data?.yesterdayPrice?.currentPrice != null) {
     previous = data.yesterdayPrice.currentPrice
   } else if (data?.inheritedPrice != null) {
-    // PC端逻辑：没有昨日价格时，用继承价格作为昨日价格基准
     previous = data.inheritedPrice
   }
 
-  // 如果没有昨日价格也没有继承价格，不显示差值
   if (previous == null) {
     return { price: current, trend: 'flat', diff: '' }
   }
 
   const diff = current - previous
 
-  // 格式化差值，去掉多余的小数位
   const formattedDiff = diff === 0
     ? '0'
     : diff > 0
@@ -304,25 +309,73 @@ async function loadCategories() {
   }
 }
 
+async function loadSummary() {
+  summaryLoading.value = true
+  try {
+    const res = await getHomeSummary(selectedDate.value)
+    if (res.code === 200 && res.data) {
+      homeSummary.value = res.data
+    }
+  } catch (error) {
+    console.error('加载摘要失败:', error)
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+async function loadAlerts() {
+  alertsLoading.value = true
+  try {
+    const res = await getPriceAlerts(selectedDate.value)
+    if (res.code === 200 && res.data) {
+      priceAlerts.value = res.data
+    }
+  } catch (error) {
+    console.error('加载预警失败:', error)
+  } finally {
+    alertsLoading.value = false
+  }
+}
+
+async function loadTrend() {
+  trendLoading.value = true
+  try {
+    const res = await getTrendAnalysis(selectedDate.value, trendDays.value)
+    if (res.code === 200 && res.data) {
+      trendAnalysis.value = res.data
+    }
+  } catch (error) {
+    console.error('加载趋势失败:', error)
+  } finally {
+    trendLoading.value = false
+  }
+}
+
 async function loadData() {
   isLoading.value = true
   errorMsg.value = ''
 
   try {
-    // 加载产品列表
-    const productsRes = await getProducts({ page: 0, size: 100 })
+    // 并行加载所有数据
+    const [productsRes, pricesRes] = await Promise.all([
+      getProducts({ page: 0, size: 100 }),
+      getPricesByDateWithStats(selectedDate.value)
+    ])
+
     products.value = productsRes.data?.content || []
 
-    // 加载价格数据
-    const pricesRes = await getPricesByDateWithStats(selectedDate.value)
     const prices = pricesRes.data || []
-
     priceDataMap.value.clear()
     prices.forEach((item: PriceWithStats) => {
       if (item.price?.product?.id) {
         priceDataMap.value.set(item.price.product.id, item)
       }
     })
+
+    // 加载新增数据
+    loadSummary()
+    loadAlerts()
+    loadTrend()
   } catch (err: any) {
     errorMsg.value = err?.message || '加载数据失败，请重试'
     console.error('Failed to load data:', err)
@@ -345,11 +398,19 @@ function selectCategory(categoryId: number | null) {
 }
 
 function onCategoryScroll(e: any) {
-  // 滚动到末尾时隐藏指示器
   const scrollLeft = e.detail.scrollLeft
   const scrollWidth = e.detail.scrollWidth
   const clientWidth = e.detail.clientWidth || 375
   showScrollIndicator.value = scrollLeft + clientWidth < scrollWidth - 20
+}
+
+function onTrendRangeChange(days: number) {
+  trendDays.value = days
+  loadTrend()
+}
+
+function onAlertClick(alert: PriceAlert) {
+  goToDetail(alert.productId)
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -582,7 +643,7 @@ onMounted(() => {
 .featured-section {
   padding: 32rpx;
   background: #FFFFFF;
-  margin-bottom: 24rpx;
+  margin-bottom: 16rpx;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -667,45 +728,6 @@ onMounted(() => {
 .trend-flat {
   font-size: 22rpx;
   color: #CCCCCC;
-}
-
-.product-name {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1A1A1A;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.product-specs {
-  font-size: 24rpx;
-  color: #999999;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.price-row {
-  display: flex;
-  align-items: baseline;
-  gap: 4rpx;
-}
-
-.price-value {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #0D6E6E;
-}
-
-.price-value.empty {
-  color: #CCCCCC;
-  font-size: 24rpx;
-}
-
-.price-unit {
-  font-size: 18rpx;
-  color: #999999;
 }
 
 .trend-badge {

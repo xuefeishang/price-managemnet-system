@@ -95,7 +95,7 @@ onMounted(async () => {
         首页组件顺序
         <span class="section-status">已启用 {{ homeState.enabledCount.value }}/{{ homeState.widgets.value.length }}</span>
       </h2>
-      <p class="section-hint">控制 Home 页面经营摘要、重点关注指标、重点走势、产品列表、风险预警等组件块的上下顺序，点击顶部保存配置后生效。</p>
+      <p class="section-hint">控制 Home 页面经营摘要、重点产品价格/主价格曲线、重点走势、产品列表、风险预警等组件块的显示与上下顺序，点击顶部保存配置后生效。</p>
 
       <div class="sort-list">
         <div
@@ -122,6 +122,15 @@ onMounted(async () => {
               <span class="item-meta">{{ widget.enabled ? '显示中' : '已关闭' }}</span>
             </div>
           </div>
+          <button
+            class="widget-toggle"
+            :class="{ active: widget.enabled }"
+            type="button"
+            :aria-pressed="widget.enabled"
+            @click.stop="homeState.toggleWidget(widget)"
+          >
+            <span class="toggle-knob"></span>
+          </button>
         </div>
         <div
           v-if="widgetDragKey"
@@ -393,6 +402,37 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.widget-toggle {
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  background: #E5E5E5;
+  cursor: pointer;
+  position: relative;
+  transition: background 150ms;
+}
+
+.widget-toggle.active {
+  background: var(--primary-color, #0D6E6E);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  transition: left 150ms;
+}
+
+.widget-toggle.active .toggle-knob {
+  left: 20px;
 }
 
 .item-index {

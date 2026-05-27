@@ -2,12 +2,10 @@ import { ref, computed } from 'vue'
 import { getDictByCategory, loadAllDicts } from './useDict'
 
 export interface HomeLayoutConfig {
-  layoutMode: 'dashboard' | 'simple'
   cardColumns: number
-  cardColumnsMobile: number
-  showTrendChart: boolean
-  showAlerts: boolean
   featuredProductCount: number
+  productTablePageSize: number
+  productListMode: 'table' | 'cards' | 'auto'
 }
 
 export interface HomeWidget {
@@ -19,12 +17,10 @@ export interface HomeWidget {
 }
 
 const defaultLayoutConfig: HomeLayoutConfig = {
-  layoutMode: 'dashboard',
   cardColumns: 4,
-  cardColumnsMobile: 2,
-  showTrendChart: true,
-  showAlerts: true,
-  featuredProductCount: 6
+  featuredProductCount: 4,
+  productTablePageSize: 10,
+  productListMode: 'table'
 }
 
 const defaultWidgets: HomeWidget[] = [
@@ -59,17 +55,14 @@ export function useHomeConfig() {
         case 'card_columns':
           layoutConfig.value.cardColumns = parseInt(extraVal) || 4
           break
-        case 'card_columns_mobile':
-          layoutConfig.value.cardColumnsMobile = parseInt(extraVal) || 2
-          break
         case 'featured_product_count':
-          layoutConfig.value.featuredProductCount = parseInt(extraVal) || 6
+          layoutConfig.value.featuredProductCount = Math.min(Math.max(parseInt(extraVal) || 4, 1), 4)
           break
-        case 'show_trend_chart':
-          layoutConfig.value.showTrendChart = extraVal === 'true'
+        case 'product_table_page_size':
+          layoutConfig.value.productTablePageSize = parseInt(extraVal) || 10
           break
-        case 'show_alerts':
-          layoutConfig.value.showAlerts = extraVal === 'true'
+        case 'product_list_mode':
+          layoutConfig.value.productListMode = (['table', 'cards', 'auto'].includes(extraVal) ? extraVal : 'table') as HomeLayoutConfig['productListMode']
           break
       }
     })

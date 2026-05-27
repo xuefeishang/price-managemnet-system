@@ -10,7 +10,7 @@ import type { ApiResponse } from '@/types'
 
 // API 基础路径
 // H5 开发环境使用代理，小程序/APP 需要完整地址
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 // 请求配置
 interface RequestOptions {

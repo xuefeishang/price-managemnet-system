@@ -20,6 +20,7 @@ declare module 'vue' {
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     HomeExperiencePanel: typeof import('./components/style-settings/HomeExperiencePanel.vue')['default']
     HomePreview: typeof import('./components/style-settings/preview/HomePreview.vue')['default']
+    HomePriceCurvePanel: typeof import('./components/home/HomePriceCurvePanel.vue')['default']
     HomeSortPanel: typeof import('./components/style-settings/HomeSortPanel.vue')['default']
     Layout: typeof import('./components/Layout.vue')['default']
     LayoutPreview: typeof import('./components/style-settings/preview/LayoutPreview.vue')['default']

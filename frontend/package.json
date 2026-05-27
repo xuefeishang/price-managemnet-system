@@ -25,6 +25,7 @@
     "@types/file-saver": "^2.0.7",
     "@unocss/preset-attributify": "^66.6.8",
     "@unocss/preset-uno": "^66.6.8",
+    "@unocss/preset-wind3": "^66.6.8",
     "@vitejs/plugin-vue": "^6.0.5",
     "sass": "^1.69.5",
     "typescript": "^5.3.3",

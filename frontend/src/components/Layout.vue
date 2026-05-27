@@ -442,10 +442,13 @@ watch(() => route.path, () => {
 .pc-content-wrapper {
   margin-left: 240px;
   flex: 1;
+  min-width: 0;
+  max-width: calc(100vw - 240px);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   background: var(--app-page-bg);
+  overflow-x: clip;
 }
 
 /* 主内容区域 */
@@ -453,6 +456,10 @@ watch(() => route.path, () => {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
+  overflow-x: clip;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* ==================== 移动端布局 ==================== */

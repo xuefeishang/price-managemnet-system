@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,14 +73,16 @@ class ProductServiceTests {
         Page<Product> page = new PageImpl<>(products);
         Pageable pageable = PageRequest.of(0, 10);
 
-        when(productRepository.findByNameContaining(anyString(), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
 
-        Page<Product> result = productService.getProducts(0, 10, "测试", null, null, null, null);
+        Page<Product> result = productService.getProducts(0, 10, "测试", 1L, CommonStatus.ACTIVE, "categoryId", "asc");
 
         assertNotNull(result);
         assertEquals(1, result.getTotalElements());
         assertEquals("测试产品", result.getContent().get(0).getName());
+        verify(productRepository).findAll(any(Specification.class), any(Pageable.class));
+        verify(productRepository, never()).findByNameContaining(anyString(), any(Pageable.class));
     }
 
     @Test

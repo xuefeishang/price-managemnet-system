@@ -25,7 +25,7 @@ const loadThemeConfig = async () => {
     if (res.code === 200 && res.data) {
       let logoUrl = res.data.logoUrl || ''
       // 将相对路径转为完整URL
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.5.109:8080'
+      const baseUrl = import.meta.env.VITE_API_BASE_URL
       if (logoUrl && !logoUrl.startsWith('http')) {
         logoUrl = baseUrl + logoUrl
       }

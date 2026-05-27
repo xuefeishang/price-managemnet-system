@@ -11,19 +11,17 @@ const homeState = useHomePreviewState()
 const viewport = ref<'pc' | 'mobile'>('pc')
 
 // 列数
-const columns = computed(() => {
-  return viewport.value === 'pc'
-    ? homeState.layoutConfig.value.cardColumns
-    : homeState.layoutConfig.value.cardColumnsMobile
-})
+const columns = computed(() => homeState.layoutConfig.value.cardColumns)
 
 const widgetLabelMap: Record<string, string> = {
   summary_stats: '经营摘要',
   core_metrics: '重点关注指标',
   trend_chart: '重点走势',
-  product_list: '分类产品列表',
+  product_list: '产品列表',
   risk_alerts: '风险预警'
 }
+
+const summaryLabels = ['产品总数', '当日更新', '更新率', '覆盖品类']
 
 const visibleWidgets = computed(() =>
   homeState.widgets.value
@@ -33,16 +31,26 @@ const visibleWidgets = computed(() =>
       key: widget.key === 'price_alerts' ? 'risk_alerts' : widget.key,
       name: widgetLabelMap[widget.key] || widget.name
     }))
-    .filter(widget => {
-      if (widget.key === 'trend_chart') return homeState.layoutConfig.value.showTrendChart
-      if (widget.key === 'risk_alerts') return homeState.layoutConfig.value.showAlerts
-      return ['summary_stats', 'core_metrics', 'trend_chart', 'product_list', 'risk_alerts'].includes(widget.key)
-    })
+    .filter(widget => ['summary_stats', 'core_metrics', 'trend_chart', 'product_list', 'risk_alerts'].includes(widget.key))
     .sort((a, b) => a.order - b.order)
 )
 
-const metricCardCount = computed(() => Math.max(1, Math.min(homeState.layoutConfig.value.featuredProductCount || 4, viewport.value === 'pc' ? 6 : 4)))
+const hasVisibleCoreMetrics = computed(() =>
+  visibleWidgets.value.some(widget => widget.key === 'core_metrics')
+)
+
+const hasVisibleTrendChart = computed(() =>
+  visibleWidgets.value.some(widget => widget.key === 'trend_chart')
+)
+
+const metricCardCount = computed(() => Math.max(1, Math.min(homeState.layoutConfig.value.featuredProductCount || 4, 4)))
 const trendCardCount = computed(() => Math.min(metricCardCount.value, 4))
+const productListPreviewMode = computed<'table' | 'cards'>(() => {
+  if (viewport.value === 'mobile') return 'cards'
+  if (homeState.layoutConfig.value.productListMode === 'cards') return 'cards'
+  if (homeState.layoutConfig.value.productListMode === 'auto') return 'table'
+  return 'table'
+})
 
 const renderCardCount = (widget: HomeWidget & { key: string }) => {
   if (widget.key === 'core_metrics') return metricCardCount.value
@@ -74,38 +82,68 @@ onMounted(() => {
           <section v-if="widget.key === 'summary_stats'" class="preview-section summary-preview">
             <div class="section-label">{{ widget.name }}</div>
             <div class="summary-grid">
-              <span v-for="i in 4" :key="i" class="summary-card"></span>
-            </div>
-          </section>
-
-          <section v-else-if="widget.key === 'core_metrics'" class="preview-section">
-            <div class="section-label">{{ widget.name }}</div>
-            <div class="metric-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : Math.min(columns, 3)}, 1fr)` }">
-              <span v-for="i in renderCardCount(widget)" :key="i" class="metric-card">
-                <span class="metric-title"></span>
-                <span class="origin-chip"></span>
-                <span class="metric-price"></span>
-                <span class="metric-line"></span>
+              <span v-for="label in summaryLabels" :key="label" class="summary-card">
+                <span class="summary-icon"></span>
+                <span class="summary-copy">
+                  <span class="summary-label-line"></span>
+                  <span class="summary-value-line"></span>
+                  <span class="summary-helper-line"></span>
+                </span>
               </span>
             </div>
           </section>
 
-          <section v-else-if="widget.key === 'trend_chart'" class="preview-section trend-preview">
-            <div class="section-label">{{ widget.name }}</div>
-            <div class="trend-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : 2}, 1fr)` }">
-              <span v-for="i in renderCardCount(widget)" :key="i" class="trend-card">
-                <span class="trend-title"></span>
-                <span class="origin-chip"></span>
+          <section v-else-if="widget.key === 'core_metrics'" class="preview-section core-preview">
+            <div class="section-label">重点产品价格{{ hasVisibleTrendChart ? ' / 主价格曲线' : '' }}</div>
+            <div class="core-preview-grid" :class="{ mobile: viewport === 'mobile' }">
+              <div class="metric-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : 2}, 1fr)` }">
+                <span v-for="i in renderCardCount(widget)" :key="i" class="metric-card">
+                  <span class="metric-title"></span>
+                  <span class="origin-chip"></span>
+                  <span class="metric-price"></span>
+                  <span class="metric-line"></span>
+                </span>
+              </div>
+              <div v-if="hasVisibleTrendChart && viewport === 'pc'" class="main-curve-preview compact">
+                <span class="curve-preview-head">
+                  <span class="trend-title"></span>
+                  <span class="range-dots"></span>
+                </span>
+                <span class="curve-preview-price"></span>
                 <span class="trend-line"></span>
+                <span class="curve-preview-footer"></span>
+              </div>
+            </div>
+          </section>
+
+          <section v-else-if="widget.key === 'trend_chart' && !hasVisibleCoreMetrics" class="preview-section trend-preview">
+            <div class="section-label">{{ widget.name }}</div>
+            <div class="main-curve-preview">
+              <span class="curve-preview-head">
+                <span class="trend-title"></span>
+                <span class="range-dots"></span>
               </span>
+              <span class="curve-preview-price"></span>
+              <span class="trend-line"></span>
+              <span class="curve-preview-footer"></span>
             </div>
           </section>
 
           <section v-else-if="widget.key === 'product_list'" class="preview-section product-preview">
             <div class="section-label">{{ widget.name }}</div>
             <div class="category-block">
-              <span class="category-title"></span>
-              <div class="product-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : Math.min(columns, 3)}, 1fr)` }">
+              <div class="list-toolbar">
+                <span class="category-title"></span>
+                <span class="page-size-pill">{{ homeState.layoutConfig.value.productTablePageSize }}/页</span>
+              </div>
+              <div v-if="productListPreviewMode === 'table'" class="product-table-preview">
+                <span v-for="i in 5" :key="i" class="table-row">
+                  <span class="table-name"></span>
+                  <span class="table-price"></span>
+                  <span class="table-line"></span>
+                </span>
+              </div>
+              <div v-else class="product-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : Math.min(columns, 3)}, 1fr)` }">
                 <span v-for="i in 6" :key="i" class="product-card">
                   <span class="product-title-line"></span>
                   <span class="origin-chip"></span>
@@ -127,6 +165,7 @@ onMounted(() => {
     <div class="home-info">
       <span>已启用 {{ visibleWidgets.length }} 个组件</span>
       <span v-if="homeState.layoutConfig.value.featuredProductCount">，重点产品 {{ homeState.layoutConfig.value.featuredProductCount }} 个</span>
+      <span>，列表{{ productListPreviewMode === 'table' ? '表格' : '卡片' }}</span>
     </div>
   </PreviewFrame>
 </template>
@@ -213,6 +252,16 @@ onMounted(() => {
   gap: 6px;
 }
 
+.core-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: 8px;
+}
+
+.core-preview-grid.mobile {
+  display: block;
+}
+
 .summary-grid {
   grid-template-columns: repeat(4, 1fr);
 }
@@ -233,7 +282,53 @@ onMounted(() => {
 }
 
 .summary-card {
-  height: 28px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+}
+
+.summary-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: #D7EAEA;
+}
+
+.summary-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label-line,
+.summary-value-line,
+.summary-helper-line {
+  display: block;
+  border-radius: 999px;
+}
+
+.summary-label-line {
+  width: 52%;
+  height: 5px;
+  background: #E5E5E5;
+}
+
+.summary-value-line {
+  width: 38%;
+  height: 8px;
+  background: #0D6E6E;
+  opacity: 0.8;
+}
+
+.summary-helper-line {
+  width: 70%;
+  height: 5px;
+  background: #EEF2F6;
 }
 
 .metric-card {
@@ -275,9 +370,30 @@ onMounted(() => {
   opacity: 0.45;
 }
 
-.trend-card {
-  height: 78px;
+.trend-card,
+.main-curve-preview {
+  height: 112px;
   padding: 8px;
+}
+
+.main-curve-preview.compact {
+  height: 100%;
+  min-height: 112px;
+}
+
+.main-curve-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border-light, #E5E5E5);
+  border-radius: 5px;
+  background: var(--bg-card, #FFFFFF);
+}
+
+.curve-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .trend-title {
@@ -286,13 +402,35 @@ onMounted(() => {
   background: #E5E5E5;
 }
 
+.range-dots {
+  width: 44px;
+  height: 8px;
+  border-radius: 999px;
+  background: #D7EAEA;
+}
+
+.curve-preview-price {
+  width: 34%;
+  height: 11px;
+  border-radius: 999px;
+  background: #0D6E6E;
+  opacity: 0.8;
+}
+
 .trend-line {
-  height: 24px;
-  margin-top: 12px;
+  height: 42px;
+  margin-top: 0;
   background:
     linear-gradient(135deg, transparent 30%, #0D6E6E 31%, #0D6E6E 36%, transparent 37%),
     linear-gradient(25deg, transparent 52%, #0D6E6E 53%, #0D6E6E 58%, transparent 59%);
   opacity: 0.55;
+}
+
+.curve-preview-footer {
+  width: 88%;
+  height: 7px;
+  border-radius: 999px;
+  background: #EEF2F6;
 }
 
 .category-block {
@@ -301,10 +439,67 @@ onMounted(() => {
   gap: 6px;
 }
 
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
 .category-title {
   width: 72px;
   height: 12px;
   background: #D7EAEA;
+}
+
+.page-size-pill {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #F0F8F8;
+  color: #0D6E6E;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.product-table-preview {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-light, #E5E5E5);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.7fr 0.8fr;
+  gap: 6px;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg-card, #FFFFFF);
+  border-bottom: 1px solid #F0F0F0;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-name,
+.table-price,
+.table-line {
+  height: 6px;
+  border-radius: 999px;
+  background: #E5E5E5;
+}
+
+.table-price {
+  background: #0D6E6E;
+  opacity: 0.7;
+}
+
+.table-line {
+  background: linear-gradient(90deg, transparent, #0D6E6E, transparent);
+  opacity: 0.45;
 }
 
 .product-card {
