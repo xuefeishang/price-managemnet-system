@@ -77,7 +77,8 @@ public final class SystemConstants {
             "/api/permissions/tree",
             "/api/static/**",
             "/api/style/config",
-            "/api/style/themes"
+            "/api/style/themes",
+            "/actuator/health"
     };
 
     // ==================== 角色辅助方法 ====================
