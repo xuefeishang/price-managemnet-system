@@ -7,8 +7,10 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { ProductMetric } from '@/api/home'
 import { useTheme } from '@/composables/useTheme'
 import { getOriginName } from '@/composables/useDict'
+import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
+const { chartAutoresize } = useSafeChartAutoresize()
 
 const props = defineProps<{
   products: ProductMetric[]
@@ -113,7 +115,7 @@ const generateChartOption = (product: ProductMetric) => {
         <v-chart
           class="mini-chart"
           :option="generateChartOption(product)"
-          autoresize
+          :autoresize="chartAutoresize"
         />
       </div>
     </div>

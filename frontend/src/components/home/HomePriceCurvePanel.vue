@@ -5,9 +5,11 @@ import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
 import type { ProductTrendItem } from './TrendAnalysisChart.vue'
 
 use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer])
+const { chartAutoresize } = useSafeChartAutoresize()
 
 const props = defineProps<{
   product: ProductTrendItem | null
@@ -183,7 +185,7 @@ const chartOption = computed(() => {
     </div>
 
     <div class="curve-chart-shell">
-      <v-chart v-if="product && validPoints.length > 0" class="curve-chart" :option="chartOption" autoresize />
+      <v-chart v-if="product && validPoints.length > 0" class="curve-chart" :option="chartOption" :autoresize="chartAutoresize" />
       <div v-else class="curve-empty">暂无可展示曲线的产品</div>
     </div>
 

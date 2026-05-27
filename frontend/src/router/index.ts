@@ -13,6 +13,26 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/store/useUserStore'
 import { showToast } from 'vant'
 
+const createAppHistory = () => {
+  const originalAddEventListener = document.addEventListener
+
+  document.addEventListener = function patchedAddEventListener(
+    this: Document,
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    if (type === 'visibilitychange') return
+    return originalAddEventListener.call(this, type, listener, options)
+  } as typeof document.addEventListener
+
+  try {
+    return createWebHistory(import.meta.env.BASE_URL)
+  } finally {
+    document.addEventListener = originalAddEventListener
+  }
+}
+
 // 路由配置扩展：定义路由元信息类型
 declare module 'vue-router' {
   interface RouteMeta {
@@ -26,7 +46,7 @@ declare module 'vue-router' {
 }
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createAppHistory(),
   routes: [
     {
       path: '/',

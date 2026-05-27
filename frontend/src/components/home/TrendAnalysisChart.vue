@@ -8,6 +8,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { TrendAnalysis } from '@/api/home'
 import { useTheme } from '@/composables/useTheme'
 import { useHomeConfig } from '@/composables/useHomeConfig'
+import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -47,6 +48,7 @@ const emit = defineEmits<{
 
 const { themeConfig } = useTheme()
 const { chartRanges } = useHomeConfig()
+const { chartAutoresize } = useSafeChartAutoresize()
 
 const selectedRange = ref(30)
 
@@ -280,7 +282,7 @@ watch(() => props.trend, (newTrend) => {
         v-if="trend && trend.dates && trend.dates.length > 0"
         class="trend-chart"
         :option="chartOption"
-        autoresize
+        :autoresize="chartAutoresize"
       />
       <div v-else class="chart-empty">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -327,7 +329,7 @@ watch(() => props.trend, (newTrend) => {
             v-if="getValidPoints(product).length > 0"
             class="product-line-chart"
             :option="generateProductChartOption(product)"
-            autoresize
+            :autoresize="chartAutoresize"
           />
           <div v-else class="chart-empty compact">
             <span>暂无该产品走势</span>

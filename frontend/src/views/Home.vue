@@ -13,6 +13,7 @@ import { usePermission, Permission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
 import { useHomeConfig } from '@/composables/useHomeConfig'
+import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
 import { useUserStore } from '@/store/useUserStore'
 import { loadAllDicts, getCurrencySymbol, getOriginName } from '@/composables/useDict'
 import { getCategoryVisual, getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
@@ -36,6 +37,7 @@ const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
 const { isPCLayout, windowWidth } = useLayout()
 const { layoutConfig, widgets, chartRanges, loadHomeConfig } = useHomeConfig()
+const { chartAutoresize } = useSafeChartAutoresize()
 const userStore = useUserStore()
 
 // 状态
@@ -1053,7 +1055,7 @@ onUnmounted(() => {
                     </td>
                     <td class="table-trend-cell">
                       <div class="table-mini-chart" v-if="chartOptionsMap.get(product.id)">
-                        <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                        <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                       </div>
                       <span v-else>--</span>
                     </td>
@@ -1093,7 +1095,7 @@ onUnmounted(() => {
                   <span class="featured-unit" v-if="getPriceUnit(product)">/ {{ getPriceUnit(product) }}</span>
                 </span>
                 <span class="product-list-card-chart" v-if="chartOptionsMap.get(product.id)">
-                  <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                  <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                 </span>
                 <span class="product-list-card-actions">
                   <span>{{ getCurrencyDisplay(product.currency) }}</span>
@@ -1179,7 +1181,7 @@ onUnmounted(() => {
                     </span>
                   </div>
                   <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                  <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                   </div>
                 </div>
               </div>
@@ -1289,7 +1291,7 @@ onUnmounted(() => {
                         </span>
                       </div>
                       <div class="chart-area" v-if="chartOptionsMap.get(product.id)">
-                        <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" autoresize />
+                        <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                       </div>
                     </div>
                   </div>
@@ -1400,7 +1402,7 @@ onUnmounted(() => {
                   </span>
                 </div>
                 <div class="chart-area-sm featured-mobile-chart" v-if="chartOptionsMap.get(product.id)">
-                  <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" autoresize />
+                  <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                 </div>
               </div>
             </div>
@@ -1509,7 +1511,7 @@ onUnmounted(() => {
                         </span>
                       </div>
                       <div class="chart-area-sm" v-if="chartOptionsMap.get(product.id)">
-                        <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" autoresize />
+                        <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
                       </div>
                     </div>
                   </div>
