@@ -65,8 +65,8 @@ const hasChanges = computed(() => {
 })
 
 const formatDateDisplay = (dateStr: string) => {
-  const date = new Date(dateStr + 'T00:00:00')
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return `${year}年${month}月${day}日`
 }
 
 const normalizePriceText = (value: unknown) => {
@@ -473,15 +473,15 @@ const goBack = () => {
 
 const goToPrevDate = async () => {
   if (!await ensureCanChangeDate()) return
-  const date = new Date(selectedDate.value + 'T00:00:00')
-  date.setDate(date.getDate() - 1)
+  const [year, month, day] = selectedDate.value.split('-').map(Number)
+  const date = new Date(year, month - 1, day - 1)
   selectedDate.value = date.toISOString().split('T')[0]
 }
 
 const goToNextDate = async () => {
   if (!await ensureCanChangeDate()) return
-  const date = new Date(selectedDate.value + 'T00:00:00')
-  date.setDate(date.getDate() + 1)
+  const [year, month, day] = selectedDate.value.split('-').map(Number)
+  const date = new Date(year, month - 1, day + 1)
   selectedDate.value = date.toISOString().split('T')[0]
 }
 
