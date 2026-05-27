@@ -9,6 +9,7 @@ import { getStyleConfig, updateStyleConfig, getColorSchemes, getLayoutStyles, ge
 import type { StyleConfig, StylePreset } from '@/types/theme'
 import { resolveLayoutTokens, applyLayoutTokensToCSS } from '@/utils/layoutTokenResolver'
 import { FONT_SIZE_PRESETS, PRESET_THEMES } from '@/types/theme'
+import { updateFavicon } from '@/utils/favicon'
 
 // 保存状态类型
 export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed'
@@ -117,6 +118,7 @@ const applyThemeToCSS = (config: StyleConfig) => {
 
   // 布局变量
   applyLayoutVariables(config.activeLayoutStyle || 'layout_top_nav')
+  updateFavicon(config.logoUrlNav || config.logoUrl)
 }
 
 // 应用布局 CSS 变量（使用统一 resolver）

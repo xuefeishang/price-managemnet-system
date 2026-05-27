@@ -3,6 +3,7 @@ import { getStyleConfig, updateStyleConfig, switchTheme as apiSwitchTheme } from
 import type { StyleConfig } from '@/types/theme'
 import { PRESET_THEMES } from '@/types/theme'
 import { resolveLayoutTokens, applyLayoutTokensToCSS } from '@/utils/layoutTokenResolver'
+import { updateFavicon } from '@/utils/favicon'
 
 const themeConfig = reactive<StyleConfig>({
   systemName: '价格管理系统',
@@ -85,6 +86,7 @@ const applyThemeToCSS = () => {
 
   // 布局相关 CSS 变量（根据 activeLayoutStyle 设置）
   applyLayoutVariables()
+  updateFavicon(themeConfig.logoUrlNav || themeConfig.logoUrl)
 }
 
 /**

@@ -30,10 +30,22 @@ const draggingProductId = ref<number | null>(null)
 const dragOverProductId = ref<number | null>(null)
 const dragOverPosition = ref<'before' | 'after'>('before')
 
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const parseLocalDate = (dateStr: string) => {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 const getYesterday = () => {
   const date = new Date()
   date.setDate(date.getDate() - 1)
-  return date.toISOString().split('T')[0]
+  return formatLocalDate(date)
 }
 
 const selectedDate = ref(getYesterday())
@@ -473,16 +485,16 @@ const goBack = () => {
 
 const goToPrevDate = async () => {
   if (!await ensureCanChangeDate()) return
-  const [year, month, day] = selectedDate.value.split('-').map(Number)
-  const date = new Date(year, month - 1, day - 1)
-  selectedDate.value = date.toISOString().split('T')[0]
+  const date = parseLocalDate(selectedDate.value)
+  date.setDate(date.getDate() - 1)
+  selectedDate.value = formatLocalDate(date)
 }
 
 const goToNextDate = async () => {
   if (!await ensureCanChangeDate()) return
-  const [year, month, day] = selectedDate.value.split('-').map(Number)
-  const date = new Date(year, month - 1, day + 1)
-  selectedDate.value = date.toISOString().split('T')[0]
+  const date = parseLocalDate(selectedDate.value)
+  date.setDate(date.getDate() + 1)
+  selectedDate.value = formatLocalDate(date)
 }
 
 const onDateInputChange = async (event: Event) => {
@@ -888,7 +900,7 @@ onMounted(async () => {
   background: var(--bg-card);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
 }
 
 .back-button {
@@ -920,11 +932,11 @@ onMounted(async () => {
 }
 
 .date-picker {
+  display: grid;
+  grid-template-columns: 32px 150px 32px;
   gap: var(--spacing-xs);
-  padding: 6px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  background: var(--gray-50);
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .date-input,
@@ -945,12 +957,19 @@ onMounted(async () => {
   width: 150px;
   padding: 0 var(--spacing-sm);
   cursor: pointer;
+  flex: 0 0 150px;
 }
 
 .date-nav-btn {
+  flex: 0 0 32px;
   width: 32px;
   height: 32px;
   border-radius: var(--radius-sm);
+}
+
+.date-nav-btn:active,
+.date-nav-btn-mobile:active {
+  transform: none;
 }
 
 .btn-save,
@@ -1411,16 +1430,20 @@ onMounted(async () => {
 }
 
 .date-nav {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   gap: var(--spacing-sm);
+  align-items: center;
 }
 
 .date-input-mobile {
-  flex: 1;
   min-width: 0;
+  width: 100%;
   padding: 0 var(--spacing-sm);
 }
 
 .date-nav-btn-mobile {
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
   display: inline-flex;
@@ -1430,6 +1453,7 @@ onMounted(async () => {
   border-radius: var(--radius);
   background: var(--bg-card);
   color: var(--text-secondary);
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
 }
 
 .mobile-filters {
