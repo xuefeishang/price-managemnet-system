@@ -101,6 +101,8 @@ EXIT;
 
 > 首页产品产地展示复用既有 `product.origin_ids` 与 `origin` 字典数据，不需要新增数据库迁移；升级时重新打包后端和前端即可。
 > 首页产品表新增 `home_layout.product_list_mode` 与 `home_layout.product_table_page_size` 配置项，由启动初始化补齐；如生产环境已有字典数据，升级后重启后端即可自动补充缺失项。
+> 日常价格查询功能通过 Flyway 执行 `V15__daily_price_query_permissions.sql` 补充“价格查询”菜单和 `price:export` 权限；新环境执行 `init.sql` 时已包含同样的菜单和权限数据。
+> `V16__normalize_price_query_menu.sql` 会将 `/price-query` 归一化为“产品管理”下唯一的“价格查询”二级菜单，避免历史环境出现同路径重复菜单或普通用户可见但菜单管理不可见的情况。
 
 > 注意：`init.sql` 包含完整的表结构创建和数据初始化，推荐使用此脚本一步完成初始化。
 
@@ -120,6 +122,14 @@ SELECT * FROM product;
 -- 验证首页产品列表排序字段
 SELECT id, name, sort_order, status FROM product_category ORDER BY sort_order;
 SELECT id, name, category_id, sort_order, show_on_home, status FROM product ORDER BY category_id, sort_order;
+
+-- 验证日常价格查询菜单和导出权限
+SELECT pq.id, p.name AS parent_name, pq.name, pq.path, pq.roles
+FROM menu_item pq
+LEFT JOIN menu_item p ON p.id = pq.parent_id
+WHERE pq.path = '/price-query';
+SELECT path, COUNT(*) AS count FROM menu_item WHERE path = '/price-query' GROUP BY path;
+SELECT permission_code, permission_name FROM sys_permission WHERE permission_code IN ('price:view', 'price:export');
 
 -- 查看用户数据（应该有3条记录）
 SELECT username, role, status FROM sys_user;

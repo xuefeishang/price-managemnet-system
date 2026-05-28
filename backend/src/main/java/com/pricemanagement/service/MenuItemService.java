@@ -212,6 +212,8 @@ public class MenuItemService {
             // Create child menus under 产品管理
             createMenuItem(productMgmt, "产品列表", "/products", null, 1, true, null);
             createMenuItem(productMgmt, "价格维护", "/price-maintenance", "price", 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(productMgmt, "价格查询", "/price-query", "price", 3, true,
+                    toJsonRoles(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER));
 
             // Create child menus under 基础运维
             createMenuItem(basicMgmt, "产品维护", "/product-edit", null, 1, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
@@ -235,6 +237,40 @@ public class MenuItemService {
 
             log.info("Default menu items initialized");
         }
+        ensureDefaultMenuUpdates();
+    }
+
+    private void ensureDefaultMenuUpdates() {
+        MenuItem productMgmt = menuItemRepository.findAll().stream()
+                .filter(menu -> menu.getParentId() == null && "产品管理".equals(menu.getName()))
+                .findFirst()
+                .orElseGet(() -> createMenuItem(null, "产品管理", null, "product", 2, true, null));
+
+        List<MenuItem> priceQueryMenus = menuItemRepository.findAllByPathOrderByIdAsc("/price-query");
+
+        if (priceQueryMenus.isEmpty()) {
+            createMenuItem(productMgmt, "价格查询", "/price-query", "price", 3, true,
+                    toJsonRoles(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER));
+            log.info("Added price query menu");
+            return;
+        }
+
+        MenuItem canonicalMenu = priceQueryMenus.get(0);
+        canonicalMenu.setParentId(productMgmt.getId());
+        canonicalMenu.setName("价格查询");
+        canonicalMenu.setIcon("price");
+        canonicalMenu.setSortOrder(3);
+        canonicalMenu.setVisible(true);
+        canonicalMenu.setRoles(toJsonRoles(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER));
+        menuItemRepository.save(canonicalMenu);
+
+        if (priceQueryMenus.size() > 1) {
+            List<MenuItem> duplicates = priceQueryMenus.subList(1, priceQueryMenus.size());
+            menuItemRepository.deleteAll(duplicates);
+            log.info("Removed {} duplicate price query menus", duplicates.size());
+        }
+
+        log.info("Normalized price query menu");
     }
 
     @Transactional

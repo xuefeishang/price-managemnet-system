@@ -46,6 +46,7 @@ const logoSizeStyle = computed(() => {
 
 const isMobileMenuOpen = ref(false)
 const expandedMenuIds = ref<Set<number>>(new Set())
+const pendingMenuPath = ref<string | null>(null)
 
 // 使用 menuStore 的菜单数据
 const menus = computed(() => menuStore.visibleMenus)
@@ -54,10 +55,17 @@ const menuTree = computed(() => normalizeMenuTree(menus.value))
 const routeMenuPath = computed(() => {
   return (route.meta.activeMenu as string | undefined) || route.path
 })
+const displayRoutePath = computed(() => pendingMenuPath.value || route.path)
+const displayRouteMenuPath = computed(() => pendingMenuPath.value || routeMenuPath.value)
 const currentMenuMatch = computed<MenuMatch | null>(() => {
-  return findMenuByPath(menuTree.value, route.path) || findMenuByPath(menuTree.value, routeMenuPath.value)
+  return findMenuByPath(menuTree.value, displayRoutePath.value) || findMenuByPath(menuTree.value, displayRouteMenuPath.value)
 })
-const activeMenuPath = computed(() => currentMenuMatch.value?.node.path || routeMenuPath.value)
+const activeMenuPath = computed(() => currentMenuMatch.value?.node.path || displayRouteMenuPath.value)
+const activeMenuIds = computed(() => {
+  const match = currentMenuMatch.value
+  if (!match) return new Set<number>()
+  return new Set([...match.ancestors.map(menu => menu.id), match.node.id])
+})
 const contextSubNav = computed<{ parent: MenuNode, items: MenuNode[] } | null>(() => {
   const match = currentMenuMatch.value
   if (!match) return null
@@ -104,9 +112,22 @@ const toggleMenu = (id: number) => {
 }
 
 // 导航
-const navigateTo = (path: string) => {
-  router.push(path)
+const navigateTo = async (path: string) => {
+  if (path === route.path) {
+    isMobileMenuOpen.value = false
+    return
+  }
+
+  pendingMenuPath.value = path
   isMobileMenuOpen.value = false
+
+  try {
+    await router.push(path)
+  } finally {
+    if (pendingMenuPath.value === path) {
+      pendingMenuPath.value = null
+    }
+  }
 }
 
 const handleLogout = () => {
@@ -184,6 +205,7 @@ watch(() => route.path, () => {
           <SidebarMenuTree
             :menus="menuTree"
             :active-path="activeMenuPath"
+            :active-ids="activeMenuIds"
             :expanded-ids="expandedMenuIds"
             @navigate="navigateTo"
             @toggle="toggleMenu"
@@ -278,6 +300,7 @@ watch(() => route.path, () => {
           <SidebarMenuTree
             :menus="menuTree"
             :active-path="activeMenuPath"
+            :active-ids="activeMenuIds"
             :expanded-ids="expandedMenuIds"
             @navigate="navigateTo"
             @toggle="toggleMenu"

@@ -274,14 +274,16 @@ onUnmounted(() => {
             <div class="form-body">
               <form @submit.prevent="handleLogin">
               <!-- 错误提示 -->
-              <div v-if="errorMessage" class="error-message">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <span>{{ errorMessage }}</span>
-              </div>
+              <Transition name="login-alert">
+                <div v-if="errorMessage" class="error-message" role="alert" aria-live="polite">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <span>{{ errorMessage }}</span>
+                </div>
+              </Transition>
 
               <div class="form-group">
                 <label class="form-label" for="username-pc">用户名</label>
@@ -420,14 +422,16 @@ onUnmounted(() => {
         <!-- 登录表单 -->
         <form class="form-container" @submit.prevent="handleLogin">
           <!-- 错误提示 -->
-          <div v-if="errorMessage" class="error-message error-message-mobile">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{{ errorMessage }}</span>
-          </div>
+          <Transition name="login-alert">
+            <div v-if="errorMessage" class="error-message error-message-mobile" role="alert" aria-live="polite">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>{{ errorMessage }}</span>
+            </div>
+          </Transition>
 
           <div class="form-group">
             <label class="form-label" for="username-mobile">用户名</label>
@@ -631,6 +635,11 @@ onUnmounted(() => {
   max-width: 360px;
 }
 
+.form-body,
+.form-container {
+  position: relative;
+}
+
 .form-header {
   margin-bottom: 32px;
 }
@@ -749,32 +758,62 @@ onUnmounted(() => {
 
 /* 错误提示 */
 .error-message {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  z-index: 5;
+  transform: translateY(-100%);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  background: rgba(255, 77, 79, 0.1);
-  border: 1px solid rgba(255, 77, 79, 0.3);
+  min-height: 40px;
+  padding: 9px 12px;
+  background: #FFF8F7;
+  border: 1px solid rgba(224, 59, 59, 0.18);
   border-radius: 8px;
   color: #E03B3B;
+  box-shadow: 0 10px 24px rgba(224, 59, 59, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
   font-family: var(--font-body);
   font-size: var(--font-size-sm);
-  margin-bottom: 20px;
+  line-height: 1.35;
+  box-sizing: border-box;
+  pointer-events: none;
 }
 
 .error-message svg {
   flex-shrink: 0;
 }
 
+.error-message span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .error-message-mobile {
-  margin-left: -24px;
-  margin-right: -24px;
-  margin-top: -24px;
-  margin-bottom: 16px;
-  border-radius: 12px 12px 0 0;
-  border-left: none;
-  border-right: none;
-  border-top: none;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  transform: translateY(0);
+  z-index: 100;
+  border-radius: 10px;
+}
+
+.login-alert-enter-active,
+.login-alert-leave-active {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.login-alert-enter-from,
+.login-alert-leave-to {
+  opacity: 0;
+  transform: translateY(calc(-100% + 6px));
+}
+
+.error-message-mobile.login-alert-enter-from,
+.error-message-mobile.login-alert-leave-to {
+  transform: translateY(-6px);
 }
 
 /* 密码输入框容器 */

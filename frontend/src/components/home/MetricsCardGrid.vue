@@ -19,6 +19,14 @@ const props = defineProps<{
 
 const { themeConfig } = useTheme()
 
+const formatPriceNumber = (value: number | null | undefined) => {
+  if (value == null || Number.isNaN(Number(value))) return '--'
+  return Number(value).toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
 const parseOriginIds = (originIds?: string) => {
   if (!originIds) return []
   try {
@@ -50,7 +58,7 @@ const generateChartOption = (product: ProductMetric) => {
       trigger: 'axis',
       formatter: (params: any) => {
         const p = params[0]
-        return p ? `${product.productName}<br/>价格: ${product.currencySymbol}${p.value}` : ''
+        return p ? `${product.productName}<br/>价格: ${product.currencySymbol}${formatPriceNumber(p.value)}` : ''
       },
       confine: true,
       textStyle: { fontSize: 10 }
@@ -105,7 +113,7 @@ const generateChartOption = (product: ProductMetric) => {
       <div class="card-price">
         <span class="price-symbol">{{ product.currencySymbol }}</span>
         <span class="price-value" v-if="product.currentPrice != null">
-          {{ product.currentPrice.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
+          {{ formatPriceNumber(product.currentPrice) }}
         </span>
         <span class="price-value empty" v-else>--</span>
         <span class="price-unit" v-if="product.unit">/ {{ product.unit }}</span>

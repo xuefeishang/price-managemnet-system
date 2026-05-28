@@ -170,6 +170,9 @@ const isProductTableMode = computed(() => productListPresentation.value === 'tab
 const displayUserName = computed(() =>
   userStore.user?.nickname || userStore.user?.username || '用户'
 )
+const welcomeText = computed(() =>
+  `${displayUserName.value}，你好！欢迎使用${themeConfig.value.systemName || '价格管理系统'}。`
+)
 
 const tableStart = computed(() => tableTotalElements.value === 0 ? 0 : tablePage.value * tableSize.value + 1)
 const tableEnd = computed(() => Math.min((tablePage.value + 1) * tableSize.value, tableTotalElements.value))
@@ -300,6 +303,14 @@ const toNumber = (value: unknown): number | null => {
   return Number.isFinite(num) ? num : null
 }
 
+const formatPriceNumber = (value: number | null | undefined) => {
+  if (value == null || Number.isNaN(Number(value))) return '--'
+  return Number(value).toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
 const parseOriginIds = (originIds?: string) => {
   if (!originIds) return []
   try {
@@ -393,15 +404,15 @@ const getPriceChangeInfo = (productId: number) => {
 
 const getLastPriceInfo = (productId: number): string | null => {
   const currentValue = currentPriceValueMap.value.get(productId)
-  if (currentValue != null) return String(currentValue)
+  if (currentValue != null) return formatPriceNumber(currentValue)
   const todayPrice = priceMap.value.get(productId)
   if (todayPrice && todayPrice.currentPrice != null) {
-    return String(todayPrice.currentPrice)
+    return formatPriceNumber(Number(todayPrice.currentPrice))
   }
   const history = priceHistoryMap.value.get(productId)
   if (history && history.length > 0) {
     const latest = history[history.length - 1]
-    if (latest && latest.currentPrice != null) return String(latest.currentPrice)
+    if (latest && latest.currentPrice != null) return formatPriceNumber(Number(latest.currentPrice))
   }
   return null
 }
@@ -497,7 +508,7 @@ const generateChartOption = (productId: number) => {
       trigger: 'axis',
       formatter: (params: any) => {
         const p = params[0]
-        return p ? `${p.axisValue}<br/>价格: ${p.value}` : ''
+        return p ? `${p.axisValue}<br/>价格: ${formatPriceNumber(p.value)}` : ''
       },
       confine: true,
       textStyle: { fontSize: 10 }
@@ -841,15 +852,15 @@ onUnmounted(() => {
         <!-- 页面标题区 -->
         <div class="page-header-pc">
           <div class="header-left-pc">
-            <div class="date-picker-wrapper" @click="openDatePicker('pc')">
-              <input ref="pcDateInputRef" type="date" v-model="selectedDate" @change="onDateChange" class="date-input-pc" />
-            </div>
-            <div>
+            <div class="title-row-pc">
               <h1 class="page-title-pc">价格概览</h1>
-              <p class="page-subtitle-pc">欢迎回来，{{ displayUserName }}</p>
+              <p class="page-subtitle-pc">{{ welcomeText }}</p>
             </div>
           </div>
           <div class="header-actions-pc">
+            <div class="date-picker-wrapper" @click="openDatePicker('pc')">
+              <input ref="pcDateInputRef" type="date" v-model="selectedDate" @change="onDateChange" class="date-input-pc" />
+            </div>
             <button class="btn-icon-pc" @click="onRefresh" :disabled="loading" title="刷新">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: loading }">
                 <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -1318,12 +1329,12 @@ onUnmounted(() => {
           </button>
         </div>
         <div class="navbar-right">
+          <input ref="mobileDateInputRef" type="date" v-model="selectedDate" @click="openDatePicker('mobile')" @change="onDateChange" class="date-input-mobile" />
           <button class="btn-icon-mobile" @click="onRefresh" :disabled="loading" title="刷新">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: loading }">
               <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
             </svg>
           </button>
-          <input ref="mobileDateInputRef" type="date" v-model="selectedDate" @click="openDatePicker('mobile')" @change="onDateChange" class="date-input-mobile" />
         </div>
       </header>
 
@@ -2202,6 +2213,14 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.title-row-pc {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-md);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .page-title-pc {
   font-family: var(--font-heading);
   font-size: var(--font-size-2xl);
@@ -2211,9 +2230,10 @@ onUnmounted(() => {
 }
 
 .page-subtitle-pc {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+  white-space: nowrap;
 }
 
 .date-picker-wrapper {

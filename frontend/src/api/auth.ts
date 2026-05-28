@@ -40,7 +40,11 @@ export const refreshToken = async (data: TokenRefreshRequest): Promise<ApiRespon
 }
 
 // 获取用户信息
-export const getProfile = async (): Promise<ApiResponse<User>> => {
+export interface ProfileResponse extends User {
+  permissions?: string[]
+}
+
+export const getProfile = async (): Promise<ApiResponse<ProfileResponse>> => {
   return await http.get('/api/auth/profile')
 }
 

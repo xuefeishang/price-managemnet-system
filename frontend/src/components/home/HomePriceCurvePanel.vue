@@ -44,7 +44,7 @@ const stats = computed(() => {
 const formatNumber = (value: number | null | undefined) => {
   if (value == null) return '--'
   return value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })
 }
@@ -98,7 +98,7 @@ const chartOption = computed(() => {
       axisLabel: {
         color: '#667085',
         fontSize: 11,
-        formatter: (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
+        formatter: (value: number) => formatNumber(value)
       }
     },
     tooltip: {

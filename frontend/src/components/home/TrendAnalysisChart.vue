@@ -55,7 +55,7 @@ const selectedRange = ref(30)
 const formatPrice = (value: number | null | undefined, currencySymbol = '') => {
   if (value == null) return '--'
   return `${currencySymbol}${value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`
 }
@@ -100,7 +100,11 @@ const chartOption = computed(() => {
       axisLine: { show: false },
       axisTick: { show: false },
       splitLine: { lineStyle: { color: '#F0F0F0' } },
-      axisLabel: { color: '#888', fontSize: 10 }
+      axisLabel: {
+        color: '#888',
+        fontSize: 10,
+        formatter: (value: number) => formatPrice(value)
+      }
     },
     tooltip: {
       trigger: 'axis',
@@ -110,7 +114,7 @@ const chartOption = computed(() => {
       formatter: (params: any) => {
         if (!params || params.length === 0) return ''
         const p = params[0]
-        const val = p.value != null ? p.value.toFixed(2) : '--'
+        const val = formatPrice(p.value)
         return `${p.axisValue}<br/><span style="color:${lineColor}">●</span> 平均价格: ${val}`
       }
     },
@@ -193,7 +197,7 @@ const generateProductChartOption = (product: ProductTrendItem) => {
       axisLabel: {
         color: '#888',
         fontSize: 10,
-        formatter: (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
+        formatter: (value: number) => formatPrice(value)
       }
     },
     tooltip: {

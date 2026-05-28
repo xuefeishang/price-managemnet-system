@@ -15,4 +15,6 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
     List<MenuItem> findByParentIdIsNullOrderBySortOrderAsc();
 
     Optional<MenuItem> findByPath(String path);
+
+    List<MenuItem> findAllByPathOrderByIdAsc(String path);
 }

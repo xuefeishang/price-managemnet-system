@@ -208,13 +208,23 @@ public class AuthController {
     }
 
     @GetMapping("/profile")
-    public Result<User> getProfile() {
+    public Result<?> getProfile() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
             return Result.error(401, "未登录");
         }
         String username = authentication.getName();
-        return Result.success("获取用户信息成功", userRepository.findByUsername(username).orElse(null));
+        Optional<User> userOptional = userRepository.findByUsername(username);
+        if (userOptional.isEmpty()) {
+            return Result.error(404, "用户不存在");
+        }
+        User user = userOptional.get();
+        Set<String> permissions = permissionService.getUserPermissions(user.getId());
+        user.setPassword(null);
+        return Result.success("获取用户信息成功", Map.of(
+                "user", user,
+                "permissions", permissions
+        ));
     }
 
     @PutMapping("/profile")

@@ -347,6 +347,7 @@ INSERT INTO menu_item (id, parent_id, name, path, icon, sort_order, visible, rol
 SELECT * FROM (
     SELECT 10 AS id, 2 AS parent_id, '产品列表' AS name, '/products' AS path, NULL AS icon, 1 AS sort_order, TRUE AS visible, NULL AS roles, NOW() AS created_time, NOW() AS updated_time
     UNION ALL SELECT 11, 2, '价格维护', '/price-maintenance', 'price', 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
+    UNION ALL SELECT 12, 2, '价格查询', '/price-query', 'price', 3, TRUE, '["ADMIN","EDITOR","VIEWER"]', NOW(), NOW()
     UNION ALL SELECT 20, 3, '产品维护', '/product-edit', NULL, 1, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 21, 3, '分类管理', '/categories', NULL, 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 22, 3, '导入导出', '/import', NULL, 3, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
@@ -808,6 +809,7 @@ SELECT * FROM (
     UNION ALL SELECT 8, 'price:view', '价格查看', 'MENU', NULL, '/price-maintenance', 20, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 9, 'price:edit', '价格编辑', 'BUTTON', 8, NULL, 21, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 10, 'price:approve', '价格审批', 'BUTTON', 8, NULL, 22, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 32, 'price:export', '价格导出', 'BUTTON', 8, NULL, 23, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 11, 'category:view', '分类管理查看', 'MENU', NULL, '/categories', 30, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 12, 'category:edit', '分类编辑', 'BUTTON', 11, NULL, 31, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 13, 'origin:view', '产地管理查看', 'MENU', NULL, '/origins', 40, 'ACTIVE', NOW(), NOW()
@@ -832,7 +834,7 @@ SELECT * FROM (
 ) AS tmp
 WHERE @has_sys_permission = 0;
 
-SELECT CONCAT('权限数据: ', IF(@has_sys_permission > 0, '已存在，跳过', '初始化完成（31个权限）')) AS status;
+SELECT CONCAT('权限数据: ', IF(@has_sys_permission > 0, '已存在，跳过', '初始化完成（32个权限）')) AS status;
 
 -- =====================================================
 -- 19. 初始化角色权限关联
@@ -850,14 +852,14 @@ WHERE @has_role_permission = 0;
 INSERT INTO sys_role_permission (role_id, permission_id, created_time)
 SELECT 2 AS role_id, p.id AS permission_id, NOW() AS created_time
 FROM sys_permission p
-WHERE p.permission_code IN ('home:view', 'product:view', 'product:create', 'product:edit', 'product:import', 'product:export', 'price:view', 'price:edit', 'category:view', 'category:edit', 'origin:view', 'origin:edit', 'customer:view', 'customer:edit', 'approval:view', 'approval:create', 'approval:process', 'log:view')
+WHERE p.permission_code IN ('home:view', 'product:view', 'product:create', 'product:edit', 'product:import', 'product:export', 'price:view', 'price:edit', 'price:export', 'category:view', 'category:edit', 'origin:view', 'origin:edit', 'customer:view', 'customer:edit', 'approval:view', 'approval:create', 'approval:process', 'log:view')
 AND @has_role_permission = 0;
 
 -- VIEWER仅拥有查看权限
 INSERT INTO sys_role_permission (role_id, permission_id, created_time)
 SELECT 3 AS role_id, p.id AS permission_id, NOW() AS created_time
 FROM sys_permission p
-WHERE p.permission_code LIKE '%:view'
+WHERE (p.permission_code LIKE '%:view' OR p.permission_code = 'price:export')
 AND @has_role_permission = 0;
 
 SELECT CONCAT('角色权限关联: ', IF(@has_role_permission > 0, '已存在，跳过', '初始化完成')) AS status;

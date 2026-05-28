@@ -243,6 +243,27 @@ export interface PageResponse<T> {
   last: boolean
 }
 
+// 日常价格查询行
+export interface PriceQueryRow {
+  productId: number
+  productName: string
+  categoryId?: number
+  categoryName?: string
+  originIds?: string
+  specification?: string
+  unit?: string
+  currency?: string
+  effectiveDate: string
+  currentPrice?: number | null
+  yesterdayPrice?: number | null
+  changeAmount?: number | null
+  changePercent?: number | null
+  budgetPrice?: number | null
+  monthlyAveragePrice?: number | null
+  latestPrice?: number | null
+  hasPrice: boolean
+}
+
 // 菜单项类型
 export interface MenuItem {
   id: number

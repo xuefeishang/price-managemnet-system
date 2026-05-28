@@ -140,7 +140,11 @@ export const useUserStore = defineStore('user', () => {
    */
   const fetchProfile = async () => {
     const response = await getProfile()
-    user.value = response.data
+    const responseData = response.data as any
+    user.value = responseData.user || responseData
+    if (responseData.permissions) {
+      permissions.value = new Set(responseData.permissions)
+    }
   }
 
   // ==================== 权限计算 ====================

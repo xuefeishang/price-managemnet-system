@@ -83,6 +83,12 @@ const router = createRouter({
           meta: { title: '价格维护', editorOnly: true }
         },
         {
+          path: 'price-query',
+          name: 'PriceQuery',
+          component: () => import('../views/PriceQuery.vue'),
+          meta: { title: '价格查询' }
+        },
+        {
           path: 'product-detail/:id',
           name: 'ProductDetail',
           component: () => import('../views/ProductDetail.vue'),

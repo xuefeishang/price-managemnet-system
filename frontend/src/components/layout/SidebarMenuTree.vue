@@ -4,6 +4,7 @@ import type { MenuNode } from './menuUtils'
 const props = defineProps<{
   menus: MenuNode[]
   activePath: string
+  activeIds: Set<number>
   expandedIds: Set<number>
   level?: number
 }>()
@@ -16,10 +17,7 @@ const emit = defineEmits<{
 const levelValue = props.level ?? 1
 
 const isExpanded = (menu: MenuNode) => props.expandedIds.has(menu.id)
-const isActive = (menu: MenuNode): boolean => {
-  if (menu.path && menu.path === props.activePath) return true
-  return menu.children.some(child => isActive(child))
-}
+const isActive = (menu: MenuNode) => props.activeIds.has(menu.id)
 
 const handleClick = (menu: MenuNode) => {
   if (menu.path) {
@@ -102,6 +100,7 @@ const handleToggle = (id: number) => emit('toggle', id)
         v-if="menu.children.length > 0 && isExpanded(menu)"
         :menus="menu.children"
         :active-path="activePath"
+        :active-ids="activeIds"
         :expanded-ids="expandedIds"
         :level="levelValue + 1"
         @navigate="handleNavigate"
