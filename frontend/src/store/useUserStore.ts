@@ -36,6 +36,27 @@ export const useUserStore = defineStore('user', () => {
   /** 是否已认证（基于 token 是否存在） */
   const isAuthenticated = computed(() => !!token.value)
 
+  const normalizeUser = (userData: any): User => ({
+    id: userData.id || userData.userId,
+    username: userData.username,
+    nickname: userData.nickname,
+    role: userData.role,
+    roles: userData.roles || [userData.role],
+    status: userData.status || 'ACTIVE',
+    email: userData.email || '',
+    phone: userData.phone || '',
+    createdTime: userData.createdTime || '',
+    updatedTime: userData.updatedTime || '',
+    employeeId: userData.employeeId,
+    department: userData.department,
+    deptId: userData.deptId,
+    loginType: userData.loginType,
+    wechatOpenid: userData.wechatOpenid,
+    wechatNickname: userData.wechatNickname,
+    wechatAvatar: userData.wechatAvatar,
+    lastLoginTime: userData.lastLoginTime
+  })
+
   // ==================== 登录/登出 ====================
 
   /**
@@ -54,18 +75,7 @@ export const useUserStore = defineStore('user', () => {
       localStorage.setItem('refreshToken', responseData.refreshToken)
       // 直接使用登录响应数据设置用户信息
       const userData = responseData.user || responseData
-      user.value = {
-        id: userData.id || userData.userId,
-        username: userData.username,
-        nickname: userData.nickname,
-        role: userData.role,  // 主角色
-        roles: userData.roles || [userData.role],  // 角色列表
-        status: 'ACTIVE',
-        email: '',
-        phone: '',
-        createdTime: '',
-        updatedTime: ''
-      }
+      user.value = normalizeUser(userData)
       // 设置权限列表
       if (responseData.permissions) {
         permissions.value = new Set(responseData.permissions)
@@ -141,7 +151,8 @@ export const useUserStore = defineStore('user', () => {
   const fetchProfile = async () => {
     const response = await getProfile()
     const responseData = response.data as any
-    user.value = responseData.user || responseData
+    const userData = responseData.user || responseData
+    user.value = normalizeUser(userData)
     if (responseData.permissions) {
       permissions.value = new Set(responseData.permissions)
     }

@@ -51,6 +51,19 @@ const customEndDate = ref('')
 // 防抖搜索
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
+const formatLocalDateTime = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join('-') + ' ' + [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join(':')
+}
+
 // 筛选条件
 const filters = ref({
   username: '',
@@ -83,8 +96,8 @@ const dateRange = computed(() => {
   const start = new Date()
   start.setDate(start.getDate() - days)
   return {
-    startTime: start.toISOString().replace('T', ' ').substring(0, 19),
-    endTime: end.toISOString().replace('T', ' ').substring(0, 19)
+    startTime: formatLocalDateTime(start),
+    endTime: formatLocalDateTime(end)
   }
 })
 
@@ -300,7 +313,7 @@ const moduleChartOptions = computed(() => {
 const userActivityChartOptions = computed(() => {
   if (!statistics.value?.userActivities) return {}
   const activities = statistics.value.userActivities.slice(0, 10)
-  const users = activities.map(a => a.username)
+  const users = activities.map(a => a.operatorName || a.username)
   const values = activities.map(a => a.operationCount)
 
   return {
@@ -344,11 +357,25 @@ const yearlyTrendChartOptions = computed(() => {
   }
 })
 
+const getLogStatus = (log: OperationLog) => {
+  if (log.status) return log.status
+  const errorText = log.errorMsg || log.errorMessage
+  if (errorText) return '失败'
+  const code = log.responseCode ? Number(log.responseCode) : 200
+  return Number.isFinite(code) && code >= 400 ? '失败' : '成功'
+}
+
 // 获取状态样式
-const getStatusClass = (status: string) => status === 'SUCCESS' ? 'success' : 'error' // SUCCESS/FAIL 是日志特有状态，不在通用字典中
+const getStatusClass = (status: string) => ['SUCCESS', '成功'].includes(status) ? 'success' : 'error'
 
 // 获取状态名称
-const getStatusName = (status: string) => getDictValue('common_status', status) || (status === 'SUCCESS' ? '成功' : '失败')
+const getStatusName = (status: string) => {
+  if (status === 'SUCCESS') return getDictValue('sync_status', status)
+  if (status === 'FAILED') return getDictValue('sync_status', status)
+  return status || '-'
+}
+
+const getOperatorName = (log: OperationLog) => log.operatorName || log.username || '-'
 
 // 格式化时间
 const formatTime = (time: string) => {
@@ -455,7 +482,7 @@ onMounted(() => {
           <input
             v-model="filters.username"
             type="text"
-            placeholder="用户名"
+            placeholder="姓名或登录名"
             class="filter-input-sm"
           />
           <select v-model="filters.operationType" class="filter-select-sm">
@@ -516,7 +543,7 @@ onMounted(() => {
                   <span class="text-sm text-gray-600">{{ formatTime(log.createdTime) }}</span>
                 </td>
                 <td>
-                  <span class="username-cell">{{ log.username }}</span>
+                  <span class="username-cell">{{ getOperatorName(log) }}</span>
                 </td>
                 <td>
                   <span class="module-badge">{{ log.operationModule }}</span>
@@ -533,8 +560,8 @@ onMounted(() => {
                   <span class="text-sm text-gray-500">{{ log.ipAddress || '-' }}</span>
                 </td>
                 <td>
-                  <span class="status-badge" :class="getStatusClass(log.status)">
-                    {{ getStatusName(log.status) }}
+                  <span class="status-badge" :class="getStatusClass(getLogStatus(log))">
+                    {{ getStatusName(getLogStatus(log)) }}
                   </span>
                 </td>
               </tr>
@@ -723,7 +750,7 @@ onMounted(() => {
               <thead>
                 <tr>
                   <th>排名</th>
-                  <th>用户名</th>
+                  <th>姓名</th>
                   <th>操作次数</th>
                   <th>占比</th>
                 </tr>
@@ -735,7 +762,7 @@ onMounted(() => {
                       {{ user.rank }}
                     </span>
                   </td>
-                  <td class="text-bold">{{ user.username }}</td>
+                  <td class="text-bold">{{ user.operatorName || user.username }}</td>
                   <td>{{ user.count }}</td>
                   <td>{{ ((user.count / yearlyReport.statistics.totalOperations) * 100).toFixed(1) }}%</td>
                 </tr>

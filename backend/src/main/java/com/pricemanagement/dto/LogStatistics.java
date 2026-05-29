@@ -22,6 +22,7 @@ public class LogStatistics {
     @Data
     public static class UserActivity {
         private String username;
+        private String operatorName;
         private Long operationCount;
     }
 }

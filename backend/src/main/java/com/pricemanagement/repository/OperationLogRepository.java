@@ -27,7 +27,7 @@ public interface OperationLogRepository extends JpaRepository<OperationLog, Long
             Pageable pageable);
 
     @Query("SELECT o FROM OperationLog o WHERE " +
-           "(:username IS NULL OR o.username LIKE %:username%) AND " +
+           "(:username IS NULL OR o.username LIKE %:username% OR o.username IN :matchedUsernames) AND " +
            "(:operationType IS NULL OR o.operationType = :operationType) AND " +
            "(:operationModule IS NULL OR o.operationModule = :operationModule) AND " +
            "(:startTime IS NULL OR o.operationTime >= :startTime) AND " +
@@ -35,6 +35,7 @@ public interface OperationLogRepository extends JpaRepository<OperationLog, Long
            "ORDER BY o.operationTime DESC")
     Page<OperationLog> searchLogs(
             @Param("username") String username,
+            @Param("matchedUsernames") List<String> matchedUsernames,
             @Param("operationType") String operationType,
             @Param("operationModule") String operationModule,
             @Param("startTime") LocalDateTime startTime,

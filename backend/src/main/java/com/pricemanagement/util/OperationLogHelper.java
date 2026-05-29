@@ -1,7 +1,6 @@
 package com.pricemanagement.util;
 
 import com.pricemanagement.entity.OperationLog;
-import com.pricemanagement.entity.User;
 import com.pricemanagement.service.OperationLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +45,7 @@ public class OperationLogHelper {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
             operationLog.setRequestParams(requestParams);
+            applyUsernameFallback(operationLog, type, requestParams);
             operationLog.setErrorMessage(errorMessage);
             operationLog.setResponseCode(errorMessage == null ? "200" : "500");
 
@@ -69,6 +69,7 @@ public class OperationLogHelper {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
             operationLog.setRequestParams(requestParams);
+            applyUsernameFallback(operationLog, type, requestParams);
             operationLog.setResponseCode("200");
             operationLogService.log(operationLog);
         } catch (Exception e) {
@@ -90,6 +91,7 @@ public class OperationLogHelper {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
             operationLog.setRequestParams(requestParams);
+            applyUsernameFallback(operationLog, type, requestParams);
             operationLog.setResponseCode("500");
             operationLog.setErrorMessage(errorMessage);
             operationLogService.log(operationLog);
@@ -116,6 +118,10 @@ public class OperationLogHelper {
             if (authentication != null && authentication.isAuthenticated()
                     && !"anonymousUser".equals(authentication.getPrincipal())) {
                 operationLog.setUsername(authentication.getName());
+                Object details = authentication.getDetails();
+                if (details instanceof Long userId) {
+                    operationLog.setUserId(userId);
+                }
             }
         } catch (Exception e) {
             log.debug("Could not get username: {}", e.getMessage());
@@ -136,6 +142,15 @@ public class OperationLogHelper {
         }
 
         return operationLog;
+    }
+
+    private void applyUsernameFallback(OperationLog operationLog, OperationLog.OperationType type, String requestParams) {
+        if (operationLog.getUsername() != null && !operationLog.getUsername().isBlank()) {
+            return;
+        }
+        if (type == OperationLog.OperationType.LOGIN && requestParams != null && !requestParams.isBlank()) {
+            operationLog.setUsername(requestParams);
+        }
     }
 
     /**

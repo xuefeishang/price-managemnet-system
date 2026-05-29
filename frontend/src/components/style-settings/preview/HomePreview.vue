@@ -8,7 +8,7 @@ import type { HomeWidget } from '@/composables/useHomePreviewState'
 const homeState = useHomePreviewState()
 
 // 视口切换（本地 UI 状态）
-const viewport = ref<'pc' | 'mobile'>('pc')
+const viewport = ref<'pc' | 'middle' | 'mobile'>('pc')
 
 // 列数
 const columns = computed(() => homeState.layoutConfig.value.cardColumns)
@@ -22,6 +22,11 @@ const widgetLabelMap: Record<string, string> = {
 }
 
 const summaryLabels = ['产品总数', '当日更新', '更新率', '覆盖品类']
+const displaySummaryLabels = computed(() =>
+  viewport.value === 'middle'
+    ? summaryLabels.filter(label => ['产品总数', '当日更新'].includes(label))
+    : summaryLabels
+)
 
 const visibleWidgets = computed(() =>
   homeState.widgets.value
@@ -46,9 +51,10 @@ const hasVisibleTrendChart = computed(() =>
 const metricCardCount = computed(() => Math.max(1, Math.min(homeState.layoutConfig.value.featuredProductCount || 4, 4)))
 const trendCardCount = computed(() => Math.min(metricCardCount.value, 4))
 const productListPreviewMode = computed<'table' | 'cards'>(() => {
-  if (viewport.value === 'mobile') return 'cards'
-  if (homeState.layoutConfig.value.productListMode === 'cards') return 'cards'
-  if (homeState.layoutConfig.value.productListMode === 'auto') return 'table'
+  const mode = homeState.layoutConfig.value.productListMode
+  if (mode === 'table') return 'table'
+  if (mode === 'cards') return 'cards'
+  if (mode === 'auto') return viewport.value === 'mobile' ? 'cards' : 'table'
   return 'table'
 })
 
@@ -67,10 +73,11 @@ onMounted(() => {
   <PreviewFrame title="首页布局缩略图" hint="组件显隐 + 排序">
     <div class="viewport-tabs">
       <span class="tab" :class="{ active: viewport === 'pc' }" @click="viewport = 'pc'">PC</span>
+      <span class="tab" :class="{ active: viewport === 'middle' }" @click="viewport = 'middle'">中尺寸</span>
       <span class="tab" :class="{ active: viewport === 'mobile' }" @click="viewport = 'mobile'">移动</span>
     </div>
 
-    <div class="home-viewport" :class="{ mobile: viewport === 'mobile' }">
+    <div class="home-viewport" :class="{ middle: viewport === 'middle', mobile: viewport === 'mobile' }">
       <div class="preview-header">
         <span class="date-pill"></span>
         <span class="page-title-line"></span>
@@ -79,10 +86,10 @@ onMounted(() => {
 
       <div class="preview-body">
         <template v-for="widget in visibleWidgets" :key="widget.key">
-          <section v-if="widget.key === 'summary_stats'" class="preview-section summary-preview">
+          <section v-if="widget.key === 'summary_stats' && viewport !== 'mobile'" class="preview-section summary-preview">
             <div class="section-label">{{ widget.name }}</div>
             <div class="summary-grid">
-              <span v-for="label in summaryLabels" :key="label" class="summary-card">
+              <span v-for="label in displaySummaryLabels" :key="label" class="summary-card">
                 <span class="summary-icon"></span>
                 <span class="summary-copy">
                   <span class="summary-label-line"></span>
@@ -94,8 +101,8 @@ onMounted(() => {
           </section>
 
           <section v-else-if="widget.key === 'core_metrics'" class="preview-section core-preview">
-            <div class="section-label">重点产品价格{{ hasVisibleTrendChart ? ' / 主价格曲线' : '' }}</div>
-            <div class="core-preview-grid" :class="{ mobile: viewport === 'mobile' }">
+            <div class="section-label">重点产品价格{{ hasVisibleTrendChart && viewport === 'pc' ? ' / 主价格曲线' : '' }}</div>
+            <div class="core-preview-grid" :class="{ middle: viewport === 'middle', mobile: viewport === 'mobile' }">
               <div class="metric-grid" :style="{ gridTemplateColumns: `repeat(${viewport === 'mobile' ? 1 : 2}, 1fr)` }">
                 <span v-for="i in renderCardCount(widget)" :key="i" class="metric-card">
                   <span class="metric-title"></span>
@@ -116,7 +123,7 @@ onMounted(() => {
             </div>
           </section>
 
-          <section v-else-if="widget.key === 'trend_chart' && !hasVisibleCoreMetrics" class="preview-section trend-preview">
+          <section v-else-if="widget.key === 'trend_chart' && !hasVisibleCoreMetrics && !['middle', 'mobile'].includes(viewport)" class="preview-section trend-preview">
             <div class="section-label">{{ widget.name }}</div>
             <div class="main-curve-preview">
               <span class="curve-preview-head">
@@ -208,6 +215,11 @@ onMounted(() => {
   margin: 0 auto;
 }
 
+.home-viewport.middle {
+  max-width: 270px;
+  margin: 0 auto;
+}
+
 .preview-header {
   display: flex;
   align-items: center;
@@ -262,8 +274,16 @@ onMounted(() => {
   display: block;
 }
 
+.core-preview-grid.middle {
+  display: block;
+}
+
 .summary-grid {
   grid-template-columns: repeat(4, 1fr);
+}
+
+.home-viewport.middle .summary-grid {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .home-viewport.mobile .summary-grid {

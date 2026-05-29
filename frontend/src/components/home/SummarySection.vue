@@ -5,6 +5,7 @@ import type { HomeSummary } from '@/api/home'
 const props = defineProps<{
   summary: HomeSummary
   loading?: boolean
+  compact?: boolean
 }>()
 
 const summaryCards = computed(() => [
@@ -35,6 +36,12 @@ const summaryCards = computed(() => [
     label: '覆盖品类'
   }
 ])
+
+const displayCards = computed(() =>
+  props.compact
+    ? summaryCards.value.filter(card => ['products', 'updated'].includes(card.key))
+    : summaryCards.value
+)
 </script>
 
 <template>
@@ -42,8 +49,8 @@ const summaryCards = computed(() => [
     <div v-if="loading" class="summary-loading">
       <div v-for="i in 3" :key="i" class="skeleton-stat"></div>
     </div>
-    <div v-else class="summary-grid">
-      <div v-for="card in summaryCards" :key="card.key" class="stat-card">
+    <div v-else class="summary-grid" :class="{ compact: props.compact }">
+      <div v-for="card in displayCards" :key="card.key" class="stat-card">
         <div class="stat-icon" :class="card.icon">
           <svg v-if="card.icon === 'products'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/>
@@ -78,6 +85,10 @@ const summaryCards = computed(() => [
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--spacing-md);
+}
+
+.summary-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .stat-card {

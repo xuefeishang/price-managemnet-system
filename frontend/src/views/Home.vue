@@ -80,12 +80,26 @@ const selectedDate = ref(getYesterday())
 const trendDays = ref(30)
 const pcDateInputRef = ref<HTMLInputElement | null>(null)
 const mobileDateInputRef = ref<HTMLInputElement | null>(null)
+const homeRootRef = ref<HTMLElement | null>(null)
+const homeContentWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 let isOpeningDatePicker = false
+let homeResizeObserver: ResizeObserver | null = null
 
 // 计算属性
+const homeViewportTier = computed<'full' | 'middle' | 'h5'>(() => {
+  if (!isPCLayout.value) return 'h5'
+  const measuredWidth = homeContentWidth.value || windowWidth.value
+  if (typeof ResizeObserver === 'undefined') {
+    return windowWidth.value >= 1280 ? 'full' : 'middle'
+  }
+  return measuredWidth >= 1040 ? 'full' : 'middle'
+})
+const isMiddleHomeLayout = computed(() => homeViewportTier.value === 'middle')
+const isFullHomeLayout = computed(() => homeViewportTier.value === 'full')
+
 const gridCols = computed(() => {
-  if (windowWidth.value >= 1400) return layoutConfig.value.cardColumns
-  if (windowWidth.value >= 1024) return Math.min(layoutConfig.value.cardColumns, 3)
+  if (isFullHomeLayout.value && windowWidth.value >= 1400) return layoutConfig.value.cardColumns
+  if (isPCLayout.value) return Math.min(layoutConfig.value.cardColumns, 3)
   return 1
 })
 
@@ -162,11 +176,18 @@ const selectedProduct = computed(() => {
 
 const productTableRows = computed(() => tableProducts.value)
 const productListPresentation = computed<'table' | 'cards'>(() => {
-  if (layoutConfig.value.productListMode === 'cards') return 'cards'
-  if (layoutConfig.value.productListMode === 'auto') return windowWidth.value >= 1360 ? 'table' : 'cards'
-  return windowWidth.value >= 1280 ? 'table' : 'cards'
+  const mode = layoutConfig.value.productListMode
+  if (mode === 'table') return 'table'
+  if (mode === 'cards') return 'cards'
+  return homeViewportTier.value === 'h5' ? 'cards' : 'table'
 })
 const isProductTableMode = computed(() => productListPresentation.value === 'table')
+const showCoreLargeCurve = computed(() =>
+  isFullHomeLayout.value && isHomeSectionVisible('trend_chart')
+)
+const showStandaloneTrendChart = computed(() =>
+  isFullHomeLayout.value && !isHomeSectionVisible('core_metrics')
+)
 const displayUserName = computed(() =>
   userStore.user?.nickname || userStore.user?.username || '用户'
 )
@@ -424,8 +445,12 @@ const getPriceDisplay = (product: Product) => {
   return lastPrice ? `${getCurrencySymbolLocal(product.currency)}${lastPrice}` : '--'
 }
 
+const getYesterdayPriceDisplay = (product: Product) => {
+  const previousValue = previousPriceValueMap.value.get(product.id)
+  return previousValue != null ? `${getCurrencySymbolLocal(product.currency)}${formatPriceNumber(previousValue)}` : '--'
+}
+
 const getPriceUnit = (product: Product) => getTodayPrice(product.id)?.unit || product.unit || ''
-const getCurrencyDisplay = (currency?: string) => currency ? getCurrencySymbolLocal(currency) : '-'
 
 const getFullDateTime = (dateValue?: string) => {
   if (!dateValue) return '-'
@@ -488,12 +513,19 @@ const generateChartOption = (productId: number) => {
   if (history.length === 0) return null
 
   const recent = history.slice(-30)
-  const dates = recent.map(h => {
+  const validPoints = recent
+    .map(h => ({
+      date: h.date || h.effectiveDate || h.createdTime,
+      price: h.currentPrice ?? h.newPrice ?? null
+    }))
+    .filter(point => point.date && point.price != null)
+  if (validPoints.length === 0) return null
+
+  const dates = validPoints.map(h => {
     const d = new Date(h.date)
     return `${d.getMonth() + 1}/${d.getDate()}`
   })
-  const prices = recent.map(h => h.currentPrice).filter((price: number | null | undefined) => price != null)
-  if (prices.length === 0) return null
+  const prices = validPoints.map(h => h.price)
 
   const product = products.value.find(item => item.id === productId)
   const categoryVisual = getCategoryVisual(product ? getProductCategoryId(product) : undefined)
@@ -806,6 +838,27 @@ const getCurrencySymbolLocal = getCurrencySymbol
 let unsubscribeProductSort: (() => void) | null = null
 let unsubscribeCategorySort: (() => void) | null = null
 
+const updateHomeContentWidth = () => {
+  homeContentWidth.value = homeRootRef.value?.clientWidth || windowWidth.value
+}
+
+const setupHomeResizeObserver = () => {
+  updateHomeContentWidth()
+  if (typeof ResizeObserver === 'undefined' || !homeRootRef.value) return
+  homeResizeObserver = new ResizeObserver(() => {
+    updateHomeContentWidth()
+  })
+  homeResizeObserver.observe(homeRootRef.value)
+}
+
+watch(isPCLayout, () => {
+  homeResizeObserver?.disconnect()
+  homeResizeObserver = null
+  window.setTimeout(setupHomeResizeObserver, 0)
+})
+
+watch(windowWidth, updateHomeContentWidth)
+
 const loadCategories = async () => {
   try {
     const catRes = await getCategories('ACTIVE')
@@ -822,6 +875,8 @@ const loadCategories = async () => {
 }
 
 onMounted(async () => {
+  setupHomeResizeObserver()
+
   // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
   await loadCategories()
 
@@ -841,6 +896,8 @@ onMounted(async () => {
 onUnmounted(() => {
   unsubscribeProductSort?.()
   unsubscribeCategorySort?.()
+  homeResizeObserver?.disconnect()
+  homeResizeObserver = null
 })
 </script>
 
@@ -848,7 +905,7 @@ onUnmounted(() => {
   <div class="home-page">
     <!-- ==================== PC布局 - 驾驶舱模式 ==================== -->
     <template v-if="isPCLayout">
-      <div class="pc-home">
+      <div ref="homeRootRef" class="pc-home" :class="{ 'middle-home': isMiddleHomeLayout }">
         <!-- 页面标题区 -->
         <div class="page-header-pc">
           <div class="header-left-pc">
@@ -901,6 +958,7 @@ onUnmounted(() => {
           <SummarySection
             v-if="section.key === 'summary_stats'"
             :summary="summaryForDisplay"
+            :compact="isMiddleHomeLayout"
           />
 
           <section
@@ -945,11 +1003,14 @@ onUnmounted(() => {
                     较昨日 {{ getChangeDisplay(product) }}
                     <template v-if="getChangePercentDisplay(product)">（{{ getChangePercentDisplay(product) }}）</template>
                   </span>
+                  <span class="featured-mini-chart" v-if="isMiddleHomeLayout && chartOptionsMap.get(product.id)">
+                    <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
+                  </span>
                 </button>
               </div>
             </div>
 
-            <div class="price-curve-panel" v-if="isHomeSectionVisible('trend_chart')">
+            <div class="price-curve-panel" v-if="showCoreLargeCurve">
               <HomePriceCurvePanel
                 :product="selectedTrendItem"
                 :ranges="trendRangesForDisplay"
@@ -960,7 +1021,7 @@ onUnmounted(() => {
           </section>
 
           <TrendAnalysisChart
-            v-else-if="section.key === 'trend_chart' && !isHomeSectionVisible('core_metrics') && trendProductItems.length > 0"
+            v-else-if="section.key === 'trend_chart' && showStandaloneTrendChart && trendProductItems.length > 0"
             class="featured-trend-cards"
             title="重点走势"
             :show-overview="false"
@@ -1088,29 +1149,31 @@ onUnmounted(() => {
                 :style="getCardStyle(product)"
                 @click="selectProduct(product)"
               >
-                <span class="product-list-card-head">
-                  <span class="product-heading">
+                <span class="query-card-product">
+                  <span class="query-card-title-row">
+                    <span class="status-dot"></span>
                     <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
-                    <span class="product-origin" v-if="hasProductOrigin(product)">
-                      <span class="origin-label">产地</span>
-                      <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                    <span class="table-origin-chip" v-if="hasProductOrigin(product)" :title="getProductOriginLabel(product)">
+                      {{ getProductOriginLabel(product) }}
                     </span>
                   </span>
-                  <span class="table-change" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
-                    {{ getChangeDisplay(product) }}
+                  <span class="product-spec" :title="product.specs || ''">{{ product.specs || '--' }}</span>
+                </span>
+                <span class="query-card-price-grid">
+                  <span class="query-card-stat">
+                    <span class="query-card-label">当日售价</span>
+                    <span class="price-cell current">{{ getPriceDisplay(product) }}</span>
                   </span>
-                </span>
-                <span class="product-list-card-meta">{{ product.category?.name || '-' }}<template v-if="product.specs"> · {{ product.specs }}</template></span>
-                <span class="product-list-card-price">
-                  <span class="table-price">{{ getPriceDisplay(product) }}</span>
-                  <span class="featured-unit" v-if="getPriceUnit(product)">/ {{ getPriceUnit(product) }}</span>
-                </span>
-                <span class="product-list-card-chart" v-if="chartOptionsMap.get(product.id)">
-                  <v-chart class="mini-chart" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
-                </span>
-                <span class="product-list-card-actions">
-                  <span>{{ getCurrencyDisplay(product.currency) }}</span>
-                  <button class="table-action" @click.stop="viewProduct(product)">查看</button>
+                  <span class="query-card-stat">
+                    <span class="query-card-label">昨日售价</span>
+                    <span class="price-cell">{{ getYesterdayPriceDisplay(product) }}</span>
+                  </span>
+                  <span class="query-card-stat">
+                    <span class="query-card-label">较昨日</span>
+                    <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
+                      <span class="change-value">{{ getChangeDisplay(product) }}</span>
+                    </span>
+                  </span>
                 </span>
               </button>
             </div>
@@ -1358,10 +1421,7 @@ onUnmounted(() => {
 
         <template v-else>
           <template v-for="section in visibleHomeSections" :key="section.key">
-          <SummarySection
-            v-if="section.key === 'summary_stats'"
-            :summary="summaryForDisplay"
-          />
+          <template v-if="section.key === 'summary_stats'"></template>
 
           <div class="home-featured-mobile" v-else-if="section.key === 'core_metrics' && homeProducts.length > 0">
             <div class="section-header">
@@ -1420,7 +1480,7 @@ onUnmounted(() => {
           </div>
 
           <TrendAnalysisChart
-            v-else-if="section.key === 'trend_chart' && trendProductItems.length > 0"
+            v-else-if="false && section.key === 'trend_chart' && trendProductItems.length > 0"
             class="featured-trend-cards"
             title="重点走势"
             :show-overview="false"
@@ -1429,9 +1489,12 @@ onUnmounted(() => {
             @range-change="onTrendRangeChange"
           />
 
-          <div class="product-section" v-else-if="section.key === 'product_list'">
-            <div class="section-header">
-              <h2 class="section-title">产品列表</h2>
+          <section v-else-if="section.key === 'product_list'" class="home-product-table-section mobile-product-table-section">
+            <div class="product-table-toolbar">
+              <div>
+                <h2 class="section-title">产品列表</h2>
+                <p class="panel-subtitle">共 {{ tableTotalElements }} 个产品</p>
+              </div>
               <button class="add-btn" @click="goToPriceMaintenance" v-if="hasPermission(Permission.PRODUCT_EDIT)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -1439,97 +1502,133 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <div class="search-bar">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input v-model="searchQuery" type="text" placeholder="搜索产品..." class="search-input" />
-            </div>
-
-            <CategoryFilterPanel
-              :selected-ids="selectedCategoryIds"
-              :multi-select="true"
-              @select="handleCategorySelect"
-              @clear="clearCategoryFilter"
-            />
-
-            <div v-if="filteredProducts.length === 0" class="empty-state-mobile">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/><path d="M3 5h18M3 19h18M12 9v4"/>
-              </svg>
-              <p>{{ searchQuery ? '未找到匹配的产品' : selectedCategoryIds.length > 0 ? '当前分类暂无产品' : '暂无产品数据' }}</p>
-            </div>
-
-            <div v-else class="category-product-groups mobile">
-              <section
-                v-for="group in filteredProductGroups"
-                :key="group.id"
-                class="category-product-group"
+            <div class="table-filters mobile-table-filters">
+              <div class="search-box-pc">
+                <span class="search-icon-text">⌕</span>
+                <input v-model="searchQuery" type="text" placeholder="搜索产品名称" class="search-input-pc" />
+              </div>
+              <select
+                class="table-select category-select"
+                :value="selectedCategoryIds[0] || ''"
+                @change="onCategoryDropdownChange"
+                aria-label="产品分类筛选"
               >
-                <div class="category-group-header" :style="group.category ? getCategoryCardStyle(group.category.id) : {}">
-                  <CategoryIcons
-                    v-if="group.category"
-                    :icon="getCategoryVisual(group.category.id).icon"
-                    :size="14"
-                    :color="getCategoryVisual(group.category.id).primaryColor"
-                  />
-                  <span class="category-group-name">{{ group.name }}</span>
-                  <span class="category-group-count">{{ group.products.length }} 个产品</span>
-                </div>
-                <div class="product-list">
-                  <div
-                    v-for="product in group.products"
+                <option value="">全部分类</option>
+                <option v-for="category in categories" :key="category.id" :value="category.id">
+                  {{ category.name }}
+                </option>
+              </select>
+              <select v-model="tableSize" class="table-select" @change="onTableSizeChange">
+                <option :value="10">10条/页</option>
+                <option :value="20">20条/页</option>
+                <option :value="50">50条/页</option>
+              </select>
+            </div>
+
+            <div v-if="isProductTableMode" class="product-table-shell mobile-table-shell">
+              <table class="home-product-table mobile-home-product-table">
+                <colgroup>
+                  <col class="col-product" />
+                  <col class="col-price" />
+                  <col class="col-price" />
+                  <col class="col-change" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>产品名称</th>
+                    <th>最新价格</th>
+                    <th>昨日售价</th>
+                    <th>较昨日</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="tableLoading">
+                    <td colspan="4" class="table-state-cell">正在加载产品...</td>
+                  </tr>
+                  <tr v-else-if="productTableRows.length === 0">
+                    <td colspan="4" class="table-state-cell">{{ searchQuery || selectedCategoryIds.length ? '未找到匹配产品' : '暂无产品数据' }}</td>
+                  </tr>
+                  <tr
+                    v-for="product in productTableRows"
+                    v-else
                     :key="product.id"
-                    class="product-item"
-                    :class="getCardClass(product)"
-                    :style="getCardStyle(product)"
-                    @click="viewProduct(product)"
+                    :class="{ selected: selectedProduct?.id === product.id }"
+                    @click="selectProduct(product)"
                   >
-                    <!-- 分类图标 -->
-                    <div class="item-category-icon" v-if="getProductCategoryId(product)">
-                      <CategoryIcons
-                        :icon="getCategoryVisual(getProductCategoryId(product)).icon"
-                        :size="14"
-                        :color="getCategoryVisual(getProductCategoryId(product)).primaryColor"
-                      />
-                    </div>
-                    <div class="item-main">
-                      <div class="item-header">
-                        <div class="product-heading">
+                    <td>
+                      <div class="product-cell-stack">
+                        <div class="product-cell">
+                          <span class="status-dot" :style="getCardStyle(product)"></span>
                           <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
-                          <span class="product-origin" v-if="hasProductOrigin(product)">
-                            <span class="origin-label">产地</span>
-                            <span class="origin-value">{{ getProductOriginLabel(product) }}</span>
+                          <span class="table-origin-chip" v-if="hasProductOrigin(product)" :title="getProductOriginLabel(product)">
+                            {{ getProductOriginLabel(product) }}
                           </span>
                         </div>
-                        <span class="trend-badge" :class="priceChangeCache.get(product.id)?.direction || 'flat'" v-if="priceChangeCache.get(product.id)">
-                          {{ priceChangeCache.get(product.id)?.direction === 'up' ? '↑' : priceChangeCache.get(product.id)?.direction === 'down' ? '↓' : '—' }}
-                          {{ priceChangeCache.get(product.id)?.formattedDiff }}
-                        </span>
+                        <span class="product-spec" :title="product.specs || ''">{{ product.specs || '--' }}</span>
                       </div>
-                      <div class="product-meta-stack">
-                        <div class="product-specs" v-if="product.specs">{{ product.specs }}</div>
-                      </div>
-                    </div>
-                    <div class="item-aside">
-                      <div class="price-row">
-                        <span class="price-value" v-if="lastPriceCache.get(product.id)">
-                          {{ getCurrencySymbolLocal(product.currency) }}{{ lastPriceCache.get(product.id) }}
-                        </span>
-                        <span class="price-value empty" v-else>--</span>
-                        <span class="price-unit" v-if="getTodayPrice(product.id)?.unit || product.unit">
-                          / {{ getTodayPrice(product.id)?.unit || product.unit }}
-                        </span>
-                      </div>
-                      <div class="chart-area-sm" v-if="chartOptionsMap.get(product.id)">
-                        <v-chart class="mini-chart-sm" :option="chartOptionsMap.get(product.id)" :autoresize="chartAutoresize" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
+                    </td>
+                    <td class="price-cell current">{{ getPriceDisplay(product) }}</td>
+                    <td class="price-cell">{{ getYesterdayPriceDisplay(product) }}</td>
+                    <td>
+                      <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
+                        <span class="change-value">{{ getChangeDisplay(product) }}</span>
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          </div>
+
+            <div v-else-if="tableLoading" class="table-state-card">正在加载产品...</div>
+            <div v-else-if="productTableRows.length === 0" class="table-state-card">{{ searchQuery || selectedCategoryIds.length ? '未找到匹配产品' : '暂无产品数据' }}</div>
+            <div v-else class="product-list-card-grid mobile-product-list-card-grid">
+              <button
+                v-for="product in productTableRows"
+                :key="product.id"
+                type="button"
+                class="product-list-card"
+                :class="[getCardClass(product), { selected: selectedProduct?.id === product.id }]"
+                :style="getCardStyle(product)"
+                @click="selectProduct(product)"
+              >
+                <span class="query-card-product">
+                  <span class="query-card-title-row">
+                    <span class="status-dot"></span>
+                    <span class="product-name" :class="{ 'category-name': getProductCategoryId(product) }">{{ product.name }}</span>
+                    <span class="table-origin-chip" v-if="hasProductOrigin(product)" :title="getProductOriginLabel(product)">
+                      {{ getProductOriginLabel(product) }}
+                    </span>
+                  </span>
+                  <span class="product-spec" :title="product.specs || ''">{{ product.specs || '--' }}</span>
+                </span>
+                <span class="query-card-price-grid">
+                  <span class="query-card-stat">
+                    <span class="query-card-label">最新价格</span>
+                    <span class="price-cell current">{{ getPriceDisplay(product) }}</span>
+                  </span>
+                  <span class="query-card-stat">
+                    <span class="query-card-label">昨日售价</span>
+                    <span class="price-cell">{{ getYesterdayPriceDisplay(product) }}</span>
+                  </span>
+                  <span class="query-card-stat">
+                    <span class="query-card-label">较昨日</span>
+                    <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
+                      <span class="change-value">{{ getChangeDisplay(product) }}</span>
+                    </span>
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            <div class="table-pagination">
+              <span>显示 {{ tableStart }}-{{ tableEnd }}，共 {{ tableTotalElements }} 条</span>
+              <div class="pagination-actions">
+                <button class="page-btn" :disabled="tablePage === 0" @click="goTablePage(tablePage - 1)">上一页</button>
+                <span>第 {{ tablePage + 1 }} / {{ Math.max(tableTotalPages, 1) }} 页</span>
+                <button class="page-btn" :disabled="tablePage + 1 >= tableTotalPages" @click="goTablePage(tablePage + 1)">下一页</button>
+              </div>
+            </div>
+          </section>
 
           <RiskAlertsPanel
             v-else-if="section.key === 'risk_alerts'"
@@ -1820,6 +1919,62 @@ onUnmounted(() => {
   color: var(--price-flat-color);
 }
 
+.featured-mini-chart {
+  display: block;
+  width: 100%;
+  height: 92px;
+  min-height: 92px;
+  overflow: hidden;
+}
+
+.featured-mini-chart .mini-chart {
+  width: 100%;
+  height: 92px;
+}
+
+.middle-home .core-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.middle-home .featured-price-panel {
+  min-height: auto;
+}
+
+.middle-home .featured-price-grid {
+  height: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.middle-home .featured-price-card {
+  min-height: 148px;
+  grid-template-columns: minmax(0, 0.94fr) minmax(118px, 1.06fr);
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  column-gap: var(--spacing-md);
+}
+
+.middle-home .featured-card-head,
+.middle-home .featured-price-block,
+.middle-home .featured-change {
+  grid-column: 1;
+}
+
+.middle-home .featured-mini-chart {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  align-self: stretch;
+  height: 100%;
+  min-height: 104px;
+}
+
+.middle-home .featured-mini-chart .mini-chart {
+  height: 100%;
+}
+
+.middle-home .price-curve-panel {
+  display: none;
+}
+
 .curve-header {
   align-items: center;
 }
@@ -1866,10 +2021,10 @@ onUnmounted(() => {
 
 .product-list-card {
   min-width: 0;
-  min-height: 188px;
+  min-height: 146px;
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
-  gap: 8px;
+  grid-template-rows: auto auto;
+  gap: var(--spacing-md);
   padding: var(--spacing-md);
   border: 1px solid var(--category-border, var(--border-color));
   border-radius: var(--radius-md);
@@ -1925,6 +2080,146 @@ onUnmounted(() => {
   align-items: center;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
+}
+
+.query-card-product,
+.query-card-title-row,
+.query-card-price-grid,
+.product-cell,
+.product-cell-stack,
+.query-card-stat {
+  min-width: 0;
+}
+
+.query-card-product {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.query-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.product-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.product-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.query-card-title-row .product-name {
+  flex: 0 1 auto;
+  max-width: 55%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-list-card.has-category .query-card-title-row .product-name {
+  color: var(--category-primary, var(--primary-color));
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+  background: var(--category-primary, var(--primary-color));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--category-primary, var(--primary-color)) 12%, transparent);
+}
+
+.query-card-title-row .table-origin-chip {
+  flex: 0 1 auto;
+  max-width: 45%;
+  height: 24px;
+  padding: 0 9px;
+  line-height: 22px;
+}
+
+.product-spec {
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 17px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-card-price-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+  align-items: stretch;
+}
+
+.query-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--category-surface, var(--gray-50)) 22%, var(--bg-card));
+}
+
+.query-card-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+}
+
+.price-cell,
+.change-value {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-cell.current {
+  color: var(--category-primary, var(--primary-color));
+  font-weight: 800;
+}
+
+.change-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.change-pill.up {
+  background: color-mix(in srgb, var(--price-rise-color) 10%, transparent);
+  color: var(--price-rise-color);
+}
+
+.change-pill.down {
+  background: color-mix(in srgb, var(--price-fall-color) 10%, transparent);
+  color: var(--price-fall-color);
+}
+
+.change-pill.flat {
+  background: var(--gray-100);
+  color: var(--price-flat-color);
 }
 
 .table-state-card {
@@ -3134,7 +3429,120 @@ onUnmounted(() => {
   }
 }
 
+@media (max-width: 1023px) {
+  .home-featured-scroll {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .home-featured-item-mobile {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 132px;
+    padding: 10px;
+    border-width: 1px;
+  }
+
+  .home-featured-item-mobile .item-category-icon {
+    display: none;
+  }
+
+  .home-featured-item-mobile .product-name {
+    font-size: var(--font-size-xs);
+  }
+
+  .home-featured-item-mobile .product-origin,
+  .home-featured-item-mobile .product-specs,
+  .home-featured-item-mobile .price-unit {
+    font-size: 10px;
+  }
+
+  .home-featured-item-mobile .price-value {
+    font-size: 1.28rem;
+  }
+
+  .home-featured-item-mobile .trend-badge {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+
+  .home-featured-item-mobile .card-bottom {
+    align-items: flex-start;
+    gap: 6px;
+    flex-direction: column;
+  }
+
+  .featured-mobile-chart {
+    height: 28px;
+    margin-top: 6px;
+  }
+
+  .featured-mobile-chart .mini-chart-sm {
+    height: 28px;
+  }
+}
+
 @media (max-width: 768px) {
+  .mobile-product-table-section {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 0;
+    padding: var(--spacing-md);
+    overflow: hidden;
+  }
+
+  .mobile-product-table-section .product-table-toolbar {
+    align-items: stretch;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .mobile-table-filters {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mobile-table-filters .table-select,
+  .mobile-table-filters .search-box-pc {
+    width: 100%;
+  }
+
+  .mobile-table-shell {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-home-product-table {
+    min-width: 620px;
+    font-size: var(--font-size-xs);
+  }
+
+  .mobile-home-product-table .col-product { width: 34%; }
+  .mobile-home-product-table .col-price { width: 22%; }
+  .mobile-home-product-table .col-change { width: 22%; }
+
+  .mobile-home-product-table th,
+  .mobile-home-product-table td {
+    padding: 10px 5px;
+  }
+
+  .mobile-home-product-table .product-cell {
+    gap: 6px;
+  }
+
+  .mobile-home-product-table .product-spec {
+    padding-left: 15px;
+  }
+
+  .mobile-product-list-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   .product-table-toolbar,
   .table-pagination {
     flex-direction: column;

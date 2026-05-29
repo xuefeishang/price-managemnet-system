@@ -103,7 +103,10 @@ public class JwtUtil {
         }
         Object rolesObj = claims.get("roles");
         if (rolesObj instanceof List) {
-            return (List<String>) rolesObj;
+            List<String> roles = (List<String>) rolesObj;
+            if (!roles.isEmpty()) {
+                return roles;
+            }
         }
         // 兼容旧令牌：从 role 字段获取
         String role = claims.get("role", String.class);

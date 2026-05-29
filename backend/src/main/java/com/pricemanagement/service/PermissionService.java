@@ -3,8 +3,10 @@ package com.pricemanagement.service;
 import com.pricemanagement.entity.SysPermission;
 import com.pricemanagement.entity.SysRole;
 import com.pricemanagement.entity.RolePermission;
+import com.pricemanagement.entity.User;
 import com.pricemanagement.repository.SysPermissionRepository;
 import com.pricemanagement.repository.SysRoleRepository;
+import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.repository.UserRoleRepository;
 import com.pricemanagement.repository.RolePermissionRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class PermissionService {
 
     private final SysPermissionRepository permissionRepository;
     private final SysRoleRepository roleRepository;
+    private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RolePermissionRepository rolePermissionRepository;
 
@@ -78,7 +81,7 @@ public class PermissionService {
      */
     public Set<String> getUserPermissions(Long userId) {
         // 1. 获取用户的所有角色ID
-        List<Long> roleIds = userRoleRepository.findRoleIdsByUserId(userId);
+        List<Long> roleIds = resolveUserRoleIds(userId);
         if (roleIds.isEmpty()) {
             return Collections.emptySet();
         }
@@ -133,7 +136,7 @@ public class PermissionService {
      * 获取用户的角色编码列表
      */
     public List<String> getUserRoleCodes(Long userId) {
-        List<Long> roleIds = userRoleRepository.findRoleIdsByUserId(userId);
+        List<Long> roleIds = resolveUserRoleIds(userId);
         if (roleIds.isEmpty()) {
             return Collections.emptyList();
         }
@@ -141,6 +144,19 @@ public class PermissionService {
         return roleRepository.findAllById(roleIds).stream()
                 .map(SysRole::getRoleCode)
                 .collect(Collectors.toList());
+    }
+
+    private List<Long> resolveUserRoleIds(Long userId) {
+        List<Long> roleIds = userRoleRepository.findRoleIdsByUserId(userId);
+        if (!roleIds.isEmpty()) {
+            return roleIds;
+        }
+
+        return userRepository.findById(userId)
+                .map(User::getRole)
+                .flatMap(role -> roleRepository.findByRoleCode(role.name()))
+                .map(role -> List.of(role.getId()))
+                .orElseGet(Collections::emptyList);
     }
 
     /**

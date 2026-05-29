@@ -2,7 +2,9 @@ package com.pricemanagement.service;
 
 import com.pricemanagement.dto.LogStatistics;
 import com.pricemanagement.entity.OperationLog;
+import com.pricemanagement.entity.User;
 import com.pricemanagement.repository.OperationLogRepository;
+import com.pricemanagement.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -24,6 +26,7 @@ import java.util.*;
 public class OperationLogService {
 
     private final OperationLogRepository operationLogRepository;
+    private final UserRepository userRepository;
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -51,35 +54,49 @@ public class OperationLogService {
         Sort sort = Sort.by(Sort.Direction.DESC, "operationTime");
         PageRequest pageable = PageRequest.of(page, size, sort);
 
-        return operationLogRepository.searchLogs(username, operationType, operationModule, startTime, endTime, pageable);
+        List<String> matchedUsernames = resolveMatchedUsernames(username);
+        Page<OperationLog> logs = operationLogRepository.searchLogs(
+                username, matchedUsernames, operationType, operationModule, startTime, endTime, pageable);
+        attachOperatorNames(logs.getContent());
+        return logs;
     }
 
     public Page<OperationLog> getLogsByUserId(Long userId, int page, int size) {
         Sort sort = Sort.by(Sort.Direction.DESC, "operationTime");
         PageRequest pageable = PageRequest.of(page, size, sort);
-        return operationLogRepository.findByUserId(userId, pageable);
+        Page<OperationLog> logs = operationLogRepository.findByUserId(userId, pageable);
+        attachOperatorNames(logs.getContent());
+        return logs;
     }
 
     public Page<OperationLog> getLogsByType(String operationType, int page, int size) {
         Sort sort = Sort.by(Sort.Direction.DESC, "operationTime");
         PageRequest pageable = PageRequest.of(page, size, sort);
-        return operationLogRepository.findByOperationType(operationType, pageable);
+        Page<OperationLog> logs = operationLogRepository.findByOperationType(operationType, pageable);
+        attachOperatorNames(logs.getContent());
+        return logs;
     }
 
     public Page<OperationLog> getLogsByModule(String operationModule, int page, int size) {
         Sort sort = Sort.by(Sort.Direction.DESC, "operationTime");
         PageRequest pageable = PageRequest.of(page, size, sort);
-        return operationLogRepository.findByOperationModule(operationModule, pageable);
+        Page<OperationLog> logs = operationLogRepository.findByOperationModule(operationModule, pageable);
+        attachOperatorNames(logs.getContent());
+        return logs;
     }
 
     public Page<OperationLog> getLogsByTimeRange(LocalDateTime startTime, LocalDateTime endTime, int page, int size) {
         Sort sort = Sort.by(Sort.Direction.DESC, "operationTime");
         PageRequest pageable = PageRequest.of(page, size, sort);
-        return operationLogRepository.findByOperationTimeBetween(startTime, endTime, pageable);
+        Page<OperationLog> logs = operationLogRepository.findByOperationTimeBetween(startTime, endTime, pageable);
+        attachOperatorNames(logs.getContent());
+        return logs;
     }
 
     public List<OperationLog> getRecentLogs(int limit) {
-        return operationLogRepository.findTop10ByOrderByOperationTimeDesc();
+        List<OperationLog> logs = operationLogRepository.findTop10ByOrderByOperationTimeDesc();
+        attachOperatorNames(logs);
+        return logs;
     }
 
     /**
@@ -112,10 +129,13 @@ public class OperationLogService {
 
         // 按用户统计（活跃用户排行）
         List<Object[]> userStats = operationLogRepository.countByUserBetween(startTime, endTime);
+        Map<String, String> operatorNameMap = buildOperatorNameMap(extractUsernames(userStats));
         List<LogStatistics.UserActivity> userActivities = new ArrayList<>();
         for (Object[] row : userStats) {
             LogStatistics.UserActivity ua = new LogStatistics.UserActivity();
-            ua.setUsername((String) row[0]);
+            String username = (String) row[0];
+            ua.setUsername(username);
+            ua.setOperatorName(resolveOperatorName(username, operatorNameMap));
             ua.setOperationCount((Long) row[1]);
             userActivities.add(ua);
         }
@@ -209,12 +229,15 @@ public class OperationLogService {
 
         // 年度用户排行
         List<Object[]> userStats = operationLogRepository.countByUserBetween(startTime, endTime);
+        Map<String, String> operatorNameMap = buildOperatorNameMap(extractUsernames(userStats));
         List<Map<String, Object>> userRankings = new ArrayList<>();
         int rank = 1;
         for (Object[] row : userStats) {
             Map<String, Object> user = new HashMap<>();
+            String username = (String) row[0];
             user.put("rank", rank++);
-            user.put("username", row[0]);
+            user.put("username", username);
+            user.put("operatorName", resolveOperatorName(username, operatorNameMap));
             user.put("count", row[1]);
             userRankings.add(user);
             if (rank > 10) break; // 只显示前10
@@ -222,5 +245,61 @@ public class OperationLogService {
         report.put("userRankings", userRankings);
 
         return report;
+    }
+
+    private List<String> resolveMatchedUsernames(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of("__NO_USER_FILTER__");
+        }
+        List<String> usernames = userRepository.findByUsernameOrNicknameContaining(keyword).stream()
+                .map(User::getUsername)
+                .filter(Objects::nonNull)
+                .toList();
+        return usernames.isEmpty() ? List.of("__NO_MATCHED_USERNAME__") : usernames;
+    }
+
+    private void attachOperatorNames(Collection<OperationLog> logs) {
+        if (logs == null || logs.isEmpty()) {
+            return;
+        }
+        Set<String> usernames = logs.stream()
+                .map(OperationLog::getUsername)
+                .filter(Objects::nonNull)
+                .filter(username -> !username.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        Map<String, String> operatorNameMap = buildOperatorNameMap(usernames);
+        logs.forEach(log -> log.setOperatorName(resolveOperatorName(log.getUsername(), operatorNameMap)));
+    }
+
+    private Set<String> extractUsernames(List<Object[]> rows) {
+        Set<String> usernames = new HashSet<>();
+        for (Object[] row : rows) {
+            if (row[0] instanceof String username && !username.isBlank()) {
+                usernames.add(username);
+            }
+        }
+        return usernames;
+    }
+
+    private Map<String, String> buildOperatorNameMap(Collection<String> usernames) {
+        if (usernames == null || usernames.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> nameMap = new HashMap<>();
+        for (User user : userRepository.findByUsernameIn(usernames)) {
+            String username = user.getUsername();
+            String nickname = user.getNickname();
+            if (username != null) {
+                nameMap.put(username, nickname != null && !nickname.isBlank() ? nickname : username);
+            }
+        }
+        return nameMap;
+    }
+
+    private String resolveOperatorName(String username, Map<String, String> operatorNameMap) {
+        if (username == null || username.isBlank()) {
+            return "-";
+        }
+        return operatorNameMap.getOrDefault(username, username);
     }
 }

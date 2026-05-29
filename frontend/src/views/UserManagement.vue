@@ -559,7 +559,7 @@ onMounted(() => {
           <input
             v-model="searchKeyword"
             type="text"
-            placeholder="搜索用户名或昵称..."
+            placeholder="搜索登录名或姓名..."
             class="search-input"
           />
         </div>
@@ -749,13 +749,13 @@ onMounted(() => {
         <div class="modal-body">
           <div class="form-grid">
             <div class="form-group">
-              <label class="form-label">用户名 <span class="required">*</span></label>
+              <label class="form-label">登录名 <span class="required">*</span></label>
               <input
                 v-model="formData.username"
                 type="text"
                 class="input"
                 :disabled="!!editingUser"
-                placeholder="请输入用户名"
+                placeholder="请输入登录名"
               />
             </div>
             <div class="form-group">
@@ -770,12 +770,12 @@ onMounted(() => {
               />
             </div>
             <div class="form-group">
-              <label class="form-label">昵称 <span class="required">*</span></label>
+              <label class="form-label">姓名 <span class="required">*</span></label>
               <input
                 v-model="formData.nickname"
                 type="text"
                 class="input"
-                placeholder="请输入昵称"
+                placeholder="请输入姓名"
               />
             </div>
             <div class="form-group">

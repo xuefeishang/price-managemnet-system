@@ -4,12 +4,15 @@ import type { ApiResponse } from '@/types'
 export interface OperationLog {
   id: number
   username: string
+  operatorName?: string
   operationModule: string
   operationType: string
   operationDesc: string
   ipAddress: string
   status: string
+  responseCode?: string
   errorMsg: string
+  errorMessage?: string
   createdTime: string
 }
 
@@ -27,7 +30,7 @@ export interface LogStatistics {
   activeUsers: number
   operationTypeCount: Record<string, number>
   moduleCount: Record<string, number>
-  userActivities: { username: string; operationCount: number }[]
+  userActivities: { username: string; operatorName?: string; operationCount: number }[]
   dailyCount: Record<string, number>
 }
 
@@ -49,6 +52,7 @@ export interface YearlyReport {
   userRankings: {
     rank: number
     username: string
+    operatorName?: string
     count: number
   }[]
 }

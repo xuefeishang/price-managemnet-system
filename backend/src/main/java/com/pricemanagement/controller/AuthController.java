@@ -25,6 +25,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -112,8 +113,11 @@ public class AuthController {
 
             // 获取用户角色列表（从 UserRole 表）
             List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
+            if (roleCodes.isEmpty()) {
+                roleCodes = List.of(user.getRole().name());
+            }
             // 主角色：优先使用 UserRole 表的第一个角色，否则使用 User.role 枚举
-            String primaryRole = roleCodes.isEmpty() ? user.getRole().name() : roleCodes.get(0);
+            String primaryRole = roleCodes.get(0);
 
             // 生成JWT令牌（包含角色列表）
             String token = jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, primaryRole);
@@ -130,7 +134,7 @@ public class AuthController {
 
             // 记录登录成功日志
             operationLogHelper.logSuccess("用户认证", OperationLog.OperationType.LOGIN,
-                    "用户登录成功", loginIdentifier);
+                    "用户登录成功", user.getUsername());
 
             // 获取用户权限列表
             Set<String> permissions = permissionService.getUserPermissions(user.getId());
@@ -220,9 +224,33 @@ public class AuthController {
         }
         User user = userOptional.get();
         Set<String> permissions = permissionService.getUserPermissions(user.getId());
+        List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
+        String primaryRole = roleCodes.isEmpty() ? user.getRole().name() : roleCodes.get(0);
         user.setPassword(null);
+
+        Map<String, Object> userData = new LinkedHashMap<>();
+        userData.put("id", user.getId());
+        userData.put("userId", user.getId());
+        userData.put("username", user.getUsername());
+        userData.put("employeeId", user.getEmployeeId());
+        userData.put("nickname", user.getNickname());
+        userData.put("role", primaryRole);
+        userData.put("roles", roleCodes.isEmpty() ? List.of(user.getRole().name()) : roleCodes);
+        userData.put("status", user.getStatus());
+        userData.put("email", user.getEmail());
+        userData.put("phone", user.getPhone());
+        userData.put("department", user.getDepartment());
+        userData.put("deptId", user.getDeptId());
+        userData.put("loginType", user.getLoginType());
+        userData.put("wechatOpenid", user.getWechatOpenid());
+        userData.put("wechatNickname", user.getWechatNickname());
+        userData.put("wechatAvatar", user.getWechatAvatar());
+        userData.put("lastLoginTime", user.getLastLoginTime());
+        userData.put("createdTime", user.getCreatedTime());
+        userData.put("updatedTime", user.getUpdatedTime());
+
         return Result.success("获取用户信息成功", Map.of(
-                "user", user,
+                "user", userData,
                 "permissions", permissions
         ));
     }

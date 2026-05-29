@@ -28,6 +28,9 @@ public class OperationLog {
     @Column(name = "username", length = 100)
     private String username;
 
+    @Transient
+    private String operatorName;
+
     @Column(name = "operation_type", length = 50)
     private String operationType;
 
@@ -66,6 +69,26 @@ public class OperationLog {
 
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
+
+    @Transient
+    public String getStatus() {
+        if (errorMessage != null && !errorMessage.isBlank()) {
+            return "失败";
+        }
+        if (responseCode == null || responseCode.isBlank()) {
+            return "成功";
+        }
+        try {
+            return Integer.parseInt(responseCode) >= 400 ? "失败" : "成功";
+        } catch (NumberFormatException e) {
+            return responseCode.startsWith("4") || responseCode.startsWith("5") ? "失败" : "成功";
+        }
+    }
+
+    @Transient
+    public String getErrorMsg() {
+        return errorMessage;
+    }
 
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)
