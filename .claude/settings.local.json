@@ -237,7 +237,8 @@
       "PowerShell(ssh root@10.7.5.175 \"cd /opt/price-management && docker build --no-cache -t price-management-frontend:latest -f Dockerfile.frontend . 2>&1 | tail -50\")",
       "PowerShell(ssh root@10.7.5.175 \"ls -la /opt/price-management/frontend/dist/assets/ | wc -l\")",
       "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management product price_history product_category origin customer)",
-      "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management price)"
+      "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management price)",
+      "Skill(deploy)"
     ]
   },
   "enabledMcpjsonServers": [

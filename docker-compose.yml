@@ -11,6 +11,8 @@ services:
       - "8080:8080"
     network_mode: host
     environment:
+      # 生产容器默认使用 prod profile，避免加载本地开发兜底配置
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       # 数据库配置（使用服务器上的MySQL）
       - DB_HOST=127.0.0.1
       - DB_PORT=3306
@@ -26,6 +28,9 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - DEFAULT_USER_PASSWORD=${DEFAULT_USER_PASSWORD}
       - RESET_PASSWORD_ON_STARTUP=false
+      # 外部 API Secret 加密主密钥（Base64 编码 32 字节）
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
+      - API_KEY_ENCRYPTION_KEY_VERSION=${API_KEY_ENCRYPTION_KEY_VERSION:-v1}
       # 告警配置
       - ALERT_ENABLED=false
       - ALERT_DINGTALK_ENABLED=false

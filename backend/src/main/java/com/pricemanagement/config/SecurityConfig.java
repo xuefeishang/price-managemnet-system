@@ -5,6 +5,7 @@ import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.util.JwtUtil;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -42,6 +43,41 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(1)
+    public SecurityFilterChain externalApiSecurityFilterChain(HttpSecurity http,
+                                                              ApiKeyAuthenticationFilter apiKeyAuthenticationFilter,
+                                                              ObjectMapper objectMapper) throws Exception {
+        http
+                .securityMatcher("/api/external/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(objectMapper.writeValueAsString(
+                                    Map.of("code", 401, "message", "外部API认证失败", "timestamp", System.currentTimeMillis())
+                            ));
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(objectMapper.writeValueAsString(
+                                    Map.of("code", 403, "message", "外部API权限不足", "timestamp", System.currentTimeMillis())
+                            ));
+                        })
+                )
+                .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                      JwtAuthenticationFilter jwtAuthenticationFilter,
                                                      ObjectMapper objectMapper) throws Exception {

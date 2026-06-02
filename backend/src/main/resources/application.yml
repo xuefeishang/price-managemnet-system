@@ -27,7 +27,10 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    baseline-version: 1
+    # Existing local/prod databases before Flyway auto-configuration already contain V1-V12 schema.
+    # When such non-empty databases are first brought under Flyway control, baseline them at V12,
+    # then run V13+ migrations. Empty databases still execute all migrations from V1.
+    baseline-version: 12
     locations: classpath:db/migration
     encoding: UTF-8
     validate-on-migrate: true
@@ -89,6 +92,20 @@ alert:
   threshold:
     memory-usage: ${ALERT_THRESHOLD_MEMORY:90.0}
     cpu-usage: ${ALERT_THRESHOLD_CPU:80.0}
+
+# 外部 API Key 授权配置。默认关闭，启用后仅影响 /api/external/**
+api-key:
+  enabled: ${API_KEY_ENABLED:true}
+  encryption-key: ${API_KEY_ENCRYPTION_KEY:}
+  encryption-key-version: ${API_KEY_ENCRYPTION_KEY_VERSION:v1}
+  timestamp-window-seconds: ${API_KEY_TIMESTAMP_WINDOW_SECONDS:300}
+  nonce-ttl-seconds: ${API_KEY_NONCE_TTL_SECONDS:600}
+  cache-ttl-seconds: ${API_KEY_CACHE_TTL_SECONDS:300} # 预留：第一阶段授权元数据实时查库
+  log:
+    retention-days: ${API_KEY_LOG_RETENTION_DAYS:180}
+    auth-failure-sample-rate: ${API_KEY_LOG_AUTH_FAILURE_SAMPLE_RATE:1.0}
+    max-error-message-length: ${API_KEY_LOG_MAX_ERROR_MESSAGE_LENGTH:500}
+    max-query-length: ${API_KEY_LOG_MAX_QUERY_LENGTH:1000}
 
 # Actuator 健康检查配置
 management:

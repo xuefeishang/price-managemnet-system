@@ -1,6 +1,13 @@
 # 本地开发环境配置
 # 使用方式：spring.profiles.active=dev
 
+server:
+  servlet:
+    session:
+      persistent: false
+  tomcat:
+    basedir: ${TOMCAT_BASEDIR:./target/tomcat}
+
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/price_management?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
@@ -31,3 +38,9 @@ security:
 
 jwt:
   secret: ${JWT_SECRET:price-management-system-dev-secret-key-2024}
+
+# 外部 API Key 本地开发兜底配置。
+# 生产环境必须通过 API_KEY_ENCRYPTION_KEY 注入独立随机值，不能使用该开发示例 key。
+api-key:
+  encryption-key: ${API_KEY_ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+  encryption-key-version: ${API_KEY_ENCRYPTION_KEY_VERSION:dev}

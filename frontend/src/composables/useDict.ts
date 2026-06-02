@@ -34,6 +34,11 @@ export const CATEGORY_LABELS: Record<string, string> = {
   price_alert: '价格预警',
   chart_range: '图表时间范围',
   category_visual_config: '分类视觉配置',
+  api_key_status: 'API密钥状态',
+  api_key_environment: 'API密钥环境',
+  api_key_operation: 'API密钥操作',
+  api_auth_result: 'API认证结果',
+  api_permission: 'API权限',
 }
 
 // 加载所有字典数据到缓存

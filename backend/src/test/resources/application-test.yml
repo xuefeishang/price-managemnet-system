@@ -46,3 +46,8 @@ security:
   cors-allowed-origins:
     - http://localhost:5173
     - http://127.0.0.1:5173
+
+api-key:
+  enabled: true
+  encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  encryption-key-version: test

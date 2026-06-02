@@ -179,6 +179,24 @@ const router = createRouter({
           meta: { title: '操作日志', adminOnly: true }
         },
         {
+          path: 'api-keys',
+          name: 'ApiKeyList',
+          component: () => import('../views/ApiKeyList.vue'),
+          meta: { title: 'API授权管理', adminOnly: true }
+        },
+        {
+          path: 'api-keys/:id',
+          name: 'ApiKeyDetail',
+          component: () => import('../views/ApiKeyDetail.vue'),
+          meta: { title: 'API密钥详情', adminOnly: true, activeMenu: '/api-keys' }
+        },
+        {
+          path: 'api-call-logs',
+          name: 'ApiCallLog',
+          component: () => import('../views/ApiCallLog.vue'),
+          meta: { title: 'API调用日志', adminOnly: true }
+        },
+        {
           path: 'approval',
           name: 'Approval',
           component: () => import('../views/Approval.vue'),

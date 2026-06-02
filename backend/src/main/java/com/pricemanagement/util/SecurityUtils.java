@@ -24,6 +24,13 @@ public class SecurityUtils {
             if (principal instanceof User) {
                 return ((User) principal).getId();
             }
+            Object details = authentication.getDetails();
+            if (details instanceof Long) {
+                return (Long) details;
+            }
+            if (details instanceof Number) {
+                return ((Number) details).longValue();
+            }
         }
         return null;
     }

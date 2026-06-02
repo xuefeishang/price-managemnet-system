@@ -10,7 +10,7 @@
 | 前端（多端） | uni-app Vue3 + TypeScript + Pinia（支持 H5/APP/小程序） |
 | 后端 | Spring Boot 4.0.6 + Java 25 + Spring Security 7.0 |
 | 数据库 | MySQL 8.0/8.4 + Redis 7.x（支持懒加载，Redis 不可用时自动降级为内存缓存） |
-| 认证 | JWT (Access Token + Refresh Token) |
+| 认证 | JWT (Access Token + Refresh Token) + 外部 API Key HMAC 签名 |
 | 部署 | Docker + Nginx |
 
 ## 主要功能
@@ -20,6 +20,15 @@
   - 三种角色：管理员（ADMIN）、编辑者（EDITOR）、查看者（VIEWER）
   - 动态权限系统（32个权限码，登录时获取用户权限列表，刷新个人资料时同步权限缓存）
   - API 限流保护（登录 5次/分钟/IP）
+
+- **外部 API 授权管理（仅管理员）**
+  - 独立 `/api/external/v1/**` 外部接口面，与内部 JWT 接口物理隔离
+  - API Key + HMAC-SHA256 签名认证，支持 Timestamp、Nonce 防重放、IP 白名单、分钟限流和日限额，限额填 `0` 表示不限制
+  - Secret 仅创建时展示一次，数据库使用 AES-GCM 加密存储
+  - 管理端支持密钥创建、编辑、启用、停用、吊销、权限分配和调用日志查询
+  - 支持“部署级开关 + 页面运行时开关”双层控制，可在 API 授权管理页即时暂停/恢复外部 API 服务
+  - 新增密钥时提供接口参数结构与 Node.js / Java 25 / Postman / PowerShell / curl 可复制调用示例，创建成功后可生成带真实 App ID / Secret 的一次性可运行示例
+  - 功能默认关闭，配置 `API_KEY_ENABLED=true` 后仅影响 `/api/external/**`
 
 - **部门管理**
   - 树状组织架构（总部/子公司/部门三级）
@@ -111,6 +120,7 @@ CREATE DATABASE IF NOT EXISTS price_management DEFAULT CHARACTER SET utf8mb4 COL
 ```
 
 Flyway 会在应用启动时自动执行迁移脚本。
+历史库首次接入 Flyway 时会 baseline 到 V12，再执行 V13 及之后的迁移；空库会从 V1 开始完整迁移。
 
 ### 2. 启动后端
 
@@ -148,6 +158,9 @@ npm run dev
 |------|------|
 | `backend/src/main/resources/db/migration/V1__*.sql` | Flyway 基线迁移 |
 | `backend/src/main/resources/db/migration/V2__*.sql` | Refresh Token 表 |
+| `backend/src/main/resources/db/migration/V13__*.sql` - `V16__*.sql` | 历史库首次接入 Flyway 后自动补齐的结构和菜单迁移 |
+| `backend/src/main/resources/db/migration/V17__external_api_auth_phase1.sql` | 外部 API 授权管理一期表、字典、菜单和端点权限 |
+| `backend/src/main/resources/db/migration/V19__external_api_endpoint_code_examples.sql` | 外部 API 端点结构化示例、参数 schema 和可复制代码元数据 |
 
 ## 项目文档
 
@@ -156,6 +169,7 @@ npm run dev
 |------|------|
 | [开发指南.md](docs/dev/开发指南.md) | 开发流程、代码规范、API文档 |
 | [项目设计文档.md](docs/dev/项目设计文档.md) | 技术设计文档 |
+| [API调用手册.md](docs/dev/API调用手册.md) | 内部 JWT API 与外部 API Key 签名调用说明 |
 | [项目设计规范.md](docs/dev/项目设计规范.md) | 设计规范与约束 |
 | [UI设计说明.md](docs/dev/UI设计说明.md) | UI设计说明 |
 | [技术栈简明说明.md](docs/dev/技术栈简明说明.md) | 技术原理详解 |
@@ -165,6 +179,7 @@ npm run dev
 |------|------|
 | [操作手册.md](docs/ops/操作手册.md) | 操作指南 |
 | [IDEA部署指南.md](docs/ops/IDEA部署指南.md) | 部署教程（本地+生产） |
+| [外部API生产部署检查清单.md](docs/ops/外部API生产部署检查清单.md) | 外部 API 授权管理上线前配置、密钥和验证清单 |
 
 ### 归档文档 (`docs/archive/`)
 | 文档 | 说明 |
@@ -213,8 +228,17 @@ docker pull jlmining.com/pricemanage/price-management-frontend:v1.4.0
 | `REDIS_PASSWORD` | Redis 密码 |
 | `JWT_SECRET` | JWT 密钥（建议 256 位随机字符串） |
 | `DEFAULT_USER_PASSWORD` | 默认用户密码 |
+| `API_KEY_ENABLED` | 是否启用外部 API Key 认证，默认 `false` |
+| `API_KEY_ENCRYPTION_KEY` | 外部 API Secret AES-GCM 主密钥，Base64 编码 32 字节；创建 API Key 时必须配置 |
+| `API_KEY_ENCRYPTION_KEY_VERSION` | 外部 API Secret 主密钥版本，默认 `v1` |
+| `API_KEY_TIMESTAMP_WINDOW_SECONDS` | 外部请求时间戳允许窗口，默认 `300` |
+| `API_KEY_NONCE_TTL_SECONDS` | 外部请求 Nonce 防重放 TTL，默认 `600` |
+| `API_KEY_CACHE_TTL_SECONDS` | 外部授权缓存 TTL 预留配置，第一阶段授权元数据实时查库 |
+| `API_KEY_LOG_RETENTION_DAYS` | 外部 API 调用日志保留天数，默认 `180` |
+
+开发环境默认使用 `application-dev.yml` 中的开发兜底 key，允许本地直接创建 API Key；如需模拟生产密钥，可在 IDEA Run Configuration 中覆盖 `API_KEY_ENCRYPTION_KEY`。生产 Docker 默认使用 `prod` profile，必须由 `.env` 经 `docker-compose.yml` 传入独立随机 `API_KEY_ENCRYPTION_KEY`。
 
 ---
 
-*版本：v1.15.0*
-*最后更新：2026-05-28 — 新增普通用户日常价格查询与导出页面*
+*版本：v1.16.0*
+*最后更新：2026-06-01 — 外部 API 授权管理新增可复制调用示例*

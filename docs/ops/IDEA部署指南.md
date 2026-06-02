@@ -103,6 +103,10 @@ EXIT;
 > 首页产品表新增 `home_layout.product_list_mode` 与 `home_layout.product_table_page_size` 配置项，由启动初始化补齐；如生产环境已有字典数据，升级后重启后端即可自动补充缺失项。
 > 日常价格查询功能通过 Flyway 执行 `V15__daily_price_query_permissions.sql` 补充“价格查询”菜单和 `price:export` 权限；新环境执行 `init.sql` 时已包含同样的菜单和权限数据。
 > `V16__normalize_price_query_menu.sql` 会将 `/price-query` 归一化为“产品管理”下唯一的“价格查询”二级菜单，避免历史环境出现同路径重复菜单或普通用户可见但菜单管理不可见的情况。
+> `V17__external_api_auth_phase1.sql` 会新增外部 API 授权管理表、字典、菜单和 `/api/external/v1/**` 端点权限。该功能默认关闭，不影响当前内部 JWT 功能。
+> `V19__external_api_endpoint_code_examples.sql` 会为外部 API 端点补充结构化示例、参数 schema 和可复制代码元数据。
+> `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
+> Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
 
 > 注意：`init.sql` 包含完整的表结构创建和数据初始化，推荐使用此脚本一步完成初始化。
 
@@ -131,6 +135,14 @@ WHERE pq.path = '/price-query';
 SELECT path, COUNT(*) AS count FROM menu_item WHERE path = '/price-query' GROUP BY path;
 SELECT permission_code, permission_name FROM sys_permission WHERE permission_code IN ('price:view', 'price:export');
 
+-- 验证外部 API 授权管理表和菜单
+SHOW TABLES LIKE 'sys_api_%';
+SELECT method, path_pattern, permission_code FROM sys_external_api_endpoint ORDER BY sort_order LIMIT 20;
+SELECT COUNT(*) AS code_example_count FROM sys_external_api_endpoint WHERE query_schema IS NOT NULL OR body_schema IS NOT NULL OR path_params_schema IS NOT NULL;
+SELECT config_key, config_value FROM sys_style_config WHERE config_key = 'external_api_service_enabled';
+SELECT category, dict_key, dict_value FROM sys_dict WHERE category IN ('api_key_status', 'api_key_environment', 'api_auth_result', 'api_permission') ORDER BY category, sort_order;
+SELECT name, path FROM menu_item WHERE path IN ('/api-keys', '/api-call-logs') OR name = 'API授权管理';
+
 -- 查看用户数据（应该有3条记录）
 SELECT username, role, status FROM sys_user;
 ```
@@ -151,17 +163,50 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update  # 首次运行可以改为 create-drop，之后改回 update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 12
+    locations: classpath:db/migration
+    encoding: UTF-8
+    validate-on-migrate: true
 ```
 
 **重要提示：**
-- 首次运行可以将 `ddl-auto` 改为 `create-drop`，但运行后建议改回 `update`
+- 不要将 `ddl-auto` 改为 `update` 或 `create-drop`；表结构统一由 Flyway 迁移脚本管理，JPA 只负责启动校验
+- 旧库如果没有 `flyway_schema_history`，启动时会自动建立基线记录并补跑 V13 及之后的迁移
 - 如果您使用单独创建的用户，请修改 `username` 和 `password`
+
+### 3.6 外部 API 授权配置（可选）
+
+外部 API 授权管理默认关闭。创建后台 API Key 时必须配置 `API_KEY_ENCRYPTION_KEY`，因为服务端需要用它加密保存 Secret；`API_KEY_ENABLED=true` 仅表示启用 `/api/external/**` 外部签名鉴权入口。
+
+| 环境变量 | 说明 | 示例 |
+|----------|------|------|
+| `API_KEY_ENABLED` | 是否启用外部 API，默认 `false` | `true` |
+| `API_KEY_ENCRYPTION_KEY` | Base64 编码 32 字节 AES-GCM 主密钥 | 使用安全随机值 |
+| `API_KEY_ENCRYPTION_KEY_VERSION` | 主密钥版本 | `v1` |
+| `API_KEY_TIMESTAMP_WINDOW_SECONDS` | 签名时间戳窗口 | `300` |
+| `API_KEY_NONCE_TTL_SECONDS` | Nonce 防重放 TTL | `600` |
+| `API_KEY_CACHE_TTL_SECONDS` | 授权缓存 TTL 预留配置，第一阶段授权元数据实时查库 | `300` |
+| `API_KEY_LOG_RETENTION_DAYS` | 调用日志保留天数 | `180` |
+
+PowerShell 生成开发用 32 字节 Base64 key：
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+开发环境默认会从 `application-dev.yml` 使用开发兜底 key，允许本地直接创建 API Key；如需模拟生产密钥，可在 IDEA 的后端 Run Configuration 中覆盖 Environment variables，例如 `API_KEY_ENCRYPTION_KEY=...;API_KEY_ENCRYPTION_KEY_VERSION=v1`。启用后，外部系统只允许调用 `/api/external/v1/**`，内部后台页面仍使用 JWT。生产环境禁止使用 `application-dev.yml` / `application.yml.example` 中的示例 key。
 
 ---
 
@@ -392,6 +437,36 @@ npm run dev
 3. 端口3306是否被占用？
 4. `application.yml` 中的连接URL是否正确？
 5. 是否添加了 `allowPublicKeyRetrieval=true` 参数？
+
+### 问题3.1：JPA 校验缺少表
+
+**症状**：启动时报 `Schema validation: missing table [sys_api_call_log]` 或其他 `missing table`。
+
+**处理方法**：
+1. 确认 `pom.xml` 包含 `spring-boot-starter-flyway`、`flyway-core`、`flyway-mysql`
+2. 确认 `spring.flyway.enabled=true` 且 `ddl-auto=validate`
+3. 重启后端，让 Flyway 先执行迁移，再由 JPA 校验表结构
+4. 如旧库没有 `flyway_schema_history`，系统会 baseline 到 V12 并补跑 V13-V20
+5. 可执行 `SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;` 确认迁移状态
+
+### 问题3.2：Flyway 校验失败
+
+**症状**：启动时报 `Migration checksum mismatch`。
+
+**处理方法**：
+1. 不要修改已经在数据库执行成功的历史迁移文件，例如 `V17__external_api_auth_phase1.sql`
+2. 新的表结构或初始化数据变更必须创建新的迁移版本，例如 `V18__external_api_endpoint_docs.sql`
+3. 确认代码中的历史迁移文件已恢复后，再重启后端
+4. 如历史迁移文件确认无误但本地库仍记录旧校验值，可在开发环境执行 Flyway repair；生产环境必须先备份并确认迁移文件来源一致
+
+### 问题3.3：Tomcat 临时目录权限失败
+
+**症状**：本地启动时报 `Existing directory ... Temp ... is not owned by ...`。
+
+**处理方法**：
+1. 开发环境默认在 `application-dev.yml` 配置 `server.tomcat.basedir=./target/tomcat`，避免使用系统临时目录导致用户归属校验失败
+2. 如果需要自定义目录，可在 IDEA Run Configuration 中配置环境变量 `TOMCAT_BASEDIR=E:\tmp\price-management-tomcat`
+3. 删除旧的临时目录后重启后端
 
 ### 问题4：前端端口被占用
 
@@ -639,7 +714,8 @@ WHERE NOT EXISTS (
 
 1. **数据库安全**：使用强密码，限制数据库用户访问IP，定期备份
 2. **应用安全**：使用 HTTPS，定期更新依赖库，启用日志审计
-3. **服务器安全**：配置防火墙，禁用不必要的服务，定期更新系统
+3. **外部 API 安全**：启用 `API_KEY_ENABLED=true` 前必须配置独立 `API_KEY_ENCRYPTION_KEY`，并确认外部访问入口只暴露 `/api/external/v1/**`
+4. **服务器安全**：配置防火墙，禁用不必要的服务，定期更新系统
 
 ### 版本升级
 
