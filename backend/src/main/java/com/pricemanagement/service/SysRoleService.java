@@ -1,8 +1,10 @@
 package com.pricemanagement.service;
 
 import com.pricemanagement.entity.SysRole;
+import com.pricemanagement.entity.User;
 import com.pricemanagement.entity.UserRole;
 import com.pricemanagement.repository.SysRoleRepository;
+import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +21,7 @@ public class SysRoleService {
 
     private final SysRoleRepository sysRoleRepository;
     private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
 
     public List<SysRole> getAllRoles() {
         return sysRoleRepository.findAll();
@@ -100,11 +103,14 @@ public class SysRoleService {
      */
     @Transactional
     public void assignRolesToUser(Long userId, List<Long> roleIds) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + userId));
+
         // 先删除现有角色
         userRoleRepository.deleteByUserId(userId);
 
         // 批量分配新角色
-        if (!roleIds.isEmpty()) {
+        if (roleIds != null && !roleIds.isEmpty()) {
             List<UserRole> userRoles = roleIds.stream()
                     .map(roleId -> {
                         UserRole userRole = new UserRole();
@@ -114,7 +120,30 @@ public class SysRoleService {
                     })
                     .toList();
             userRoleRepository.saveAll(userRoles);
+            syncPrimaryRole(user, roleIds);
         }
         log.info("Assigned roles {} to user {}", roleIds, userId);
+    }
+
+    private void syncPrimaryRole(User user, List<Long> roleIds) {
+        List<SysRole> roles = sysRoleRepository.findAllById(roleIds);
+        User.Role primaryRole = roles.stream()
+                .map(SysRole::getRoleCode)
+                .filter(code -> code != null && List.of("ADMIN", "EDITOR", "VIEWER").contains(code))
+                .map(User.Role::valueOf)
+                .sorted((a, b) -> Integer.compare(rolePriority(b), rolePriority(a)))
+                .findFirst()
+                .orElse(User.Role.VIEWER);
+
+        user.setRole(primaryRole);
+        userRepository.save(user);
+    }
+
+    private int rolePriority(User.Role role) {
+        return switch (role) {
+            case ADMIN -> 3;
+            case EDITOR -> 2;
+            case VIEWER -> 1;
+        };
     }
 }

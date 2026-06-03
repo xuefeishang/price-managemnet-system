@@ -38,6 +38,15 @@ public class RefreshToken {
     @Column(name = "username", nullable = false)
     private String username;
 
+    @Column(name = "device_name", length = 100)
+    private String deviceName;
+
+    @Column(name = "ip_address", length = 50)
+    private String ipAddress;
+
+    @Column(name = "user_agent", length = 500)
+    private String userAgent;
+
     /**
      * 过期时间
      */
@@ -55,6 +64,9 @@ public class RefreshToken {
      */
     @Column(name = "created_time", nullable = false)
     private LocalDateTime createdTime;
+
+    @Column(name = "last_used_time")
+    private LocalDateTime lastUsedTime;
 
     @PrePersist
     protected void onCreate() {

@@ -144,8 +144,9 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("operation_type", "DELETE", "删除", "delete", 5, null));
             dicts.add(createDict("operation_type", "EXPORT", "导出", "export", 6, null));
             dicts.add(createDict("operation_type", "IMPORT", "导入", "import", 7, null));
-            dicts.add(createDict("operation_type", "QUERY", "查询", "query", 8, null));
-            dicts.add(createDict("operation_type", "OTHER", "其他", "other", 9, null));
+            dicts.add(createDict("operation_type", "VIEW", "查看", "view", 8, null));
+            dicts.add(createDict("operation_type", "QUERY", "查询", "query", 9, null));
+            dicts.add(createDict("operation_type", "OTHER", "其他", "other", 10, null));
 
             // 操作模块 operation_module
             dicts.add(createDict("operation_module", "USER", "用户管理", "user", 1, null));
@@ -230,6 +231,16 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("chart_range", "30d", "30日", "30", 2, "30天趋势"));
             dicts.add(createDict("chart_range", "90d", "90日", "90", 3, "90天趋势"));
             dicts.add(createDict("chart_range", "1y", "年度", "365", 4, "年度趋势"));
+
+            // 个人中心偏好与安全记录
+            dicts.add(createDict("profile_table_density", "COMPACT", "紧凑", null, 1, "个人表格密度"));
+            dicts.add(createDict("profile_table_density", "DEFAULT", "默认", null, 2, "个人表格密度"));
+            dicts.add(createDict("profile_table_density", "COMFORTABLE", "宽松", null, 3, "个人表格密度"));
+            dicts.add(createDict("profile_theme_mode", "SYSTEM", "跟随系统", null, 1, "个人主题模式"));
+            dicts.add(createDict("profile_theme_mode", "LIGHT", "浅色", null, 2, "个人主题模式"));
+            dicts.add(createDict("profile_theme_mode", "DARK", "深色", null, 3, "个人主题模式"));
+            dicts.add(createDict("login_result", "SUCCESS", "成功", "#52c41a", 1, "登录结果"));
+            dicts.add(createDict("login_result", "FAILED", "失败", "#ff4d4f", 2, "登录结果"));
 
             // 保存到数据库（跳过已存在的）
             int created = 0;

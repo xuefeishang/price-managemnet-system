@@ -11,7 +11,9 @@ import com.pricemanagement.exception.TokenRefreshException;
 import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.service.CaptchaService;
 import com.pricemanagement.service.EmployeeIdService;
+import com.pricemanagement.service.LoginHistoryService;
 import com.pricemanagement.service.PermissionService;
+import com.pricemanagement.service.ProfileService;
 import com.pricemanagement.service.RefreshTokenService;
 import com.pricemanagement.util.JwtUtil;
 import com.pricemanagement.util.OperationLogHelper;
@@ -45,6 +47,8 @@ public class AuthController {
     private final CaptchaService captchaService;
     private final EmployeeIdService employeeIdService;
     private final PermissionService permissionService;
+    private final ProfileService profileService;
+    private final LoginHistoryService loginHistoryService;
 
     @PostMapping("/login")
     @RateLimiter(time = 60, count = 5, limitType = RateLimiter.LimitType.IP,
@@ -56,11 +60,12 @@ public class AuthController {
         // 验证验证码（如果提供了）
         if (loginRequest.getCaptchaKey() != null && loginRequest.getCaptchaCode() != null) {
             if (!captchaService.validateCaptcha(loginRequest.getCaptchaKey(), loginRequest.getCaptchaCode())) {
-                operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
-                        "用户登录失败：验证码错误", loginIdentifier, "验证码错误或已过期");
-                return Result.error(400, "验证码错误或已过期");
+                    operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                            "用户登录失败：验证码错误", loginIdentifier, "验证码错误或已过期");
+                    loginHistoryService.recordFailure(loginIdentifier, null, httpRequest, "验证码错误或已过期");
+                    return Result.error(400, "验证码错误或已过期");
+                }
             }
-        }
 
         try {
             // 根据登录类型查找用户
@@ -74,6 +79,7 @@ public class AuthController {
                     log.debug("User not found by employee ID: {}", loginIdentifier);
                     operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                             "用户登录失败：工号不存在", loginIdentifier, "工号不存在");
+                    loginHistoryService.recordFailure(loginIdentifier, null, httpRequest, "工号不存在");
                     return Result.error(401, "用户名或密码错误");
                 }
             } else {
@@ -83,6 +89,7 @@ public class AuthController {
                     log.debug("User not found by username: {}", loginIdentifier);
                     operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                             "用户登录失败：用户不存在", loginIdentifier, "用户不存在");
+                    loginHistoryService.recordFailure(loginIdentifier, null, httpRequest, "用户不存在");
                     return Result.error(401, "用户名或密码错误");
                 }
             }
@@ -94,6 +101,7 @@ public class AuthController {
                 log.debug("User account is locked: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                         "用户登录失败：账号被锁定", loginIdentifier, "账号已被锁定");
+                loginHistoryService.recordFailure(loginIdentifier, user, httpRequest, "账号已被锁定");
                 return Result.error(403, "账号已被锁定，请联系管理员");
             }
 
@@ -101,6 +109,7 @@ public class AuthController {
                 log.debug("Incorrect password for: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                         "用户登录失败：密码错误", loginIdentifier, "密码错误");
+                loginHistoryService.recordFailure(loginIdentifier, user, httpRequest, "密码错误");
                 return Result.error(401, "用户名或密码错误");
             }
 
@@ -108,6 +117,7 @@ public class AuthController {
                 log.debug("User account is inactive: {}", loginIdentifier);
                 operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                         "用户登录失败：账号被禁用", loginIdentifier, "账号已被禁用");
+                loginHistoryService.recordFailure(loginIdentifier, user, httpRequest, "账号已被禁用");
                 return Result.error(403, "账号已被禁用");
             }
 
@@ -124,17 +134,18 @@ public class AuthController {
             log.debug("User logged in successfully: {} with roles: {}", loginIdentifier, roleCodes);
 
             // 创建刷新令牌
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getUsername());
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId(), user.getUsername(), httpRequest);
 
             // 更新登录信息
             user.setLastLoginTime(LocalDateTime.now());
             user.setLastLoginIp(httpRequest.getRemoteAddr());
-            user.setLoginCount(user.getLoginCount() + 1);
+            user.setLoginCount((user.getLoginCount() == null ? 0 : user.getLoginCount()) + 1);
             userRepository.save(user);
 
             // 记录登录成功日志
             operationLogHelper.logSuccess("用户认证", OperationLog.OperationType.LOGIN,
                     "用户登录成功", user.getUsername());
+            loginHistoryService.recordSuccess(user, httpRequest);
 
             // 获取用户权限列表
             Set<String> permissions = permissionService.getUserPermissions(user.getId());
@@ -155,6 +166,7 @@ public class AuthController {
             log.error("Login error: {}", e.getMessage());
             operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
                     "用户登录异常", loginRequest.getUsername(), e.getMessage());
+            loginHistoryService.recordFailure(loginRequest.getUsername(), null, httpRequest, "登录异常");
             return Result.error(500, "登录异常：" + e.getMessage());
         }
     }
@@ -192,10 +204,11 @@ public class AuthController {
     @PostMapping("/refresh-token")
     @RateLimiter(time = 60, count = 10, limitType = RateLimiter.LimitType.IP,
             message = "令牌刷新次数过多，请1分钟后再试")
-    public Result<TokenRefreshResponse> refreshToken(@Validated @RequestBody TokenRefreshRequest request) {
+    public Result<TokenRefreshResponse> refreshToken(@Validated @RequestBody TokenRefreshRequest request,
+                                                     HttpServletRequest httpRequest) {
         try {
             String refreshToken = request.getRefreshToken();
-            String newAccessToken = refreshTokenService.refreshAccessToken(refreshToken);
+            String newAccessToken = refreshTokenService.refreshAccessToken(refreshToken, httpRequest);
 
             TokenRefreshResponse response = TokenRefreshResponse.builder()
                     .accessToken(newAccessToken)
@@ -213,120 +226,22 @@ public class AuthController {
 
     @GetMapping("/profile")
     public Result<?> getProfile() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return Result.error(401, "未登录");
-        }
-        String username = authentication.getName();
-        Optional<User> userOptional = userRepository.findByUsername(username);
-        if (userOptional.isEmpty()) {
-            return Result.error(404, "用户不存在");
-        }
-        User user = userOptional.get();
-        Set<String> permissions = permissionService.getUserPermissions(user.getId());
-        List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
-        String primaryRole = roleCodes.isEmpty() ? user.getRole().name() : roleCodes.get(0);
-        user.setPassword(null);
-
-        Map<String, Object> userData = new LinkedHashMap<>();
-        userData.put("id", user.getId());
-        userData.put("userId", user.getId());
-        userData.put("username", user.getUsername());
-        userData.put("employeeId", user.getEmployeeId());
-        userData.put("nickname", user.getNickname());
-        userData.put("role", primaryRole);
-        userData.put("roles", roleCodes.isEmpty() ? List.of(user.getRole().name()) : roleCodes);
-        userData.put("status", user.getStatus());
-        userData.put("email", user.getEmail());
-        userData.put("phone", user.getPhone());
-        userData.put("department", user.getDepartment());
-        userData.put("deptId", user.getDeptId());
-        userData.put("loginType", user.getLoginType());
-        userData.put("wechatOpenid", user.getWechatOpenid());
-        userData.put("wechatNickname", user.getWechatNickname());
-        userData.put("wechatAvatar", user.getWechatAvatar());
-        userData.put("lastLoginTime", user.getLastLoginTime());
-        userData.put("createdTime", user.getCreatedTime());
-        userData.put("updatedTime", user.getUpdatedTime());
-
+        ProfileDTO profile = profileService.getCurrentProfile();
         return Result.success("获取用户信息成功", Map.of(
-                "user", userData,
-                "permissions", permissions
+                "user", profile,
+                "permissions", profile.getPermissions()
         ));
     }
 
     @PutMapping("/profile")
-    public Result<User> updateProfile(@Validated @RequestBody UpdateProfileRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return Result.error(401, "未登录");
-        }
-
-        String username = authentication.getName();
-        Optional<User> userOptional = userRepository.findByUsername(username);
-
-        if (userOptional.isEmpty()) {
-            return Result.error(404, "用户不存在");
-        }
-
-        User user = userOptional.get();
-
-        // 更新可选字段
-        if (request.getNickname() != null && !request.getNickname().isBlank()) {
-            user.setNickname(request.getNickname());
-        }
-        if (request.getEmail() != null) {
-            user.setEmail(request.getEmail());
-        }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
-        }
-
-        User savedUser = userRepository.save(user);
-        log.debug("User profile updated: {}", username);
-
-        // 清除密码字段返回
-        savedUser.setPassword(null);
-        return Result.success("更新个人信息成功", savedUser);
+    public Result<ProfileDTO> updateProfile(@Validated @RequestBody UpdateProfileRequest request) {
+        return Result.success("更新个人信息成功", profileService.updateCurrentProfile(request));
     }
 
     @PutMapping("/password")
     public Result<Void> changePassword(@Validated @RequestBody ChangePasswordRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return Result.error(401, "未登录");
-        }
-
-        String username = authentication.getName();
-        Optional<User> userOptional = userRepository.findByUsername(username);
-
-        if (userOptional.isEmpty()) {
-            return Result.error(404, "用户不存在");
-        }
-
-        User user = userOptional.get();
-
-        // 验证旧密码
-        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
-            return Result.error(400, "旧密码错误");
-        }
-
-        // 验证新密码和确认密码是否一致
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            return Result.error(400, "两次输入的新密码不一致");
-        }
-
-        // 验证新密码和旧密码是否相同
-        if (request.getOldPassword().equals(request.getNewPassword())) {
-            return Result.error(400, "新密码不能与旧密码相同");
-        }
-
-        // 更新密码
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
-
-        log.debug("User password changed: {}", username);
-        return Result.success("密码修改成功");
+        profileService.changePassword(request);
+        return Result.success("密码修改成功，请重新登录");
     }
 
     // 注册功能（如果需要）

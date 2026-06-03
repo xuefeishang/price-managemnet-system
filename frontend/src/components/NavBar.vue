@@ -41,6 +41,10 @@ const handleLogout = () => {
   userStore.logoutAction()
   router.push('/login')
 }
+
+const goProfile = () => {
+  navigateTo('/profile')
+}
 </script>
 
 <template>
@@ -95,9 +99,9 @@ const handleLogout = () => {
         <!-- 用户信息 -->
         <div class="user-section">
           <div class="user-info">
-            <div class="user-avatar">
+            <button class="user-avatar avatar-button" @click="goProfile" title="进入个人中心" type="button">
               {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-            </div>
+            </button>
             <div class="user-details hidden-mobile">
               <div class="user-name">{{ userStore.user?.nickname }}</div>
               <div class="user-role" :class="userStore.user?.role?.toLowerCase()">
@@ -137,9 +141,9 @@ const handleLogout = () => {
       </nav>
       <div class="mobile-user-info">
         <div class="mobile-user-details">
-          <div class="user-avatar large">
+          <button class="user-avatar avatar-button large" @click="goProfile" title="进入个人中心" type="button">
             {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-          </div>
+          </button>
           <div>
             <div class="user-name">{{ userStore.user?.nickname }}</div>
             <div class="user-role" :class="userStore.user?.role?.toLowerCase()">
@@ -339,6 +343,7 @@ export const getMenuIcon = (icon: string) => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
+  border: none;
   background: var(--gradient-primary);
   color: white;
   display: flex;
@@ -346,6 +351,16 @@ export const getMenuIcon = (icon: string) => {
   justify-content: center;
   font-weight: 600;
   font-size: 0.875rem;
+}
+
+.avatar-button {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(99, 102, 241, 0.24);
 }
 
 .user-avatar.large {

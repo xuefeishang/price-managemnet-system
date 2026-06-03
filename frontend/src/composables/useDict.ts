@@ -39,6 +39,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   api_key_operation: 'API密钥操作',
   api_auth_result: 'API认证结果',
   api_permission: 'API权限',
+  profile_table_density: '个人表格密度',
+  profile_theme_mode: '个人主题模式',
+  login_result: '登录结果',
 }
 
 // 加载所有字典数据到缓存

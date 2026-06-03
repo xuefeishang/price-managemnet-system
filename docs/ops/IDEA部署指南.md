@@ -106,6 +106,8 @@ EXIT;
 > `V17__external_api_auth_phase1.sql` 会新增外部 API 授权管理表、字典、菜单和 `/api/external/v1/**` 端点权限。该功能默认关闭，不影响当前内部 JWT 功能。
 > `V19__external_api_endpoint_code_examples.sql` 会为外部 API 端点补充结构化示例、参数 schema 和可复制代码元数据。
 > `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
+> `V22__personal_profile_management.sql` 会扩展 Refresh Token 设备信息，并新增登录历史与个人偏好表，用于个人中心账号运维。
+> 字典管理分类页签、使用说明和效果展示升级仅涉及前端页面与静态分类元数据，不需要新增数据库迁移；升级时重新打包前端即可。
 > Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
 
 > 注意：`init.sql` 包含完整的表结构创建和数据初始化，推荐使用此脚本一步完成初始化。
@@ -456,6 +458,7 @@ npm run dev
 **处理方法**：
 1. 不要修改已经在数据库执行成功的历史迁移文件，例如 `V17__external_api_auth_phase1.sql`
 2. 新的表结构或初始化数据变更必须创建新的迁移版本，例如 `V18__external_api_endpoint_docs.sql`
+3. 个人中心修改密码策略可通过 `PASSWORD_MIN_LENGTH`、`PASSWORD_MAX_LENGTH`、`PASSWORD_REQUIRE_LETTER`、`PASSWORD_REQUIRE_DIGIT`、`PASSWORD_DISALLOW_WHITESPACE` 调整；生产环境建议保持默认强校验
 3. 确认代码中的历史迁移文件已恢复后，再重启后端
 4. 如历史迁移文件确认无误但本地库仍记录旧校验值，可在开发环境执行 Flyway repair；生产环境必须先备份并确认迁移文件来源一致
 

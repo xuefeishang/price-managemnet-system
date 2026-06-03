@@ -1,1368 +1,1369 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { showToast, showDialog } from 'vant'
+import { showDialog, showToast } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
-import { getRoleLabel } from '@/composables/useDict'
-import { updateProfile, changePassword } from '@/api/auth'
-import { useLayout } from '@/composables/useLayout'
-import type { UpdateProfileRequest, ChangePasswordRequest } from '@/api/auth'
+import {
+  changeProfilePassword,
+  getMyOperationLogs,
+  getProfileDetail,
+  getProfileLoginHistory,
+  getProfileSecurity,
+  getProfileSessions,
+  revokeAllProfileSessions,
+  revokeOtherProfileSessions,
+  revokeProfileSession,
+  updateProfileDetail
+} from '@/api/profile'
+import {
+  getDictOptions,
+  getDictValue,
+  getOperationModuleLabel,
+  getOperationTypeLabel,
+  getRoleLabel,
+  getStatusLabel,
+  loadAllDicts
+} from '@/composables/useDict'
+import type {
+  Profile,
+  ProfileLoginHistory,
+  ProfileSecurity,
+  ProfileSession
+} from '@/types/profile'
+import type { OperationLog } from '@/api/logs'
 
-const userStore = useUserStore()
 const router = useRouter()
-const { isPCLayout } = useLayout()
+const userStore = useUserStore()
 
-// 标签页状态
-const activeTab = ref('profile')
-const switchTab = (tab: string) => {
-  activeTab.value = tab
-  switch (tab) {
-    case 'home':
-      router.push('/home')
-      break
-    case 'products':
-      router.push('/products')
-      break
-    case 'import':
-      router.push('/import')
-      break
-    case 'profile':
-      break
-  }
-}
+type TabKey = 'basic' | 'security' | 'logs' | 'loginHistory' | 'sessions'
 
-// 角色名称映射（从字典服务获取）
-const getRoleName = (role?: string) => {
-  return role ? getRoleLabel(role) : ''
-}
+const activeTab = ref<TabKey>('basic')
+const loading = ref(false)
+const profile = ref<Profile | null>(null)
+const security = ref<ProfileSecurity | null>(null)
+const sessions = ref<ProfileSession[]>([])
+const operationLogs = ref<OperationLog[]>([])
+const loginHistory = ref<ProfileLoginHistory[]>([])
 
-// 获取角色颜色类
-const getRoleClass = (role?: string) => {
-  const map: Record<string, string> = {
-    ADMIN: 'admin',
-    EDITOR: 'editor',
-    VIEWER: 'viewer'
-  }
-  return role ? map[role] : ''
-}
+const profileForm = ref({ nickname: '', email: '', phone: '' })
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const logPage = ref({ page: 0, size: 10, total: 0 })
+const loginPage = ref({ page: 0, size: 10, total: 0 })
+const logFilters = ref({ operationType: '', operationModule: '', keyword: '' })
+const loginFilters = ref({ result: '' })
 
-// ==================== 个人信息编辑 ====================
-const showEditProfile = ref(false)
-const editForm = ref({
-  nickname: '',
-  email: '',
-  phone: ''
+const tabs: { key: TabKey, label: string }[] = [
+  { key: 'basic', label: '基本资料' },
+  { key: 'security', label: '账号安全' },
+  { key: 'logs', label: '操作记录' },
+  { key: 'loginHistory', label: '登录历史' },
+  { key: 'sessions', label: '会话管理' }
+]
+
+const operationTypeOptions = computed(() => getDictOptions('operation_type'))
+const operationModuleOptions = computed(() => getDictOptions('operation_module'))
+
+const avatarText = computed(() => (profile.value?.nickname || profile.value?.username || 'U').charAt(0))
+const displayName = computed(() => profile.value?.nickname || userStore.user?.nickname || '-')
+const username = computed(() => profile.value?.username || userStore.user?.username || '-')
+const roleLabel = computed(() => {
+  const role = profile.value?.role || userStore.user?.role
+  return role ? getRoleLabel(role) : '-'
 })
-const editLoading = ref(false)
-
-const openEditProfile = () => {
-  editForm.value = {
-    nickname: userStore.user?.nickname || '',
-    email: userStore.user?.email || '',
-    phone: userStore.user?.phone || ''
-  }
-  showEditProfile.value = true
+const statusLabel = computed(() => {
+  const status = profile.value?.status || userStore.user?.status
+  return status ? getStatusLabel(status) : '-'
+})
+const isAccountActive = computed(() => {
+  const status = profile.value?.status || userStore.user?.status
+  return status === 'ACTIVE' && !security.value?.locked && !profile.value?.locked
+})
+const activeSessionCount = computed(() => sessions.value.filter(item => !item.revoked).length)
+const recentSessions = computed(() => sessions.value.slice().sort((a, b) => {
+  return timeValue(b.lastUsedTime || b.createdTime) - timeValue(a.lastUsedTime || a.createdTime)
+}).slice(0, 3))
+const recentOperations = computed(() => operationLogs.value.slice(0, 3))
+const failedLoginCount = computed(() => loginHistory.value.filter(item => item.result === 'FAILED').length)
+const monthlyLoginCount = computed(() => {
+  const now = new Date()
+  return loginHistory.value.filter(item => {
+    if (item.result !== 'SUCCESS' || !item.loginTime) return false
+    const date = new Date(item.loginTime.replace(' ', 'T'))
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+  }).length
+})
+const topDeviceRatio = computed(() => {
+  const names = loginHistory.value
+    .filter(item => item.result === 'SUCCESS')
+    .map(item => resolveDeviceName(item.userAgent))
+    .filter(Boolean)
+  if (names.length === 0) return null
+  const counts = names.reduce<Record<string, number>>((acc, name) => {
+    acc[name] = (acc[name] || 0) + 1
+    return acc
+  }, {})
+  const max = Math.max(...Object.values(counts))
+  return Math.round((max / names.length) * 100)
+})
+const securityScore = computed(() => {
+  let score = 100
+  if (!profile.value?.email) score -= 10
+  if (!security.value?.passwordUpdatedTime) score -= 20
+  if (security.value?.locked || profile.value?.locked) score -= 40
+  score -= Math.min(failedLoginCount.value * 5, 25)
+  return Math.max(0, score)
+})
+const passwordStrength = computed(() => {
+  const password = passwordForm.value.newPassword
+  let score = 0
+  if (password.length >= 8) score += 1
+  if (/[A-Za-z]/.test(password)) score += 1
+  if (/\d/.test(password)) score += 1
+  if (/[^A-Za-z0-9]/.test(password)) score += 1
+  if (!password) return { text: '', className: '' }
+  if (score <= 2) return { text: '弱', className: 'weak' }
+  if (score === 3) return { text: '中', className: 'medium' }
+  return { text: '强', className: 'strong' }
+})
+const timeValue = (value?: string) => {
+  if (!value) return 0
+  const date = new Date(value.replace(' ', 'T'))
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
-const handleSaveProfile = async () => {
-  if (!editForm.value.nickname.trim()) {
+const formatTime = (value?: string) => value ? value.replace('T', ' ') : '-'
+const maskUserAgent = (value?: string) => {
+  if (!value) return '-'
+  return value.length > 86 ? `${value.slice(0, 86)}...` : value
+}
+const resolveDeviceName = (userAgent?: string) => {
+  if (!userAgent) return ''
+  const browser = userAgent.includes('Edg') ? 'Edge'
+    : userAgent.includes('Chrome') ? 'Chrome'
+      : userAgent.includes('Safari') ? 'Safari'
+        : userAgent.includes('Firefox') ? 'Firefox'
+          : '浏览器'
+  const os = userAgent.includes('Windows') ? 'Windows'
+    : userAgent.includes('iPhone') ? 'iPhone'
+      : userAgent.includes('Mac') ? 'macOS'
+        : userAgent.includes('Android') ? 'Android'
+          : '设备'
+  return `${os} · ${browser}`
+}
+
+const loadProfile = async () => {
+  const response = await getProfileDetail()
+  profile.value = response.data
+  profileForm.value = {
+    nickname: response.data.nickname || '',
+    email: response.data.email || '',
+    phone: response.data.phone || ''
+  }
+}
+const loadSecurity = async () => {
+  const response = await getProfileSecurity()
+  security.value = response.data
+}
+const loadOperationLogs = async () => {
+  const response = await getMyOperationLogs({
+    page: logPage.value.page,
+    size: logPage.value.size,
+    operationType: logFilters.value.operationType || undefined,
+    operationModule: logFilters.value.operationModule || undefined,
+    keyword: logFilters.value.keyword || undefined
+  })
+  operationLogs.value = response.data.content || []
+  logPage.value.total = response.data.totalElements || 0
+}
+const loadLoginHistory = async () => {
+  const response = await getProfileLoginHistory({
+    page: loginPage.value.page,
+    size: loginPage.value.size,
+    result: loginFilters.value.result || undefined
+  })
+  loginHistory.value = response.data.content || []
+  loginPage.value.total = response.data.totalElements || 0
+}
+const loadSessions = async () => {
+  const response = await getProfileSessions()
+  sessions.value = response.data || []
+}
+const refreshAll = async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      loadProfile(),
+      loadSecurity(),
+      loadOperationLogs(),
+      loadLoginHistory(),
+      loadSessions()
+    ])
+  } finally {
+    loading.value = false
+  }
+}
+
+const switchTab = async (tab: TabKey) => {
+  activeTab.value = tab
+  if (tab === 'logs') await loadOperationLogs()
+  if (tab === 'loginHistory') await loadLoginHistory()
+  if (tab === 'sessions') await loadSessions()
+}
+const goDashboard = async () => {
+  await router.push('/home')
+}
+
+const saveProfile = async () => {
+  if (!profileForm.value.nickname.trim()) {
     showToast('昵称不能为空')
     return
   }
-
-  editLoading.value = true
-  try {
-    const data: UpdateProfileRequest = {
-      nickname: editForm.value.nickname,
-      email: editForm.value.email || undefined,
-      phone: editForm.value.phone || undefined
-    }
-    await updateProfile(data)
-    await userStore.fetchProfile()
-    showEditProfile.value = false
-    showToast('个人信息已更新')
-  } catch (error: any) {
-    showToast(error?.message || '更新失败')
-  } finally {
-    editLoading.value = false
-  }
+  await updateProfileDetail({
+    nickname: profileForm.value.nickname.trim(),
+    email: profileForm.value.email || undefined,
+    phone: profileForm.value.phone || undefined
+  })
+  await userStore.fetchProfile()
+  await loadProfile()
+  showToast('个人资料已更新')
 }
-
-// ==================== 修改密码 ====================
-const showChangePassword = ref(false)
-const passwordForm = ref({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-const passwordLoading = ref(false)
-const showPasswordFields = ref({
-  old: false,
-  new: false,
-  confirm: false
-})
-
-// 密码强度检测
-const passwordStrength = computed(() => {
-  const pwd = passwordForm.value.newPassword
-  if (!pwd) return { level: 0, text: '', color: '' }
-
-  let strength = 0
-  if (pwd.length >= 6) strength++
-  if (pwd.length >= 8) strength++
-  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) strength++
-  if (/\d/.test(pwd)) strength++
-  if (/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) strength++
-
-  if (strength <= 2) return { level: 1, text: '弱', color: '#ff4d4f' }
-  if (strength <= 3) return { level: 2, text: '中', color: '#faad14' }
-  return { level: 3, text: '强', color: '#52c41a' }
-})
-
-const openChangePassword = () => {
-  passwordForm.value = {
-    oldPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  }
-  showChangePassword.value = true
-}
-
-const handleChangePassword = async () => {
-  if (!passwordForm.value.oldPassword) {
-    showToast('请输入旧密码')
-    return
-  }
-  if (!passwordForm.value.newPassword) {
-    showToast('请输入新密码')
-    return
-  }
-  if (passwordForm.value.newPassword.length < 6) {
-    showToast('新密码长度不能少于6位')
+const changePassword = async () => {
+  if (!passwordForm.value.oldPassword || !passwordForm.value.newPassword || !passwordForm.value.confirmPassword) {
+    showToast('请完整填写密码信息')
     return
   }
   if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    showToast('两次输入的密码不一致')
+    showToast('两次输入的新密码不一致')
     return
   }
-  if (passwordForm.value.oldPassword === passwordForm.value.newPassword) {
-    showToast('新密码不能与旧密码相同')
+  if (passwordForm.value.newPassword.length < 8) {
+    showToast('新密码至少8位')
     return
   }
-
-  passwordLoading.value = true
-  try {
-    const data: ChangePasswordRequest = {
-      oldPassword: passwordForm.value.oldPassword,
-      newPassword: passwordForm.value.newPassword,
-      confirmPassword: passwordForm.value.confirmPassword
-    }
-    await changePassword(data)
-    showChangePassword.value = false
-    showDialog({
-      title: '提示',
-      message: '密码修改成功，请重新登录'
-    }).then(() => {
-      userStore.logoutAction()
-      router.push('/login')
-    })
-  } catch (error: any) {
-    showToast(error?.message || '密码修改失败')
-  } finally {
-    passwordLoading.value = false
-  }
-}
-
-// ==================== 系统设置 ====================
-const showSettings = ref(false)
-const settings = ref({
-  theme: 'light',
-  autoRefresh: true,
-  refreshInterval: 30
-})
-
-// 保存设置
-const handleSaveSettings = () => {
-  localStorage.setItem('userSettings', JSON.stringify(settings.value))
-  showSettings.value = false
-  showToast('设置已保存')
-}
-
-// 加载设置
-const loadSettings = () => {
-  const saved = localStorage.getItem('userSettings')
-  if (saved) {
-    try {
-      settings.value = JSON.parse(saved)
-    } catch (e) {
-      // ignore
-    }
-  }
-}
-
-// ==================== 退出登录 ====================
-const handleLogout = () => {
-  showDialog({
-    title: '提示',
-    message: '确定要退出登录吗？',
+  await showDialog({
+    title: '修改密码',
+    message: '修改成功后将退出所有设备，需要重新登录。',
     showCancelButton: true
-  }).then(() => {
-    userStore.logoutAction()
-    router.push('/login')
-  }).catch(() => {
-    // 取消
   })
+  await changeProfilePassword(passwordForm.value)
+  showToast('密码已修改，请重新登录')
+  await userStore.logoutAction(false)
+  router.push('/login')
+}
+const revokeSession = async (session: ProfileSession) => {
+  if (session.current) {
+    showToast('不能在此处撤销当前会话')
+    return
+  }
+  await showDialog({
+    title: '撤销会话',
+    message: `确定撤销 ${session.deviceName || '该设备'} 的登录会话吗？`,
+    showCancelButton: true
+  })
+  await revokeProfileSession(session.id)
+  await loadSessions()
+  showToast('会话已撤销')
+}
+const revokeOthers = async () => {
+  await showDialog({
+    title: '退出其他设备',
+    message: '将撤销除当前会话外的其他设备登录状态。',
+    showCancelButton: true
+  })
+  await revokeOtherProfileSessions()
+  await loadSessions()
+  showToast('其他设备已退出')
+}
+const revokeAll = async () => {
+  await showDialog({
+    title: '退出全部设备',
+    message: '将退出所有设备并返回登录页。',
+    showCancelButton: true
+  })
+  await revokeAllProfileSessions()
+  await userStore.logoutAction(false)
+  router.push('/login')
+}
+const previousLogPage = async () => {
+  if (logPage.value.page === 0) return
+  logPage.value.page -= 1
+  await loadOperationLogs()
+}
+const nextLogPage = async () => {
+  if ((logPage.value.page + 1) * logPage.value.size >= logPage.value.total) return
+  logPage.value.page += 1
+  await loadOperationLogs()
+}
+const previousLoginPage = async () => {
+  if (loginPage.value.page === 0) return
+  loginPage.value.page -= 1
+  await loadLoginHistory()
+}
+const nextLoginPage = async () => {
+  if ((loginPage.value.page + 1) * loginPage.value.size >= loginPage.value.total) return
+  loginPage.value.page += 1
+  await loadLoginHistory()
 }
 
-// ==================== 生命周期 ====================
 onMounted(async () => {
-  loadSettings()
-
-  // 如果用户信息为空，先获取
-  if (!userStore.user) {
-    try {
-      await userStore.fetchProfile()
-    } catch (e) {
-      // ignore
-    }
-  }
+  await loadAllDicts()
+  await refreshAll()
 })
 </script>
 
 <template>
-  <div class="profile-page">
-    <!-- ==================== PC布局 ==================== -->
-    <template v-if="isPCLayout">
-      <div class="pc-profile">
-        <h1 class="page-title-pc">个人中心</h1>
-
-        <div class="profile-grid-pc">
-          <!-- 用户信息卡片 -->
-          <div class="user-card-pc">
-            <div class="user-avatar-pc">
-              {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-            </div>
-            <div class="user-name-pc">{{ userStore.user?.nickname }}</div>
-            <div class="user-username-pc">@{{ userStore.user?.username }}</div>
-            <div class="user-role-pc" :class="getRoleClass(userStore.user?.role)">
-              {{ getRoleName(userStore.user?.role) }}
-            </div>
-          </div>
-
-          <!-- 设置卡片 -->
-          <div class="settings-card-pc">
-            <h2 class="card-title-pc">账户设置</h2>
-            <div class="settings-list-pc">
-              <div class="setting-item-pc" @click="openEditProfile">
-                <div class="setting-left">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  <span>个人信息</span>
-                </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </div>
-              <div class="setting-divider"></div>
-              <div class="setting-item-pc" @click="openChangePassword">
-                <div class="setting-left">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                  <span>修改密码</span>
-                </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </div>
-              <div class="setting-divider"></div>
-              <div class="setting-item-pc" @click="showSettings = true">
-                <div class="setting-left">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                  </svg>
-                  <span>系统设置</span>
-                </div>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- 账户信息卡片 -->
-          <div class="info-card-pc">
-            <h2 class="card-title-pc">账户信息</h2>
-            <div class="info-list-pc">
-              <div class="info-item-pc">
-                <span class="info-label">用户名</span>
-                <span class="info-value">{{ userStore.user?.username }}</span>
-              </div>
-              <div class="info-item-pc">
-                <span class="info-label">昵称</span>
-                <span class="info-value">{{ userStore.user?.nickname || '-' }}</span>
-              </div>
-              <div class="info-item-pc">
-                <span class="info-label">邮箱</span>
-                <span class="info-value">{{ userStore.user?.email || '-' }}</span>
-              </div>
-              <div class="info-item-pc">
-                <span class="info-label">手机号</span>
-                <span class="info-value">{{ userStore.user?.phone || '-' }}</span>
-              </div>
-              <div class="info-item-pc">
-                <span class="info-label">角色</span>
-                <span class="info-value">{{ getRoleName(userStore.user?.role) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 退出登录 -->
-        <button class="logout-btn-pc" @click="handleLogout">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          退出登录
-        </button>
+  <div class="profile-page" :class="{ loading }">
+    <header class="profile-header profile-card">
+      <div>
+        <h1>用户中心</h1>
+        <p>{{ displayName }}，您好！管理你的账户信息与安全设置。</p>
       </div>
-
-      <!-- 编辑个人信息弹窗 -->
-      <van-popup v-model:show="showEditProfile" position="center" :style="{ width: '400px', borderRadius: '12px' }">
-        <div class="modal-content">
-          <h3 class="modal-title">编辑个人信息</h3>
-          <div class="modal-form">
-            <div class="form-item">
-              <label>昵称</label>
-              <input v-model="editForm.nickname" type="text" placeholder="请输入昵称" />
-            </div>
-            <div class="form-item">
-              <label>邮箱</label>
-              <input v-model="editForm.email" type="email" placeholder="请输入邮箱（选填）" />
-            </div>
-            <div class="form-item">
-              <label>手机号</label>
-              <input v-model="editForm.phone" type="tel" placeholder="请输入手机号（选填）" />
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn-cancel" @click="showEditProfile = false">取消</button>
-            <button class="btn-confirm" @click="handleSaveProfile" :disabled="editLoading">
-              {{ editLoading ? '保存中...' : '保存' }}
-            </button>
-          </div>
-        </div>
-      </van-popup>
-
-      <!-- 修改密码弹窗 -->
-      <van-popup v-model:show="showChangePassword" position="center" :style="{ width: '400px', borderRadius: '12px' }">
-        <div class="modal-content">
-          <h3 class="modal-title">修改密码</h3>
-          <div class="modal-form">
-            <div class="form-item">
-              <label>旧密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.oldPassword"
-                  :type="showPasswordFields.old ? 'text' : 'password'"
-                  placeholder="请输入旧密码"
-                />
-                <button class="eye-btn" @click="showPasswordFields.old = !showPasswordFields.old">
-                  <svg v-if="!showPasswordFields.old" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>新密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.newPassword"
-                  :type="showPasswordFields.new ? 'text' : 'password'"
-                  placeholder="请输入新密码（6-20位）"
-                />
-                <button class="eye-btn" @click="showPasswordFields.new = !showPasswordFields.new">
-                  <svg v-if="!showPasswordFields.new" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-              <!-- 密码强度指示 -->
-              <div v-if="passwordForm.newPassword" class="password-strength">
-                <div class="strength-bar">
-                  <div
-                    class="strength-fill"
-                    :style="{ width: (passwordStrength.level / 3 * 100) + '%', backgroundColor: passwordStrength.color }"
-                  ></div>
-                </div>
-                <span class="strength-text" :style="{ color: passwordStrength.color }">{{ passwordStrength.text }}</span>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>确认密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.confirmPassword"
-                  :type="showPasswordFields.confirm ? 'text' : 'password'"
-                  placeholder="请再次输入新密码"
-                />
-                <button class="eye-btn" @click="showPasswordFields.confirm = !showPasswordFields.confirm">
-                  <svg v-if="!showPasswordFields.confirm" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn-cancel" @click="showChangePassword = false">取消</button>
-            <button class="btn-confirm" @click="handleChangePassword" :disabled="passwordLoading">
-              {{ passwordLoading ? '修改中...' : '确认修改' }}
-            </button>
-          </div>
-        </div>
-      </van-popup>
-
-      <!-- 系统设置弹窗 -->
-      <van-popup v-model:show="showSettings" position="center" :style="{ width: '400px', borderRadius: '12px' }">
-        <div class="modal-content">
-          <h3 class="modal-title">系统设置</h3>
-          <div class="modal-form">
-            <div class="form-item">
-              <label>显示模式</label>
-              <div class="radio-group">
-                <label class="radio-item">
-                  <input type="radio" v-model="settings.theme" value="light" />
-                  <span>浅色模式</span>
-                </label>
-                <label class="radio-item">
-                  <input type="radio" v-model="settings.theme" value="dark" />
-                  <span>深色模式</span>
-                </label>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>自动刷新数据</label>
-              <div class="switch-wrap">
-                <van-switch v-model="settings.autoRefresh" size="20" />
-              </div>
-            </div>
-            <div class="form-item" v-if="settings.autoRefresh">
-              <label>刷新间隔（秒）</label>
-              <div class="stepper-wrap">
-                <van-stepper v-model="settings.refreshInterval" min="10" max="300" step="10" />
-              </div>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn-cancel" @click="showSettings = false">取消</button>
-            <button class="btn-confirm" @click="handleSaveSettings">保存设置</button>
-          </div>
-        </div>
-      </van-popup>
-    </template>
-
-    <!-- ==================== 移动端布局 ==================== -->
-    <template v-else>
-      <!-- 主内容区 -->
-      <main class="content">
-        <!-- 用户卡片 -->
-        <div class="user-card">
-          <div class="user-avatar">
-            {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-          </div>
-          <div class="user-info">
-            <span class="user-name">{{ userStore.user?.nickname }}</span>
-            <span class="user-role-badge" :class="getRoleClass(userStore.user?.role)">
-              {{ getRoleName(userStore.user?.role) }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 菜单列表 -->
-        <div class="menu-card">
-          <div class="menu-item" @click="openEditProfile">
-            <div class="menu-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <span>个人信息</span>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </div>
-
-          <div class="menu-divider"></div>
-
-          <div class="menu-item" @click="openChangePassword">
-            <div class="menu-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-              <span>修改密码</span>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </div>
-
-          <div class="menu-divider"></div>
-
-          <div class="menu-item" @click="showSettings = true">
-            <div class="menu-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-              <span>系统设置</span>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </div>
-        </div>
-
-        <!-- 退出登录 -->
-        <button class="logout-btn" @click="handleLogout">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          退出登录
+      <div class="header-actions">
+        <button class="icon-action" :disabled="loading" title="刷新" type="button" @click="refreshAll">
+          <span class="refresh-icon" :class="{ spinning: loading }">↻</span>
         </button>
+        <button class="secondary-action" type="button" @click="goDashboard">返回工作台</button>
+      </div>
+    </header>
+
+    <section class="profile-primary-grid">
+      <aside class="profile-summary-card profile-card">
+        <div class="avatar">{{ avatarText }}</div>
+        <h2>{{ displayName }}</h2>
+        <p class="username">{{ username }}</p>
+        <div class="role-badge">{{ roleLabel }}</div>
+
+        <div class="summary-list">
+          <div class="summary-row">
+            <span>状态</span>
+            <strong><i class="status-dot" :class="{ active: isAccountActive }"></i>{{ statusLabel }}</strong>
+          </div>
+          <div class="summary-row"><span>部门</span><strong>{{ profile?.department || '-' }}</strong></div>
+          <div class="summary-row"><span>员工编号</span><strong>{{ profile?.employeeId || '-' }}</strong></div>
+          <div class="summary-row"><span>最近登录</span><strong>{{ formatTime(profile?.lastLoginTime) }}</strong></div>
+        </div>
+
+        <div class="summary-metrics">
+          <button class="metric security" type="button" @click="switchTab('security')">
+            <strong>{{ securityScore }}</strong>
+            <span>安全评分</span>
+          </button>
+          <button class="metric device" type="button" @click="switchTab('sessions')">
+            <strong>{{ activeSessionCount }}</strong>
+            <span>登录设备</span>
+          </button>
+          <button class="metric operation" type="button" @click="switchTab('logs')">
+            <strong>{{ logPage.total }}</strong>
+            <span>操作记录</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="profile-tab-card profile-card">
+        <nav class="profile-tabs" aria-label="个人中心分区">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            :class="{ active: activeTab === tab.key }"
+            type="button"
+            @click="switchTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
+
+        <section v-if="activeTab === 'basic'" class="tab-panel">
+          <div class="panel-heading">
+            <h2>基本资料</h2>
+            <p>用户名、员工编号、角色和部门由管理员维护，个人中心仅开放展示信息维护。</p>
+          </div>
+          <div class="form-grid">
+            <label><span>用户名</span><input :value="profile?.username || ''" disabled /></label>
+            <label><span>邮箱</span><input v-model="profileForm.email" type="email" /></label>
+            <label><span>昵称</span><input v-model="profileForm.nickname" /></label>
+            <label><span>部门</span><input :value="profile?.department || ''" disabled /></label>
+            <label><span>员工编号</span><input :value="profile?.employeeId || ''" disabled /></label>
+            <label><span>手机号</span><input v-model="profileForm.phone" /></label>
+          </div>
+          <div class="panel-actions">
+            <button class="primary-action" type="button" @click="saveProfile">保存资料</button>
+            <button class="secondary-action" type="button" @click="loadProfile">重置</button>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'security'" class="tab-panel">
+          <div class="security-layout">
+            <div class="security-status-card">
+              <h3>账号状态</h3>
+              <p>安全评分已在下方账号安全概览中展示，这里聚焦具体账号状态。</p>
+              <div class="info-list">
+                <div><span>最近登录时间</span><strong>{{ formatTime(security?.lastLoginTime) }}</strong></div>
+                <div><span>最近登录 IP</span><strong>{{ security?.lastLoginIp || '-' }}</strong></div>
+                <div><span>登录次数</span><strong>{{ security?.loginCount ?? 0 }}</strong></div>
+                <div><span>密码更新时间</span><strong>{{ formatTime(security?.passwordUpdatedTime) }}</strong></div>
+                <div><span>登录方式</span><strong>{{ security?.loginType || '-' }}</strong></div>
+                <div><span>锁定状态</span><strong>{{ security?.locked ? '已锁定' : '正常' }}</strong></div>
+              </div>
+            </div>
+            <div class="password-box">
+              <h3>修改密码</h3>
+              <p>新密码需满足系统密码策略。提交成功后将清理所有设备登录状态。</p>
+              <div class="password-form">
+                <label><span>当前密码</span><input v-model="passwordForm.oldPassword" type="password" /></label>
+                <label>
+                  <span>新密码</span>
+                  <input v-model="passwordForm.newPassword" type="password" />
+                  <small v-if="passwordStrength.text" :class="passwordStrength.className">强度：{{ passwordStrength.text }}</small>
+                </label>
+                <label><span>确认新密码</span><input v-model="passwordForm.confirmPassword" type="password" /></label>
+              </div>
+              <button class="danger-action" type="button" @click="changePassword">修改密码</button>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'logs'" class="tab-panel">
+          <div class="panel-title-row">
+            <div class="panel-heading">
+              <h2>我的操作记录</h2>
+              <p>只展示当前账号自己的操作审计。</p>
+            </div>
+            <div class="page-actions">
+              <button :disabled="logPage.page === 0" type="button" @click="previousLogPage">上一页</button>
+              <button :disabled="(logPage.page + 1) * logPage.size >= logPage.total" type="button" @click="nextLogPage">下一页</button>
+            </div>
+          </div>
+          <div class="filters">
+            <input v-model="logFilters.keyword" placeholder="关键字" />
+            <select v-model="logFilters.operationType">
+              <option value="">全部类型</option>
+              <option v-for="option in operationTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <select v-model="logFilters.operationModule">
+              <option value="">全部模块</option>
+              <option v-for="option in operationModuleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <button type="button" @click="loadOperationLogs">查询</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>模块</th><th>类型</th><th>描述</th><th>IP</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr v-for="log in operationLogs" :key="log.id">
+                  <td>{{ formatTime((log as any).operationTime || log.createdTime) }}</td>
+                  <td>{{ getOperationModuleLabel(log.operationModule || '') }}</td>
+                  <td>{{ getOperationTypeLabel(log.operationType || '') }}</td>
+                  <td>{{ log.operationDesc || '-' }}</td>
+                  <td>{{ log.ipAddress || '-' }}</td>
+                  <td>{{ log.status || '-' }}</td>
+                </tr>
+                <tr v-if="operationLogs.length === 0"><td colspan="6" class="empty">暂无记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="page-summary">第 {{ logPage.page + 1 }} 页，共 {{ logPage.total }} 条</p>
+        </section>
+
+        <section v-if="activeTab === 'loginHistory'" class="tab-panel">
+          <div class="panel-title-row">
+            <div class="panel-heading">
+              <h2>登录历史</h2>
+              <p>查看最近登录成功与失败记录，帮助识别异常登录。</p>
+            </div>
+            <div class="page-actions">
+              <button :disabled="loginPage.page === 0" type="button" @click="previousLoginPage">上一页</button>
+              <button :disabled="(loginPage.page + 1) * loginPage.size >= loginPage.total" type="button" @click="nextLoginPage">下一页</button>
+            </div>
+          </div>
+          <div class="filters">
+            <select v-model="loginFilters.result">
+              <option value="">全部结果</option>
+              <option value="SUCCESS">{{ getDictValue('login_result', 'SUCCESS') }}</option>
+              <option value="FAILED">{{ getDictValue('login_result', 'FAILED') }}</option>
+            </select>
+            <button type="button" @click="loadLoginHistory">查询</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>结果</th><th>IP</th><th>设备</th><th>失败原因</th></tr></thead>
+              <tbody>
+                <tr v-for="item in loginHistory" :key="item.id">
+                  <td>{{ formatTime(item.loginTime) }}</td>
+                  <td><span class="result-pill" :class="item.result.toLowerCase()">{{ getDictValue('login_result', item.result) }}</span></td>
+                  <td>{{ item.ipAddress || '-' }}</td>
+                  <td>{{ resolveDeviceName(item.userAgent) || maskUserAgent(item.userAgent) }}</td>
+                  <td>{{ item.failureReason || '-' }}</td>
+                </tr>
+                <tr v-if="loginHistory.length === 0"><td colspan="5" class="empty">暂无记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="page-summary">第 {{ loginPage.page + 1 }} 页，共 {{ loginPage.total }} 条</p>
+        </section>
+
+        <section v-if="activeTab === 'sessions'" class="tab-panel">
+          <div class="panel-title-row">
+            <div class="panel-heading">
+              <h2>会话管理</h2>
+              <p>查看当前有效设备，撤销不再使用的登录会话。</p>
+            </div>
+            <div class="page-actions">
+              <button type="button" @click="revokeOthers">退出其他设备</button>
+              <button class="danger-outline" type="button" @click="revokeAll">退出全部设备</button>
+            </div>
+          </div>
+          <div class="session-list">
+            <article v-for="session in sessions" :key="session.id" class="session-item">
+              <div class="device-icon">▣</div>
+              <div>
+                <h3>{{ session.deviceName || resolveDeviceName(session.userAgent) || '未知设备' }} <span v-if="session.current">当前设备</span></h3>
+                <p>{{ session.ipAddress || '-' }} · 最近使用 {{ formatTime(session.lastUsedTime) }}</p>
+                <p>{{ maskUserAgent(session.userAgent) }}</p>
+              </div>
+              <button :disabled="session.current" type="button" @click="revokeSession(session)">撤销</button>
+            </article>
+            <div v-if="sessions.length === 0" class="empty">暂无有效会话</div>
+          </div>
+        </section>
+
       </main>
+    </section>
 
-      <!-- 底部标签栏 -->
-      <footer class="tab-bar">
-        <button class="tab-item" @click="switchTab('home')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          </svg>
-          <span class="tab-label">首页</span>
-        </button>
-        <button class="tab-item" @click="switchTab('products')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M16.5 9.4l-9-5.19"/>
-            <path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/>
-          </svg>
-          <span class="tab-label">产品</span>
-        </button>
-        <button class="tab-item" @click="switchTab('import')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span class="tab-label">导入</span>
-        </button>
-        <button class="tab-item active" @click="switchTab('profile')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
-          <span class="tab-label">我的</span>
-        </button>
-      </footer>
-
-      <!-- 编辑个人信息弹窗 -->
-      <van-popup v-model:show="showEditProfile" position="bottom" :style="{ height: 'auto' }">
-        <div class="mobile-modal">
-          <div class="mobile-modal-header">
-            <span class="mobile-modal-title">编辑个人信息</span>
-            <button class="close-btn" @click="showEditProfile = false">&times;</button>
+    <section class="profile-overview-grid">
+      <article class="profile-card overview-card clickable" @click="switchTab('security')">
+        <div class="overview-title"><span class="overview-icon security">◇</span><h3>账号安全概览</h3></div>
+        <div class="strength-row">
+          <div>
+            <span>安全评分</span>
+            <strong>{{ securityScore }}</strong>
           </div>
-          <div class="mobile-modal-content">
-            <div class="form-item">
-              <label>昵称</label>
-              <input v-model="editForm.nickname" type="text" placeholder="请输入昵称" />
-            </div>
-            <div class="form-item">
-              <label>邮箱</label>
-              <input v-model="editForm.email" type="email" placeholder="请输入邮箱（选填）" />
-            </div>
-            <div class="form-item">
-              <label>手机号</label>
-              <input v-model="editForm.phone" type="tel" placeholder="请输入手机号（选填）" />
-            </div>
-          </div>
-          <div class="mobile-modal-footer">
-            <button class="full-btn" @click="handleSaveProfile" :disabled="editLoading">
-              {{ editLoading ? '保存中...' : '保存' }}
-            </button>
+          <div class="strength-bars">
+            <i v-for="index in 4" :key="index" :class="{ active: securityScore >= index * 25 }"></i>
           </div>
         </div>
-      </van-popup>
-
-      <!-- 修改密码弹窗 -->
-      <van-popup v-model:show="showChangePassword" position="bottom" :style="{ height: 'auto' }">
-        <div class="mobile-modal">
-          <div class="mobile-modal-header">
-            <span class="mobile-modal-title">修改密码</span>
-            <button class="close-btn" @click="showChangePassword = false">&times;</button>
-          </div>
-          <div class="mobile-modal-content">
-            <div class="form-item">
-              <label>旧密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.oldPassword"
-                  :type="showPasswordFields.old ? 'text' : 'password'"
-                  placeholder="请输入旧密码"
-                />
-                <button class="eye-btn" @click="showPasswordFields.old = !showPasswordFields.old">
-                  <svg v-if="!showPasswordFields.old" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>新密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.newPassword"
-                  :type="showPasswordFields.new ? 'text' : 'password'"
-                  placeholder="请输入新密码（6-20位）"
-                />
-                <button class="eye-btn" @click="showPasswordFields.new = !showPasswordFields.new">
-                  <svg v-if="!showPasswordFields.new" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-              <div v-if="passwordForm.newPassword" class="password-strength">
-                <div class="strength-bar">
-                  <div
-                    class="strength-fill"
-                    :style="{ width: (passwordStrength.level / 3 * 100) + '%', backgroundColor: passwordStrength.color }"
-                  ></div>
-                </div>
-                <span class="strength-text" :style="{ color: passwordStrength.color }">{{ passwordStrength.text }}</span>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>确认密码</label>
-              <div class="password-input-wrap">
-                <input
-                  v-model="passwordForm.confirmPassword"
-                  :type="showPasswordFields.confirm ? 'text' : 'password'"
-                  placeholder="请再次输入新密码"
-                />
-                <button class="eye-btn" @click="showPasswordFields.confirm = !showPasswordFields.confirm">
-                  <svg v-if="!showPasswordFields.confirm" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="mobile-modal-footer">
-            <button class="full-btn" @click="handleChangePassword" :disabled="passwordLoading">
-              {{ passwordLoading ? '修改中...' : '确认修改' }}
-            </button>
-          </div>
+        <div class="security-lines">
+          <div><span>登录密码</span><strong>已设置</strong></div>
+          <div><span>安全邮箱</span><strong>{{ profile?.email ? '已绑定' : '未绑定' }}</strong></div>
+          <div><span>账号状态</span><strong>{{ security?.locked ? '已锁定' : '正常' }}</strong></div>
         </div>
-      </van-popup>
+      </article>
 
-      <!-- 系统设置弹窗 -->
-      <van-popup v-model:show="showSettings" position="bottom" :style="{ height: 'auto' }">
-        <div class="mobile-modal">
-          <div class="mobile-modal-header">
-            <span class="mobile-modal-title">系统设置</span>
-            <button class="close-btn" @click="showSettings = false">&times;</button>
-          </div>
-          <div class="mobile-modal-content">
-            <div class="form-item">
-              <label>显示模式</label>
-              <div class="radio-group">
-                <label class="radio-item">
-                  <input type="radio" v-model="settings.theme" value="light" />
-                  <span>浅色模式</span>
-                </label>
-                <label class="radio-item">
-                  <input type="radio" v-model="settings.theme" value="dark" />
-                  <span>深色模式</span>
-                </label>
-              </div>
-            </div>
-            <div class="form-item">
-              <label>自动刷新数据</label>
-              <div class="switch-wrap">
-                <van-switch v-model="settings.autoRefresh" size="20" />
-              </div>
-            </div>
-            <div class="form-item" v-if="settings.autoRefresh">
-              <label>刷新间隔（秒）</label>
-              <div class="stepper-wrap">
-                <van-stepper v-model="settings.refreshInterval" min="10" max="300" step="10" />
-              </div>
-            </div>
-          </div>
-          <div class="mobile-modal-footer">
-            <button class="full-btn" @click="handleSaveSettings">保存设置</button>
-          </div>
+      <article class="profile-card overview-card">
+        <div class="overview-title">
+          <span class="overview-icon operation">○</span>
+          <h3>最近操作</h3>
+          <button type="button" @click="switchTab('logs')">查看全部</button>
         </div>
-      </van-popup>
-    </template>
+        <ul class="recent-list">
+          <li v-for="log in recentOperations" :key="log.id">
+            <i></i>
+            <div>
+              <strong>{{ log.operationDesc || getOperationTypeLabel(log.operationType || '') }}</strong>
+              <span>{{ getOperationModuleLabel(log.operationModule || '') }}</span>
+            </div>
+            <time>{{ formatTime((log as any).operationTime || log.createdTime) }}</time>
+          </li>
+          <li v-if="recentOperations.length === 0" class="empty-line">暂无操作记录</li>
+        </ul>
+      </article>
+
+      <article class="profile-card overview-card">
+        <div class="overview-title">
+          <span class="overview-icon device">▱</span>
+          <h3>登录设备 / 会话</h3>
+          <button type="button" @click="switchTab('sessions')">管理设备</button>
+        </div>
+        <div class="session-stats">
+          <div><strong>{{ activeSessionCount }}</strong><span>当前在线</span></div>
+          <div><strong>{{ monthlyLoginCount }}</strong><span>近期登录</span></div>
+          <div><strong>{{ topDeviceRatio === null ? '-' : `${topDeviceRatio}%` }}</strong><span>常用设备</span></div>
+        </div>
+        <ul class="device-list">
+          <li v-for="session in recentSessions" :key="session.id">
+            <span class="device-mini">▣</span>
+            <div>
+              <strong>{{ session.deviceName || resolveDeviceName(session.userAgent) || '未知设备' }}</strong>
+              <span>{{ session.ipAddress || '-' }} · {{ formatTime(session.lastUsedTime || session.createdTime) }}</span>
+            </div>
+            <em v-if="session.current">当前设备</em>
+          </li>
+          <li v-if="recentSessions.length === 0" class="empty-line">暂无有效会话</li>
+        </ul>
+      </article>
+    </section>
   </div>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
-
 .profile-page {
-  
-  background-color: #FAFAFA;
+  --profile-bg: #F7F9FB;
+  --profile-card: #FFFFFF;
+  --profile-primary: #0D6E6E;
+  --profile-primary-dark: #075E5E;
+  --profile-success: #10B981;
+  --profile-info: #2563EB;
+  --profile-warning: #F97316;
+  --profile-danger: #DC2626;
+  --profile-text: #0F172A;
+  --profile-muted: #64748B;
+  --profile-border: #E2E8F0;
+  min-height: calc(100vh - 72px);
+  padding: 24px;
+  background: var(--profile-bg);
+  color: var(--profile-text);
 }
 
-/* ==================== PC布局 ==================== */
-.pc-profile {
-  padding: 32px;
-  max-width: 900px;
+.profile-card {
+  background: var(--profile-card);
+  border: 1px solid var(--profile-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.page-title-pc {
-  font-family: var(--font-heading);
-  font-size: var(--font-size-2xl);
-  font-weight: 500;
-  color: #1A1A1A;
-  margin: 0 0 32px 0;
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
 }
 
-.profile-grid-pc {
+.profile-header h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.profile-header p,
+.panel-heading p,
+.username,
+.page-summary {
+  margin: 6px 0 0;
+  color: var(--profile-muted);
+}
+
+.header-actions,
+.panel-actions,
+.page-actions,
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-primary-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  grid-template-rows: auto auto;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-.user-card-pc {
-  grid-row: 1 / 3;
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 32px;
-  border: 1px solid #E5E5E5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.user-avatar-pc {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
-  color: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-body);
-  font-size: var(--font-size-3xl);
-  font-weight: 600;
-  margin-bottom: 16px;
-}
-
-.user-name-pc {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: #1A1A1A;
-  margin-bottom: 4px;
-}
-
-.user-username-pc {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #888888;
-  margin-bottom: 16px;
-}
-
-.user-role-pc {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-}
-
-.user-role-pc.admin {
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
-}
-
-.user-role-pc.editor {
-  background: rgba(245, 158, 11, 0.1);
-  color: #F59E0B;
-}
-
-.user-role-pc.viewer {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
-}
-
-.settings-card-pc,
-.info-card-pc {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #E5E5E5;
-}
-
-.card-title-pc {
-  font-family: var(--font-body);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0 0 16px 0;
-}
-
-.settings-list-pc {
-  display: flex;
-  flex-direction: column;
-}
-
-.setting-item-pc {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
-  cursor: pointer;
-}
-
-.setting-item-pc:hover {
-  background: #FAFAFA;
-  margin: 0 -12px;
-  padding-left: 12px;
-  padding-right: 12px;
-  border-radius: 8px;
-}
-
-.setting-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.setting-left svg {
-  color: #666666;
-}
-
-.setting-left span {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-}
-
-.settings-card-pc svg:last-child {
-  color: #888888;
-}
-
-.setting-divider {
-  height: 1px;
-  background: #F5F5F5;
-}
-
-.info-list-pc {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-item-pc {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-}
-
-.info-label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #666666;
-}
-
-.info-value {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-  font-weight: 500;
-}
-
-.logout-btn-pc {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 16px;
-  background: #FFFFFF;
-  color: #E07B54;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 150ms;
-}
-
-.logout-btn-pc:hover {
-  background: rgba(224, 123, 84, 0.1);
-}
-
-/* ==================== 移动端布局 ==================== */
-.content {
-  flex: 1;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding-bottom: 100px;
-}
-
-.user-card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #E5E5E5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   gap: 16px;
 }
 
-.user-avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-body);
-  font-size: var(--font-size-3xl);
-  font-weight: 600;
+.profile-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.05fr);
+  gap: 16px;
+  margin-top: 16px;
 }
 
-.user-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.user-name {
-  font-family: var(--font-body);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.user-role-badge {
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-
-.user-role-badge.admin {
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
-}
-
-.user-role-badge.editor {
-  background: rgba(245, 158, 11, 0.1);
-  color: #F59E0B;
-}
-
-.user-role-badge.viewer {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10B981;
-}
-
-.menu-card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 0 16px;
-  border: 1px solid #E5E5E5;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 0;
-  cursor: pointer;
-}
-
-.menu-item svg:first-child {
-  color: #666666;
-}
-
-.menu-item svg:last-child {
-  color: #888888;
-}
-
-.menu-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.menu-left span {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-}
-
-.menu-divider {
-  height: 1px;
-  background: #F5F5F5;
-}
-
-.logout-btn {
-  width: 100%;
-  padding: 14px;
-  background: #FFFFFF;
-  color: #E07B54;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 150ms;
-}
-
-.logout-btn:hover {
-  background: rgba(224, 123, 84, 0.1);
-}
-
-.tab-bar {
-  height: 64px;
-  background: #FFFFFF;
-  border-top: 1px solid #E5E5E5;
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 20px;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  width: 100%;
-  max-width: 100%;
-  z-index: 100;
-}
-
-.tab-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 8px 16px;
-  border-radius: 8px;
-  color: #AAAAAA;
-}
-
-.tab-item.active {
-  color: #0D6E6E;
-}
-
-.tab-label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-
-/* ==================== 弹窗样式 ==================== */
-.modal-content {
-  padding: 24px;
-}
-
-.modal-title {
-  font-family: var(--font-body);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: #1A1A1A;
-  margin: 0 0 20px 0;
+.profile-summary-card {
+  padding: 24px 18px 18px;
   text-align: center;
 }
 
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.avatar {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--profile-primary) 0%, var(--profile-primary-dark) 100%);
+  color: #fff;
+  font-size: 42px;
+  font-weight: 800;
 }
 
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.profile-summary-card h2 {
+  margin: 0;
+  font-size: 20px;
 }
 
-.form-item label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: #1A1A1A;
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 4px 10px;
+  border: 1px solid rgba(13, 110, 110, 0.22);
+  border-radius: 999px;
+  background: rgba(13, 110, 110, 0.08);
+  color: var(--profile-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.form-item input[type="text"],
-.form-item input[type="email"],
-.form-item input[type="tel"],
-.form-item input[type="password"] {
-  width: 100%;
-  height: 44px;
-  padding: 0 16px;
-  border: 1px solid #E5E5E5;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
-  box-sizing: border-box;
+.summary-list {
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 1px solid var(--profile-border);
 }
 
-.form-item input:focus {
-  outline: none;
-  border-color: #0D6E6E;
-}
-
-.password-input-wrap {
-  position: relative;
+.summary-row,
+.security-lines div,
+.info-grid div {
   display: flex;
   align-items: center;
-}
-
-.password-input-wrap input {
-  width: 100%;
-  padding-right: 44px;
-}
-
-.eye-btn {
-  position: absolute;
-  right: 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #888888;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.password-strength {
-  display: flex;
-  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  padding: 10px 0;
+  color: var(--profile-muted);
 }
 
-.strength-bar {
-  flex: 1;
-  height: 4px;
-  background: #E5E5E5;
-  border-radius: 2px;
+.summary-row strong,
+.security-lines strong,
+.info-grid strong {
+  color: var(--profile-text);
+  font-weight: 700;
+  text-align: right;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--profile-warning);
+}
+
+.status-dot.active {
+  background: var(--profile-success);
+}
+
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.metric {
+  min-width: 0;
+  padding: 10px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--profile-border);
+  background: #FAFBFC;
+  cursor: pointer;
+}
+
+.metric strong {
+  display: block;
+  font-size: 18px;
+}
+
+.metric span {
+  display: block;
+  margin-top: 4px;
+  color: var(--profile-muted);
+  font-size: 12px;
+}
+
+.metric.security strong { color: var(--profile-primary); }
+.metric.device strong { color: var(--profile-info); }
+.metric.operation strong { color: var(--profile-warning); }
+
+.profile-tab-card {
+  min-width: 0;
   overflow: hidden;
 }
 
-.strength-fill {
-  height: 100%;
-  transition: all 300ms;
-}
-
-.strength-text {
-  font-family: var(--font-body);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.btn-cancel,
-.btn-confirm {
-  flex: 1;
-  height: 44px;
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 150ms;
-}
-
-.btn-cancel {
-  background: #FFFFFF;
-  color: #666666;
-  border: 1px solid #E5E5E5;
-}
-
-.btn-cancel:hover {
-  background: #F5F5F5;
-}
-
-.btn-confirm {
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
-}
-
-.btn-confirm:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.btn-confirm:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* 单选框组 */
-.radio-group {
+.profile-tabs {
   display: flex;
   gap: 24px;
+  overflow-x: auto;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--profile-border);
 }
 
-.radio-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.profile-tabs button {
+  position: relative;
+  min-height: 56px;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--profile-text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.profile-tabs button.active {
+  color: var(--profile-primary);
+}
+
+.profile-tabs button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: var(--profile-primary);
+  content: '';
+}
+
+.tab-panel {
+  padding: 20px 22px 22px;
+}
+
+.panel-heading {
+  margin-bottom: 16px;
+}
+
+.panel-heading h2,
+.overview-card h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.form-grid,
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  margin-bottom: 18px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: var(--profile-text);
+  font-weight: 600;
+}
+
+label span,
+.info-grid span,
+.info-list span {
+  color: var(--profile-text);
+  font-size: 14px;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #CBD5E1;
+  border-radius: 7px;
+  padding: 0 11px;
+  background: #fff;
+  color: var(--profile-text);
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--profile-primary);
+}
+
+input:disabled {
+  color: var(--profile-muted);
+  background: #F8FAFC;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid var(--profile-border);
+  border-radius: 7px;
+  padding: 0 14px;
+  background: #fff;
+  color: var(--profile-text);
   cursor: pointer;
+  font-weight: 700;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
 }
 
-.radio-item input[type="radio"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #0D6E6E;
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--profile-primary);
 }
 
-.radio-item span {
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  color: #1A1A1A;
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
-/* 移动端弹窗 */
-.mobile-modal {
+.primary-action {
+  border-color: var(--profile-primary);
+  background: var(--profile-primary);
+  color: #fff;
+}
+
+.primary-action:hover:not(:disabled) {
+  background: var(--profile-primary-dark);
+}
+
+.secondary-action,
+.icon-action {
+  background: #fff;
+}
+
+.danger-action {
+  border-color: var(--profile-danger);
+  background: var(--profile-danger);
+  color: #fff;
+}
+
+.danger-outline {
+  border-color: rgba(220, 38, 38, 0.35);
+  color: var(--profile-danger);
+}
+
+.icon-action {
+  width: 40px;
+  padding: 0;
+  font-size: 22px;
+}
+
+.refresh-icon {
+  display: inline-block;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+small.weak { color: var(--profile-danger); }
+small.medium { color: var(--profile-warning); }
+small.strong { color: var(--profile-success); }
+
+.security-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.86fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.security-status-card,
+.password-box {
+  min-width: 0;
   padding: 16px;
+  border: 1px solid var(--profile-border);
+  border-radius: 8px;
+  background: #FAFBFC;
 }
 
-.mobile-modal-header {
+.security-status-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.security-status-card p,
+.password-box p {
+  color: var(--profile-muted);
+}
+
+.security-status-card p {
+  margin: 0 0 12px;
+  line-height: 1.55;
+}
+
+.info-list {
+  margin-top: 4px;
+  border-top: 1px solid var(--profile-border);
+}
+
+.info-list div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--profile-border);
 }
 
-.mobile-modal-title {
-  font-family: var(--font-body);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: #1A1A1A;
+.info-list div:last-child {
+  border-bottom: none;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  font-size: var(--font-size-2xl);
-  color: #888888;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
+.info-list strong {
+  color: var(--profile-text);
+  text-align: right;
+  word-break: break-word;
 }
 
-.mobile-modal-content {
+.password-box h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.password-box p {
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+
+.password-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.panel-title-row {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   gap: 16px;
+  margin-bottom: 14px;
 }
 
-.mobile-modal-footer {
-  margin-top: 24px;
+.filters {
+  margin-bottom: 14px;
 }
 
-.full-btn {
-  width: 100%;
-  height: 44px;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  border: none;
+.filters input,
+.filters select {
+  max-width: 220px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--profile-border);
   border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+}
+
+table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--profile-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #F8FAFC;
+  color: #334155;
+  font-weight: 800;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.empty {
+  padding: 28px;
+  color: var(--profile-muted);
+  text-align: center;
+}
+
+.result-pill {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.result-pill.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.result-pill.failed {
+  background: rgba(220, 38, 38, 0.10);
+  color: var(--profile-danger);
+}
+
+.session-list {
+  display: grid;
+  gap: 10px;
+}
+
+.session-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--profile-border);
+  border-radius: 8px;
+}
+
+.device-icon,
+.device-mini {
+  display: grid;
+  place-items: center;
+  color: var(--profile-info);
+}
+
+.device-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.session-item h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.session-item h3 span,
+.device-list em {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.session-item p {
+  margin: 5px 0 0;
+  color: var(--profile-muted);
+  word-break: break-word;
+}
+
+.overview-card {
+  padding: 16px;
+  min-width: 0;
+}
+
+.overview-card.clickable {
   cursor: pointer;
 }
 
-.full-btn:hover:not(:disabled) {
-  background: #0D8A8A;
-}
-
-.full-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.switch-wrap,
-.stepper-wrap {
+.overview-title {
   display: flex;
   align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--profile-border);
+}
+
+.overview-title h3 {
+  flex: 1;
+}
+
+.overview-title button {
+  min-height: 30px;
+  padding: 0 8px;
+  border: none;
+  color: var(--profile-primary);
+  background: transparent;
+}
+
+.overview-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  font-weight: 800;
+}
+
+.overview-icon.security {
+  color: var(--profile-primary);
+  background: rgba(13, 110, 110, 0.09);
+}
+
+.overview-icon.operation {
+  color: var(--profile-warning);
+  background: rgba(249, 115, 22, 0.10);
+}
+
+.overview-icon.device {
+  color: var(--profile-info);
+  background: rgba(37, 99, 235, 0.10);
+}
+
+.strength-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0 10px;
+}
+
+.strength-row span {
+  color: var(--profile-muted);
+}
+
+.strength-row strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--profile-primary);
+  font-size: 26px;
+}
+
+.strength-bars {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+}
+
+.strength-bars i {
+  width: 28px;
+  height: 6px;
+  border-radius: 999px;
+  background: #E2E8F0;
+}
+
+.strength-bars i.active {
+  background: var(--profile-success);
+}
+
+.security-lines {
+  border: 1px solid var(--profile-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.security-lines div {
+  padding: 12px;
+}
+
+.security-lines div + div {
+  border-top: 1px solid var(--profile-border);
+}
+
+.recent-list,
+.device-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.recent-list li,
+.device-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 0;
+}
+
+.recent-list li + li,
+.device-list li + li {
+  border-top: 1px solid var(--profile-border);
+}
+
+.recent-list i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--profile-text);
+}
+
+.recent-list strong,
+.device-list strong {
+  display: block;
+  overflow: hidden;
+  color: var(--profile-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-list span,
+.device-list span,
+.recent-list time {
+  color: var(--profile-muted);
+  font-size: 13px;
+}
+
+.session-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 0;
+}
+
+.session-stats div {
+  text-align: center;
+}
+
+.session-stats strong {
+  display: block;
+  color: var(--profile-info);
+  font-size: 20px;
+}
+
+.session-stats div:nth-child(3) strong {
+  color: var(--profile-warning);
+}
+
+.session-stats span {
+  color: var(--profile-muted);
+  font-size: 12px;
+}
+
+.empty-line {
+  display: block !important;
+  color: var(--profile-muted);
+  text-align: center;
 }
 
 @media (max-width: 1024px) {
-  .pc-profile {
-    display: none;
+  .profile-primary-grid,
+  .profile-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-summary-card {
+    text-align: left;
+  }
+
+  .avatar {
+    margin-left: 0;
   }
 }
 
-@media (max-width: 480px) {
-  .tab-bar {
-    width: 100%;
-    left: 0;
-    transform: none;
+@media (max-width: 768px) {
+  .profile-page {
+    padding: 12px;
+  }
+
+  .profile-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .profile-header h1 {
+    font-size: 24px;
+  }
+
+  .profile-tabs {
+    gap: 18px;
+  }
+
+  .form-grid,
+  .info-grid,
+  .security-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-title-row,
+  .session-item {
+    grid-template-columns: 1fr;
+  }
+
+  .filters input,
+  .filters select {
+    max-width: none;
+  }
+
+  .summary-metrics,
+  .session-stats {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -64,7 +64,8 @@ export const deleteUser = async (id: number): Promise<ApiResponse<void>> => {
 
 // 重置用户密码（仅管理员）
 export const resetUserPassword = async (id: number, newPassword?: string): Promise<ApiResponse<void>> => {
-  return await http.post(`/api/users/${id}/reset-password${newPassword ? `?newPassword=${newPassword}` : ''}`)
+  const params = newPassword ? { newPassword } : {}
+  return await http.post(`/api/users/${id}/reset-password`, undefined, { params })
 }
 
 // 锁定用户（仅管理员）

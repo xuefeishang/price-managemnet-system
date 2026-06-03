@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
-import { showToast, showDialog } from 'vant'
-import { getUsers, createUser, updateUser, deleteUser, lockUser, unlockUser, getUserRolesBatch, assignUserRoles, importUsers, exportUsers, downloadUserTemplate } from '@/api/users'
+import { showToast } from 'vant'
+import { getUsers, createUser, updateUser, deleteUser, lockUser, unlockUser, getUserRolesBatch, assignUserRoles, resetUserPassword, importUsers, exportUsers, downloadUserTemplate } from '@/api/users'
 import { getActiveRoles } from '@/api/roles'
 import { getDepartmentTree } from '@/api/departments'
 import { usePermission, Permission } from '@/composables/usePermission'
@@ -29,7 +29,9 @@ const deptFilter = ref('')
 const showModal = ref(false)
 const editingUser = ref<User | null>(null)
 const showRoleModal = ref(false)
+const showDeleteModal = ref(false)
 const editingUserId = ref<number | null>(null)
+const deletingUser = ref<User | null>(null)
 const selectedRoleIds = ref<number[]>([])
 const importing = ref(false)
 const exporting = ref(false)
@@ -230,6 +232,16 @@ const resetForm = () => {
   editingUser.value = null
 }
 
+const normalizePhone = (phone?: string | null) => {
+  if (!phone) return ''
+  return phone.replace(/\D/g, '')
+}
+
+const handlePhoneInput = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  formData.value.phone = normalizePhone(target.value)
+}
+
 // 打开新增模态框
 const handleCreate = () => {
   resetForm()
@@ -244,7 +256,7 @@ const handleEdit = (user: User) => {
     employeeId: user.employeeId || '',
     nickname: user.nickname || '',
     email: user.email || '',
-    phone: user.phone || '',
+    phone: /^\d+$/.test(user.phone || '') ? user.phone || '' : '',
     department: user.department || '',
     deptId: user.deptId || null,
     password: '',
@@ -256,7 +268,7 @@ const handleEdit = (user: User) => {
 
 // 保存用户
 const handleSave = async () => {
-  if (!formData.value.username || !formData.value.nickname || !formData.value.role) {
+  if (!formData.value.username || !formData.value.nickname || (!editingUser.value && !formData.value.role)) {
     showToast('请填写必填项')
     return
   }
@@ -273,12 +285,14 @@ const handleSave = async () => {
       await updateUser(editingUser.value.id, {
         nickname: formData.value.nickname,
         email: formData.value.email,
-        phone: formData.value.phone,
+        phone: normalizePhone(formData.value.phone),
         department: formData.value.department,
         deptId: formData.value.deptId ?? undefined,
-        role: formData.value.role,
         status: formData.value.status
       })
+      if (formData.value.password.trim()) {
+        await resetUserPassword(editingUser.value.id, formData.value.password.trim())
+      }
       showToast('更新成功')
       await loadUsers()
     } else {
@@ -289,7 +303,7 @@ const handleSave = async () => {
         employeeId: formData.value.employeeId || undefined,
         nickname: formData.value.nickname,
         email: formData.value.email,
-        phone: formData.value.phone,
+        phone: normalizePhone(formData.value.phone),
         department: formData.value.department,
         deptId: formData.value.deptId ?? undefined,
         role: formData.value.role
@@ -308,21 +322,30 @@ const handleSave = async () => {
 
 // 删除用户
 const handleDelete = (user: User) => {
-  showDialog({
-    title: '确认删除',
-    message: `确定要删除用户"${user.nickname}"吗？此操作不可恢复。`,
-  }).then(async () => {
-    loading.value = true
-    try {
-      await deleteUser(user.id)
-      showToast('删除成功')
-      await loadUsers()
-    } catch (error: any) {
-      showToast(error.message || '删除失败')
-    } finally {
-      loading.value = false
-    }
-  }).catch(() => {})
+  deletingUser.value = user
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  if (loading.value) return
+  showDeleteModal.value = false
+  deletingUser.value = null
+}
+
+const confirmDelete = async () => {
+  if (!deletingUser.value) return
+  loading.value = true
+  try {
+    await deleteUser(deletingUser.value.id)
+    showToast('删除成功')
+    showDeleteModal.value = false
+    deletingUser.value = null
+    await loadUsers()
+  } catch (error: any) {
+    showToast(error.message || '删除失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 // 切换用户状态
@@ -801,8 +824,11 @@ onMounted(() => {
               <input
                 v-model="formData.phone"
                 type="tel"
+                inputmode="numeric"
+                pattern="[0-9]*"
                 class="input"
-                placeholder="请输入手机号"
+                placeholder="请输入数字手机号"
+                @input="handlePhoneInput"
               />
             </div>
             <div class="form-group" v-if="!editingUser">
@@ -814,7 +840,16 @@ onMounted(() => {
                 placeholder="请设置初始密码"
               />
             </div>
-            <div class="form-group">
+            <div class="form-group" v-else>
+              <label class="form-label">新密码</label>
+              <input
+                v-model="formData.password"
+                type="password"
+                class="input"
+                placeholder="留空则不修改密码"
+              />
+            </div>
+            <div class="form-group" v-if="!editingUser">
               <label class="form-label">角色 <span class="required">*</span></label>
               <select v-model="formData.role" class="input">
                 <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -883,6 +918,36 @@ onMounted(() => {
           </button>
           <button class="btn btn-primary" @click="saveRoleAssignment" :disabled="loading">
             {{ loading ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认模态框 -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+      <div class="modal-content delete-modal">
+        <div class="modal-header">
+          <h2 class="modal-title">确认删除</h2>
+          <button class="modal-close" @click="closeDeleteModal" :disabled="loading" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <p class="delete-message">
+            确定要删除用户“{{ deletingUser?.nickname }}”吗？此操作不可恢复。
+          </p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-outline" @click="closeDeleteModal" :disabled="loading">
+            取消
+          </button>
+          <button class="btn btn-danger" @click="confirmDelete" :disabled="loading">
+            {{ loading ? '删除中...' : '确认删除' }}
           </button>
         </div>
       </div>
@@ -1665,6 +1730,30 @@ onMounted(() => {
 .btn-outline:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-danger {
+  background: var(--error-color);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-danger:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.delete-modal {
+  max-width: 420px;
+}
+
+.delete-message {
+  margin: 0;
+  color: var(--gray-700);
+  line-height: 1.7;
 }
 
 /* 响应式设计 */

@@ -19,6 +19,8 @@
   - JWT Token 认证（双 Token 机制：Access Token 24h + Refresh Token 7d）
   - 三种角色：管理员（ADMIN）、编辑者（EDITOR）、查看者（VIEWER）
   - 动态权限系统（32个权限码，登录时获取用户权限列表，刷新个人资料时同步权限缓存）
+  - 管理员用户管理：新增、编辑资料、锁定/解锁、删除、导入导出、独立多角色分配；编辑用户时可设置新密码，留空则不修改
+  - 个人中心与账号运维：资料维护、密码修改、账号安全、登录历史、会话管理、个人操作记录和个人偏好
   - API 限流保护（登录 5次/分钟/IP）
 
 - **外部 API 授权管理（仅管理员）**
@@ -75,11 +77,13 @@
   - 审批请求管理（待审批、我的申请）
 
 - **字典管理**
-  - 数据字典 CRUD（按分类管理，启用/停用）
+  - 数据字典 CRUD（按领域分组导航管理分类，启用/停用）
   - 前端字典服务（useDict composable，全局缓存）
   - 所有页面硬编码标签动态化
   - 受保护分类隔离（样式配置分类默认隐藏，仅可查看）
   - "显示系统配置"开关（ADMIN可查看受保护分类）
+  - 分类使用帮助（用途、使用页面、字段规则、风险提示）
+  - 分类效果展示（下拉选项、状态色、图标、JSON、只读配置预览）
   - extraValue智能渲染（颜色色块、JSON格式化+复制、图标预览）
 
 - **全局样式管理（仅管理员）**
@@ -161,6 +165,7 @@ npm run dev
 | `backend/src/main/resources/db/migration/V13__*.sql` - `V16__*.sql` | 历史库首次接入 Flyway 后自动补齐的结构和菜单迁移 |
 | `backend/src/main/resources/db/migration/V17__external_api_auth_phase1.sql` | 外部 API 授权管理一期表、字典、菜单和端点权限 |
 | `backend/src/main/resources/db/migration/V19__external_api_endpoint_code_examples.sql` | 外部 API 端点结构化示例、参数 schema 和可复制代码元数据 |
+| `backend/src/main/resources/db/migration/V22__personal_profile_management.sql` | 个人中心会话设备、登录历史和个人偏好 |
 
 ## 项目文档
 
@@ -235,10 +240,14 @@ docker pull jlmining.com/pricemanage/price-management-frontend:v1.4.0
 | `API_KEY_NONCE_TTL_SECONDS` | 外部请求 Nonce 防重放 TTL，默认 `600` |
 | `API_KEY_CACHE_TTL_SECONDS` | 外部授权缓存 TTL 预留配置，第一阶段授权元数据实时查库 |
 | `API_KEY_LOG_RETENTION_DAYS` | 外部 API 调用日志保留天数，默认 `180` |
+| `PASSWORD_MIN_LENGTH` | 个人中心修改密码最小长度，默认 `8` |
+| `PASSWORD_MAX_LENGTH` | 个人中心修改密码最大长度，默认 `32` |
+| `PASSWORD_REQUIRE_LETTER` | 修改密码是否必须包含字母，默认 `true` |
+| `PASSWORD_REQUIRE_DIGIT` | 修改密码是否必须包含数字，默认 `true` |
 
 开发环境默认使用 `application-dev.yml` 中的开发兜底 key，允许本地直接创建 API Key；如需模拟生产密钥，可在 IDEA Run Configuration 中覆盖 `API_KEY_ENCRYPTION_KEY`。生产 Docker 默认使用 `prod` profile，必须由 `.env` 经 `docker-compose.yml` 传入独立随机 `API_KEY_ENCRYPTION_KEY`。
 
 ---
 
 *版本：v1.16.0*
-*最后更新：2026-06-01 — 外部 API 授权管理新增可复制调用示例*
+*最后更新：2026-06-02 — 个人中心与账号运维升级*

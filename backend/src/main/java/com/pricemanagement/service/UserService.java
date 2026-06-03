@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -77,6 +78,7 @@ public class UserService {
             throw new IllegalArgumentException("用户名已存在: " + user.getUsername());
         }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setPhone(normalizePhone(user.getPhone()));
 
         // 自动生成工号（如果未提供）
         if (user.getEmployeeId() == null || user.getEmployeeId().isEmpty()) {
@@ -121,7 +123,7 @@ public class UserService {
             existingUser.setEmail(user.getEmail());
         }
         if (user.getPhone() != null) {
-            existingUser.setPhone(user.getPhone());
+            existingUser.setPhone(normalizePhone(user.getPhone()));
         }
         if (user.getRole() != null) {
             existingUser.setRole(user.getRole());
@@ -148,6 +150,7 @@ public class UserService {
         }
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
             existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
+            existingUser.setPasswordUpdatedTime(LocalDateTime.now());
         }
         if (user.getIsLocked() != null) {
             existingUser.setIsLocked(user.getIsLocked());
@@ -156,6 +159,21 @@ public class UserService {
         User savedUser = userRepository.save(existingUser);
         log.info("Updated user: {}", savedUser.getUsername());
         return savedUser;
+    }
+
+    @Transactional
+    public void resetPassword(Long id, String rawPassword) {
+        User existingUser = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
+
+        if (rawPassword == null || rawPassword.isBlank()) {
+            throw new IllegalArgumentException("新密码不能为空");
+        }
+
+        existingUser.setPassword(passwordEncoder.encode(rawPassword));
+        existingUser.setPasswordUpdatedTime(LocalDateTime.now());
+        userRepository.save(existingUser);
+        log.info("Reset password for user: {}", existingUser.getUsername());
     }
 
     @Transactional
@@ -171,6 +189,13 @@ public class UserService {
 
     public boolean existsByUsername(String username) {
         return userRepository.existsByUsername(username);
+    }
+
+    private String normalizePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            return "";
+        }
+        return phone.replaceAll("\\D", "");
     }
 
     /**
@@ -199,4 +224,3 @@ public class UserService {
         log.info("Unlocked user: {}", user.getUsername());
     }
 }
-

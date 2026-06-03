@@ -135,6 +135,10 @@ const handleLogout = () => {
   // 跳转由 watch(() => userStore.isAuthenticated) 统一处理
 }
 
+const goProfile = () => {
+  navigateTo('/profile')
+}
+
 onMounted(async () => {
   if (!userStore.isAuthenticated) {
     router.replace('/login')
@@ -215,9 +219,9 @@ watch(() => route.path, () => {
         <!-- 用户信息 -->
         <div class="sidebar-footer">
           <div class="user-info">
-            <div class="user-avatar">
+            <button class="user-avatar avatar-button" @click="goProfile" title="进入个人中心" type="button">
               {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-            </div>
+            </button>
             <div class="user-details">
               <div class="user-name">{{ userStore.user?.nickname }}</div>
               <div class="user-role">{{ userRoleLabel }}</div>
@@ -287,9 +291,9 @@ watch(() => route.path, () => {
       <aside class="mobile-sidebar" :class="{ open: isMobileMenuOpen }">
         <div class="mobile-sidebar-header">
           <div class="mobile-user-info">
-            <div class="user-avatar">
+            <button class="user-avatar avatar-button" @click="goProfile" title="进入个人中心" type="button">
               {{ userStore.user?.nickname?.charAt(0) || 'U' }}
-            </div>
+            </button>
             <div class="user-details">
               <div class="user-name">{{ userStore.user?.nickname }}</div>
               <div class="user-role">{{ userRoleLabel }}</div>
@@ -415,6 +419,7 @@ watch(() => route.path, () => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
+  border: none;
   background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
   color: white;
   display: flex;
@@ -422,6 +427,16 @@ watch(() => route.path, () => {
   justify-content: center;
   font-weight: 600;
   font-size: var(--font-size-sm);
+}
+
+.avatar-button {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(13, 110, 110, 0.22);
 }
 
 .user-details {

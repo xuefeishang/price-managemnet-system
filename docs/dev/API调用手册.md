@@ -466,6 +466,8 @@ PUT /api/auth/password
 
 **权限：** 已登录用户
 
+> 该兼容接口委托 `/api/profile/password`。修改成功后会撤销当前用户全部 Refresh Token，前端必须清理本地 Token 并重新登录。新密码长度 8-32 位，必须包含字母和数字，不能包含空白字符，不能与旧密码相同。
+
 **请求体：**
 ```json
 {
@@ -482,6 +484,44 @@ POST /api/auth/logout
 ```
 
 **权限：** 已登录用户
+
+---
+
+## 个人中心接口
+
+所有接口均要求已登录，并且只能操作当前认证用户。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/profile` | 获取个人中心资料、角色和权限 |
+| PUT | `/api/profile` | 更新昵称、邮箱、手机号 |
+| GET | `/api/profile/security` | 获取最近登录、登录 IP、登录次数、密码更新时间和锁定状态 |
+| PUT | `/api/profile/password` | 修改密码，成功后撤销全部 Refresh Token |
+| GET | `/api/profile/operation-logs` | 查询我的操作记录，不接受 `userId` 参数 |
+| GET | `/api/profile/sessions` | 查询当前有效会话；请求头可传 `X-Refresh-Token` 标识当前会话 |
+| DELETE | `/api/profile/sessions/{id}` | 撤销指定其他设备会话 |
+| DELETE | `/api/profile/sessions/others` | 退出其他设备 |
+| DELETE | `/api/profile/sessions/all` | 退出全部设备并重新登录 |
+| GET | `/api/profile/login-history` | 查询我的登录历史 |
+| GET | `/api/profile/preferences` | 获取个人偏好 |
+| PUT | `/api/profile/preferences` | 更新个人偏好 |
+
+### 更新个人偏好
+
+```json
+{
+  "tableDensity": "DEFAULT",
+  "defaultHomePath": "/home",
+  "themeMode": "SYSTEM",
+  "pageSize": 20
+}
+```
+
+### 会话管理说明
+
+- 单设备撤销不能撤销当前会话。
+- 修改密码和退出全部设备成功后，前端必须跳转登录页。
+- 会话接口不会返回 Refresh Token 原文。
 
 ---
 
@@ -2079,4 +2119,4 @@ const products = await productsRes.json();
 
 ---
 
-**最后更新：2026-05-30**
+**最后更新：2026-06-02**

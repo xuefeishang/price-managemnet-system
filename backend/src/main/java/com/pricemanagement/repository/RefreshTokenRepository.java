@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
 
 /**
  * 刷新令牌 Repository
@@ -19,6 +20,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
      * 根据令牌查找
      */
     Optional<RefreshToken> findByToken(String token);
+
+    List<RefreshToken> findByUserIdAndRevokedFalseAndExpiryDateAfterOrderByCreatedTimeDesc(Long userId, java.time.LocalDateTime now);
 
     /**
      * 根据用户ID查找有效令牌
@@ -39,6 +42,10 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     @Modifying
     @Query("UPDATE RefreshToken rt SET rt.revoked = true WHERE rt.userId = :userId")
     void revokeAllByUserId(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("UPDATE RefreshToken rt SET rt.revoked = true WHERE rt.userId = :userId AND rt.token <> :token")
+    void revokeOtherByUserId(@Param("userId") Long userId, @Param("token") String token);
 
     /**
      * 删除过期令牌

@@ -54,7 +54,11 @@ export const useUserStore = defineStore('user', () => {
     wechatOpenid: userData.wechatOpenid,
     wechatNickname: userData.wechatNickname,
     wechatAvatar: userData.wechatAvatar,
-    lastLoginTime: userData.lastLoginTime
+    lastLoginTime: userData.lastLoginTime,
+    lastLoginIp: userData.lastLoginIp,
+    loginCount: userData.loginCount,
+    passwordUpdatedTime: userData.passwordUpdatedTime,
+    isLocked: userData.locked ?? userData.isLocked
   })
 
   // ==================== 登录/登出 ====================

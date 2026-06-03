@@ -44,4 +44,15 @@ public class SecurityProperties {
      * 生产环境应配置为具体域名，禁止使用通配符
      */
     private List<String> corsAllowedOrigins = new ArrayList<>();
+
+    private PasswordPolicy passwordPolicy = new PasswordPolicy();
+
+    @Data
+    public static class PasswordPolicy {
+        private int minLength = 8;
+        private int maxLength = 32;
+        private boolean requireLetter = true;
+        private boolean requireDigit = true;
+        private boolean disallowWhitespace = true;
+    }
 }

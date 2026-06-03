@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,7 +27,6 @@ public class UserController {
     private final UserService userService;
     private final PermissionService permissionService;
     private final OperationLogHelper operationLogHelper;
-    private final PasswordEncoder passwordEncoder;
     private final SecurityProperties securityProperties;
 
     /**
@@ -174,8 +172,7 @@ public class UserController {
             String password = newPassword != null && !newPassword.isEmpty()
                     ? newPassword
                     : securityProperties.getDefaultUserPassword();
-            user.setPassword(passwordEncoder.encode(password));
-            userService.updateUser(id, user);
+            userService.resetPassword(id, password);
             operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.UPDATE,
                     "重置用户密码：" + user.getUsername(), "用户ID：" + id);
             return Result.success("密码重置成功");

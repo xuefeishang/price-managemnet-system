@@ -17,6 +17,8 @@ declare module 'vue' {
     ColorSchemePanel: typeof import('./components/style-settings/ColorSchemePanel.vue')['default']
     ContextSubNav: typeof import('./components/layout/ContextSubNav.vue')['default']
     DeptTreeNode: typeof import('./components/DeptTreeNode.vue')['default']
+    DictCategoryHelpPanel: typeof import('./components/dict/DictCategoryHelpPanel.vue')['default']
+    DictCategoryPreview: typeof import('./components/dict/DictCategoryPreview.vue')['default']
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     HomeExperiencePanel: typeof import('./components/style-settings/HomeExperiencePanel.vue')['default']
     HomePreview: typeof import('./components/style-settings/preview/HomePreview.vue')['default']
@@ -45,8 +47,6 @@ declare module 'vue' {
     TypographyPanel: typeof import('./components/style-settings/TypographyPanel.vue')['default']
     TypographyPreview: typeof import('./components/style-settings/preview/TypographyPreview.vue')['default']
     VanPopup: typeof import('vant/es')['Popup']
-    VanStepper: typeof import('vant/es')['Stepper']
-    VanSwitch: typeof import('vant/es')['Switch']
     VersionComparePreview: typeof import('./components/style-settings/preview/VersionComparePreview.vue')['default']
   }
 }

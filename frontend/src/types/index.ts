@@ -62,6 +62,7 @@ export interface User {
   lastLoginTime?: string
   lastLoginIp?: string
   loginCount?: number
+  passwordUpdatedTime?: string
   isLocked?: boolean
   lockedTime?: string
   createdTime: string

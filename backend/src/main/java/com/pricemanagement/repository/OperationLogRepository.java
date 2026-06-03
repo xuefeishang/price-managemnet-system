@@ -16,6 +16,24 @@ public interface OperationLogRepository extends JpaRepository<OperationLog, Long
 
     Page<OperationLog> findByUserId(Long userId, Pageable pageable);
 
+    @Query("SELECT o FROM OperationLog o WHERE " +
+            "(o.userId = :userId OR (o.userId IS NULL AND o.username = :username)) AND " +
+            "(:operationType IS NULL OR o.operationType = :operationType) AND " +
+            "(:operationModule IS NULL OR o.operationModule = :operationModule) AND " +
+            "(:keyword IS NULL OR o.operationDesc LIKE %:keyword% OR o.requestUrl LIKE %:keyword%) AND " +
+            "(:startTime IS NULL OR o.operationTime >= :startTime) AND " +
+            "(:endTime IS NULL OR o.operationTime <= :endTime) " +
+            "ORDER BY o.operationTime DESC")
+    Page<OperationLog> findMine(
+            @Param("userId") Long userId,
+            @Param("username") String username,
+            @Param("operationType") String operationType,
+            @Param("operationModule") String operationModule,
+            @Param("keyword") String keyword,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime,
+            Pageable pageable);
+
     Page<OperationLog> findByOperationType(String operationType, Pageable pageable);
 
     Page<OperationLog> findByOperationModule(String operationType, Pageable pageable);

@@ -13,7 +13,7 @@
 本方案将新增独立的 API Key + HMAC 签名认证机制。内部用户仍使用现有 JWT；外部系统只能调用独立隔离的 `/api/external/v1/**` 接口，不能直接调用现有内部 `/api/**` 业务接口。实施分为两个阶段：
 
 - **阶段一：安全闭环上线**。交付可生产使用的 API Key 管理、签名认证、权限、限流、日志和基础页面。
-- **阶段二：企业级增强**。交付密钥轮换、监控仪表盘、告警、调试台、SDK 示例和审批治理。
+- **阶段二：企业级增强**。在阶段一安全闭环和“可复制调用示例”增强基础上，交付密钥轮换、监控仪表盘、告警治理、调试控制台、示例资产治理、敏感操作审批和性能治理。
 
 ## 总体判断
 
@@ -36,7 +36,7 @@
 5. 外部认证和现有 JWT 认证并存，互不破坏。
 6. 管理端可创建、查看、编辑、启用、禁用、吊销 API Key。
 7. 所有编码显示名称使用字典服务，前端禁止硬编码中文标签。
-8. 阶段二支持密钥轮换、监控告警、调试控制台、SDK 示例和敏感操作审批。
+8. 阶段二支持密钥轮换、监控告警、调试控制台、示例资产治理和敏感操作审批。
 
 ## Non-Goals
 
@@ -105,17 +105,19 @@
 
 目标：完善企业级运维治理、开发者体验和安全生命周期管理。
 
+阶段二基于阶段一及后续增强继续推进。已由 `docs/plan/api-key-copyable-examples-feature.md` 完成或规划的一次性可运行示例、端点结构化 schema、Node.js / Java 25 / Postman / PowerShell / curl 代码模板，不再作为阶段二的重复建设项；阶段二只做资产化、下载、版本治理和调试台复用。
+
 阶段二包含：
 
-- 密钥轮换：新旧密钥过渡期、旧密钥自动降级和吊销。
-- 监控仪表盘：调用量、成功率、响应时间、TOP 接口、TOP 调用方。
-- 告警配置：认证失败、限流触发、成功率下降、响应超时、密钥过期。
-- 通知渠道：站内通知、Webhook；邮件按现有告警基础能力评估后接入。
-- 调试控制台：本地输入 Secret 参与签名，不从服务端读取或保存 rawSecret。
-- SDK 示例：JavaScript、Java、curl。
-- 敏感操作审批：生产环境密钥创建、吊销、权限扩大、白名单放宽可接入现有审批模块。
-- 日志归档策略：按月归档或定期清理。
-- 性能与压测报告。
+- 密钥轮换：新旧密钥过渡期、旧密钥自动降级为 `DEPRECATED`，确认无调用后吊销。
+- 监控仪表盘：调用量、成功率、响应时间、TOP 接口、TOP 调用方、异常趋势和服务开关状态。
+- 告警配置：认证失败、限流触发、成功率下降、响应超时、密钥过期、服务暂停超时。
+- 通知渠道：站内通知、Webhook，并复用现有钉钉/企业微信告警能力；邮件按现有告警基础能力评估后接入。
+- 调试控制台：复用前端签名模板，本地输入 Secret 参与签名，不从服务端读取或保存 rawSecret。
+- 示例资产治理：把阶段一增强中的可复制示例沉淀为可下载示例包、版本化测试向量和端点契约检查，不发布重型 SDK 包。
+- 敏感操作审批：生产环境密钥创建、轮换、吊销、权限扩大、白名单放宽、延长过期时间接入现有审批模块。
+- 日志归档与清理策略：按月归档、保留期清理、冷热数据分层查询。
+- 性能治理与压测报告：签名验签、日志写入、统计查询、调试台调用链路均需有压力边界。
 
 ## 阶段一详细设计
 
@@ -383,7 +385,7 @@ e3b0c44298fc1c149afbf4c8996fb924...
 | body | 空字符串 |
 | bodySha256Hex | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 
-上线前必须用 Java 后端工具类和 JavaScript SDK 示例对同一测试向量生成一致签名，并把最终 `X-Signature` 写入 `docs/dev/API调用手册.md`。
+上线前必须用 Java 后端工具类和 JavaScript 示例对同一测试向量生成一致签名，并把最终 `X-Signature` 写入 `docs/dev/API调用手册.md`。
 
 ### 5. Secret 生命周期
 
@@ -663,36 +665,174 @@ WHERE NOT EXISTS (SELECT 1 FROM menu_item WHERE path = '/api-keys');
 
 ## 阶段二详细设计
 
-### 1. 密钥轮换
+### 0. 阶段二前置基线
 
-新增字段：
+阶段二启动前必须先确认阶段一及“可复制调用示例”增强已经形成以下基线：
 
-| 表 | 字段 | 说明 |
-|----|------|------|
-| sys_api_key | predecessor_id | 前任密钥 |
-| sys_api_key | successor_id | 后继密钥 |
-| sys_api_key | transition_end_time | 过渡期结束时间 |
+- `sys_external_api_endpoint` 已包含端点结构化示例字段、参数 schema、成功/失败示例和代码调用提示。
+- `frontend/src/utils/externalApiCodeExamples.ts` 已统一生成 Node.js、Java 25、Postman、PowerShell、curl 示例。
+- 创建成功弹窗只在前端内存中使用一次性 `appSecret`，不回传后端、不写入存储。
+- `docs/dev/API调用手册.md` 已记录签名测试向量，前端模板与后端签名工具生成一致。
+- `API_KEY_ENABLED` 部署级开关和运行时服务开关已经落地；阶段二监控和告警必须纳入这两个状态。
 
-状态扩展：
+阶段二不再重复实现基础代码示例，而是在此基础上做“治理化”：
+
+- 示例模板版本化。
+- 端点契约一致性检查。
+- 可下载示例包。
+- 调试控制台复用同一套签名和请求构造逻辑。
+- 文档和页面中的示例能力保持单一来源。
+
+### 1. 数据库迁移
+
+新增迁移文件：
+
+```text
+backend/src/main/resources/db/migration/V21__external_api_auth_phase2.sql
+```
+
+说明：
+
+- 当前项目已经使用 `V18__external_api_endpoint_docs.sql`、`V19__external_api_endpoint_code_examples.sql`、`V20__external_api_runtime_service_switch.sql`，阶段二迁移不得再使用原方案中的 `V18__external_api_auth_phase2.sql`。
+- 迁移只能新增字段、表、索引和字典项，不修改已执行历史迁移。
+
+#### sys_api_key 扩展字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| predecessor_id | BIGINT | 前任密钥 ID，新密钥由轮换产生时填写 |
+| successor_id | BIGINT | 后继密钥 ID，旧密钥进入过渡期时填写 |
+| transition_start_time | DATETIME | 轮换过渡开始时间 |
+| transition_end_time | DATETIME | 轮换过渡结束时间 |
+| rotation_reason | VARCHAR(500) | 轮换原因 |
+| last_rotation_time | DATETIME | 最近一次轮换时间 |
+
+索引：
+
+- `idx_api_key_predecessor(predecessor_id)`
+- `idx_api_key_successor(successor_id)`
+- `idx_api_key_transition_end(transition_end_time)`
+
+状态扩展写入 `api_key_status` 字典：
 
 | 状态 | 说明 |
 |------|------|
-| TRANSITION | 过渡期，新旧密钥同时有效 |
+| TRANSITION | 过渡期，旧密钥仍可调用，新密钥也可调用 |
 | DEPRECATED | 已弃用，仅保留审计，不再允许调用 |
+
+操作类型扩展写入 `api_key_operation` 字典：
+
+| 操作 | 说明 |
+|------|------|
+| ROTATE | 发起轮换 |
+| FINISH_ROTATION | 结束轮换 |
+| APPROVE_CHANGE | 审批通过后生效 |
+| REJECT_CHANGE | 审批拒绝 |
+
+#### sys_api_alert_config
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键 |
+| api_key_id | BIGINT | NULL 表示全局规则 |
+| alert_type | VARCHAR(50) | 字典 `api_alert_type` |
+| threshold | DECIMAL(10,2) | 阈值 |
+| window_minutes | INT | 检测窗口 |
+| notify_channels | TEXT | JSON 数组，字典 `api_notify_channel` |
+| webhook_url_cipher | TEXT | Webhook URL 加密存储 |
+| webhook_url_masked | VARCHAR(500) | 脱敏展示值 |
+| enabled | BOOLEAN | 是否启用 |
+| last_triggered_time | DATETIME | 最近触发时间 |
+| cooldown_minutes | INT | 告警冷却时间 |
+| created_by | BIGINT | 创建人 |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+| version | BIGINT | 乐观锁 |
+
+索引：
+
+- `idx_api_alert_key(api_key_id)`
+- `idx_api_alert_type(alert_type)`
+- `idx_api_alert_enabled(enabled)`
+
+#### sys_api_alert_event
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键 |
+| config_id | BIGINT | 告警配置 ID |
+| api_key_id | BIGINT | 命中的 API Key，可为空 |
+| alert_type | VARCHAR(50) | 告警类型 |
+| metric_value | DECIMAL(12,4) | 实际指标值 |
+| threshold | DECIMAL(10,2) | 阈值 |
+| window_start_time | DATETIME | 检测窗口开始 |
+| window_end_time | DATETIME | 检测窗口结束 |
+| notify_channels | TEXT | 实际通知渠道 |
+| notify_status | VARCHAR(30) | SUCCESS / FAILED / SKIPPED |
+| message | VARCHAR(1000) | 告警摘要 |
+| created_time | DATETIME | 创建时间 |
+
+#### sys_api_example_bundle
+
+用于管理可下载示例包版本，不保存真实 Secret。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键 |
+| bundle_version | VARCHAR(30) | 示例包版本，如 `v1.0.0` |
+| languages | TEXT | JSON 数组，如 `["node","java","powershell","curl","postman"]` |
+| signature_vector | TEXT | 当前测试向量 JSON |
+| endpoint_snapshot_hash | VARCHAR(64) | 端点 schema 快照 hash |
+| status | VARCHAR(20) | ACTIVE / INACTIVE |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### 2. 密钥轮换
+
+轮换目标：
+
+- 不要求外部调用方瞬时切换 Secret。
+- 新 Secret 仍只展示一次。
+- 旧 Secret 在过渡期内可用，过渡结束自动失效。
+- 轮换链路可审计、可手动结束、可审批。
 
 管理 API：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/api-keys/{id}/rotate` | 创建 successor，返回新 Secret 一次 |
-| PUT | `/api/api-keys/{id}/finish-rotation` | 手动结束过渡 |
+| POST | `/api/api-keys/{id}/rotate` | 发起轮换，创建 successor，返回新 Secret 一次 |
+| PUT | `/api/api-keys/{id}/finish-rotation` | 手动结束旧密钥过渡期 |
+| GET | `/api/api-keys/{id}/rotation-chain` | 查看密钥轮换链路 |
+
+轮换请求：
+
+```json
+{
+  "transitionDays": 7,
+  "reason": "供应商系统密钥定期轮换",
+  "copyPermissions": true,
+  "copyIpWhitelist": true,
+  "copyLimits": true
+}
+```
+
+轮换规则：
+
+- 只有 `ACTIVE` 和 `TRANSITION` 状态可发起轮换；`REVOKED`、`DEPRECATED` 不允许轮换。
+- 新密钥继承名称时追加“轮换版本”标识，避免列表中难以区分。
+- 新密钥默认复制旧密钥的权限、IP 白名单、环境、限流和过期时间，也允许管理员在轮换请求中收窄权限。
+- 旧密钥状态改为 `TRANSITION`，写入 `successor_id`、`transition_start_time`、`transition_end_time`。
+- 新密钥写入 `predecessor_id` 和 `last_rotation_time`，状态为 `ACTIVE`。
+- 旧密钥过渡期结束后自动改为 `DEPRECATED`；管理员确认无调用后可吊销。
+- 过渡期内调用日志按实际 `api_key_id` 记录，仪表盘支持按轮换链合并查看。
 
 定时任务：
 
-- 每 10 分钟扫描过渡期结束的旧密钥并吊销。
+- 每 10 分钟扫描过渡期结束的旧密钥并自动改为 `DEPRECATED`；确认无调用后由管理员或清理任务吊销。
 - 每天扫描即将过期密钥，生成提醒事件。
+- 每天扫描过渡期仍有旧密钥调用的情况，生成风险提醒。
 
-### 2. 监控仪表盘
+### 3. 监控仪表盘
 
 新增页面：
 
@@ -700,16 +840,31 @@ WHERE NOT EXISTS (SELECT 1 FROM menu_item WHERE path = '/api-keys');
 /api-dashboard
 ```
 
+菜单挂在「系统管理 / API授权管理」下：
+
+```text
+API授权管理
+├── 密钥管理
+├── 调用日志
+├── 监控仪表盘
+├── 告警配置
+└── 调试控制台
+```
+
 指标：
 
 - 今日调用量。
 - 成功率。
 - 平均响应时间。
+- P95 响应时间。
 - 认证失败次数。
 - 限流触发次数。
-- TOP5 调用方。
-- TOP5 接口。
+- 服务状态：部署级开关、运行时开关、最近暂停/恢复时间。
+- TOP10 调用方。
+- TOP10 接口。
+- TOP10 失败原因。
 - 近 24 小时调用趋势。
+- 按 API Key、权限编码、端点、认证结果、状态码、时间窗口筛选。
 
 统计 API：
 
@@ -719,23 +874,16 @@ WHERE NOT EXISTS (SELECT 1 FROM menu_item WHERE path = '/api-keys');
 | GET | `/api/api-dashboard/trend` | 趋势 |
 | GET | `/api/api-dashboard/top-keys` | TOP 调用方 |
 | GET | `/api/api-dashboard/top-endpoints` | TOP 接口 |
+| GET | `/api/api-dashboard/top-errors` | TOP 失败原因 |
+| GET | `/api/api-dashboard/key/{id}/summary` | 单个 API Key 概览 |
 
-### 3. 告警配置
+数据来源：
 
-新增表 `sys_api_alert_config`：
+- 阶段二先基于 `sys_api_call_log` 聚合查询，避免引入新的时序系统。
+- 如果日志量达到慢查询阈值，再增加按小时汇总表 `sys_api_call_metric_hourly`。
+- 统计接口不得反查或返回 Secret。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT | 主键 |
-| api_key_id | BIGINT | NULL 表示全局 |
-| alert_type | VARCHAR(50) | 字典 `api_alert_type` |
-| threshold | DECIMAL(10,2) | 阈值 |
-| window_minutes | INT | 检测窗口 |
-| notify_channels | TEXT | JSON 数组 |
-| webhook_url | VARCHAR(500) | Webhook 地址，加密或脱敏展示 |
-| enabled | BOOLEAN | 是否启用 |
-| created_time | DATETIME | 创建时间 |
-| updated_time | DATETIME | 更新时间 |
+### 4. 告警配置与通知
 
 告警类型：
 
@@ -746,52 +894,164 @@ WHERE NOT EXISTS (SELECT 1 FROM menu_item WHERE path = '/api-keys');
 | RATE_LIMIT | 限流触发次数高于阈值 |
 | AUTH_FAIL | 认证失败次数高于阈值 |
 | EXPIRE_WARNING | 密钥将在 N 天内过期 |
+| SERVICE_DISABLED | 运行时服务暂停超过阈值 |
+| OLD_KEY_USED | 轮换过渡期内旧密钥仍被调用 |
 
-### 4. 调试控制台
+通知渠道：
+
+| 渠道 | 说明 |
+|------|------|
+| IN_APP | 站内通知或告警事件列表 |
+| WEBHOOK | 通用 Webhook |
+| DINGTALK | 复用现有钉钉告警服务 |
+| WECHAT | 复用现有企业微信告警服务 |
+
+管理 API：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/api-alert-configs` | 分页查询告警规则 |
+| POST | `/api/api-alert-configs` | 创建告警规则 |
+| GET | `/api/api-alert-configs/{id}` | 告警规则详情 |
+| PUT | `/api/api-alert-configs/{id}` | 更新告警规则 |
+| PUT | `/api/api-alert-configs/{id}/enable` | 启用告警 |
+| PUT | `/api/api-alert-configs/{id}/disable` | 停用告警 |
+| DELETE | `/api/api-alert-configs/{id}` | 删除告警规则 |
+| GET | `/api/api-alert-events` | 查询告警事件 |
+| POST | `/api/api-alert-configs/{id}/test` | 发送测试通知 |
+
+安全要求：
+
+- `webhook_url` 必须加密存储或复用现有敏感配置处理方式，列表和详情只返回脱敏值。
+- 告警事件中不得包含 `appSecret`、完整签名、完整请求体。
+- 高频告警必须支持冷却时间，避免通知刷屏。
+- 告警检测失败不得影响外部 API 调用。
+
+### 5. 调试控制台
 
 原则：
 
 - 调试台不读取、不保存、不回显历史 Secret。
 - 用户在本地输入 Secret，前端仅在当前内存中生成签名。
 - 离开页面或刷新后清空 Secret。
-- 请求路径只能选择已授权接口或手动输入 `/api/**`。
+- 请求路径默认只能选择 `sys_external_api_endpoint` 中已启用的 `/api/external/v1/**` 端点；手动输入也必须限制在 `/api/external/v1/**`。
 - 调试请求仍走真实后端认证和日志。
+- 调试台复用 `frontend/src/utils/externalApiCodeExamples.ts` 的路径变量替换、query 排序、body 序列化和签名规则，避免出现“示例能跑、调试台不能跑”的算法分叉。
 
-### 5. SDK 示例
+页面能力：
 
-阶段二在 `docs/dev/API调用手册.md` 增加：
+- 选择 API Key，仅带出 `appId`、权限、白名单、限流等非敏感信息。
+- 用户手动输入 `appSecret`，输入框支持临时显示/隐藏，离开页面清空。
+- 选择端点后自动填充 path 参数、query 示例、body 示例。
+- 展示 canonical string、body hash、签名、请求头和最终 URL，便于联调排错。
+- 支持发送真实请求并展示响应状态码、响应头、响应体和调用日志 ID。
+- 支持“一键复制 Node.js / Java 25 / PowerShell / curl / Postman 示例”，示例来自同一工具模块。
 
-- 签名协议说明。
-- curl 示例。
-- JavaScript 示例。
-- Java 示例。
-- 常见错误码和排查方式。
-- 外部接口统一前缀 `/api/external/v1` 和版本升级说明。
+调试 API：
 
-可选新增目录：
+调试请求可以直接从浏览器调用外部真实接口；如因 CORS、下载流或审计需要走后端代理，则新增内部管理接口：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/api-debug/execute` | 由管理端代理发送外部 API 调试请求 |
+
+代理约束：
+
+- 仅 ADMIN 可用。
+- `appSecret` 只参与本次请求，不落库、不写日志、不出现在异常栈。
+- 代理只允许访问本系统 `/api/external/v1/**`，禁止任意 URL 转发。
+- 调试请求仍记录 `sys_api_call_log`，并在日志中标识 `debug=true`。
+
+### 6. 示例资产治理
+
+阶段一增强已经完成页面内可复制示例。阶段二不发布完整 SDK 包，优先提供轻量、可审计、可版本化的示例资产。
+
+新增目录：
 
 ```text
 docs/examples/external-api/
-├── curl.md
-├── javascript-signature.js
-└── java-signature.java
+├── README.md
+├── node-example.mjs
+├── java-25-example.java
+├── powershell-example.ps1
+├── curl-openssl-example.sh
+├── postman-pre-request-script.js
+└── signature-test-vector.json
 ```
 
-### 6. 审批流接入
+资产要求：
+
+- 示例文件只包含占位符，不包含真实 `appSecret`。
+- `signature-test-vector.json` 与后端 `ApiSignatureUtilTests`、前端 `SIGNATURE_TEST_VECTOR` 一致。
+- 示例包版本写入 `sys_api_example_bundle`，页面显示当前示例版本。
+- 后端提供只读接口下载示例包或单语言示例，返回内容由前端模板或服务端模板生成，但不得要求用户上传真实 Secret。
+- 端点 schema 变更后，必须重新计算 `endpoint_snapshot_hash`，提示管理员更新示例包。
+
+管理 API：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/api-examples/bundles/current` | 获取当前示例包元数据 |
+| GET | `/api/api-examples/download?language=node` | 下载指定语言占位符示例 |
+| GET | `/api/api-examples/signature-vector` | 获取签名测试向量 |
+| GET | `/api/api-examples/contract-check` | 检查端点 schema、文档、示例是否一致 |
+
+### 7. 审批流接入
 
 接入范围：
 
 - 生产环境创建 API Key。
+- 生产环境发起密钥轮换。
 - 权限扩大。
-- IP 白名单从有限制改为无限制。
+- IP 白名单从有限制改为无限制，或新增宽泛网段。
 - 吊销密钥。
 - 延长过期时间。
+- 提高分钟限流或日限额。
 
 审批通过前：
 
 - 变更写入审批请求，不直接生效。
-- 审批通过后由服务层执行实际变更。
+- 审批通过后由 `ApiKeyService` 执行实际变更。
 - 操作日志记录申请人、审批人、变更前后 diff。
+- 被审批变更不得包含明文 Secret；密钥创建或轮换的 Secret 只能在审批通过并真正创建成功后展示一次。
+
+审批识别建议：
+
+- 复用现有审批模块，新增业务类型 `API_KEY_CHANGE`。
+- 审批请求数据使用 JSON 记录目标密钥、变更类型、变更前后摘要。
+- 审批通过回调必须校验乐观锁，避免审批期间密钥状态已经变化。
+
+### 8. 日志归档与性能治理
+
+日志策略：
+
+- 阶段一保留同步最小日志和保留期清理。
+- 阶段二增加按月归档任务，可将超过保留期但仍需审计的数据迁移到归档表。
+- 调用日志页面默认查询热数据；需要查询归档数据时必须显式选择归档范围。
+- 认证失败日志继续保留采样和截断策略。
+
+可选归档表：
+
+```text
+sys_api_call_log_archive_yyyy_mm
+```
+
+性能目标：
+
+- 签名认证链路 P95 额外耗时小于 50ms。
+- 监控仪表盘默认 24 小时查询在 2 秒内返回。
+- 调用日志分页查询在常用筛选条件下 1.5 秒内返回。
+- 告警检测任务单次执行不阻塞外部 API 请求。
+- 调试台单次请求遵循外部 API 同等限流与日志规则。
+
+压测内容：
+
+- 正确签名高并发请求。
+- 错误签名和重放请求高频攻击模拟。
+- 单个 App ID 限流触发。
+- 多 App ID 并发调用隔离。
+- 调用日志大量写入和仪表盘聚合查询。
+- Redis 不可用时 Nonce / 限流内存降级。
 
 ## 迁移与一致性要求
 
@@ -850,7 +1110,7 @@ External Controller path <-> sys_external_api_endpoint.path_pattern
 - `docs/archive/项目完成总结.md`
 - `backend/src/main/resources/数据字典.md`
 
-阶段二完成后再次同步上述文档，并补充 SDK 示例和监控告警说明。
+阶段二完成后再次同步上述文档，并补充密钥轮换、监控告警、调试控制台、示例资产治理、审批治理和日志归档说明。
 
 ## 实施步骤
 
@@ -883,16 +1143,20 @@ External Controller path <-> sys_external_api_endpoint.path_pattern
 
 ### 阶段二实施步骤
 
-1. 创建 `V18__external_api_auth_phase2.sql`。
-2. 增加轮换字段、告警配置表、阶段二字典。
-3. 实现密钥轮换服务和定时任务。
-4. 实现仪表盘统计服务和 Controller。
-5. 实现告警检测服务、站内通知和 Webhook。
-6. 新增监控仪表盘、告警配置、调试控制台页面。
-7. 增加 SDK 示例和 API 调用手册签名章节。
-8. 接入审批流，覆盖生产环境敏感操作。
-9. 增加压测脚本和性能报告。
-10. 更新阶段二相关文档。
+1. 确认阶段一增强基线：`V19__external_api_endpoint_code_examples.sql`、`externalApiCodeExamples.ts`、签名测试向量和运行时服务开关已完成。
+2. 创建 `V21__external_api_auth_phase2.sql`，新增轮换字段、告警配置表、告警事件表、示例包元数据表和阶段二字典。
+3. 扩展 `ApiKey`、`ApiKeyDTO`、`ApiKeyService`，完成 Entity 注解与数据库字段一致性检查。
+4. 实现密钥轮换服务、轮换链路查询、过渡期结束定时任务和旧密钥仍被调用提醒。
+5. 实现 `ApiDashboardController` 和统计服务，覆盖摘要、趋势、TOP 调用方、TOP 接口、TOP 失败原因。
+6. 实现 `ApiAlertConfigController`、告警检测服务、告警事件查询、通知测试和冷却策略，复用现有钉钉/企业微信告警能力。
+7. 新增前端监控仪表盘页面，展示服务状态、核心指标、趋势图、TOP 列表和筛选条件。
+8. 新增前端告警配置页面，所有告警类型、通知渠道显示名使用字典服务。
+9. 新增调试控制台页面，复用 `externalApiCodeExamples.ts` 的签名和请求构造逻辑，Secret 只保存在页面内存。
+10. 增加示例资产治理：`docs/examples/external-api/`、示例包下载接口、签名测试向量接口、端点契约检查接口。
+11. 接入审批流，覆盖生产环境创建、轮换、吊销、权限扩大、白名单放宽、延长过期、提高限额等敏感操作。
+12. 增加日志归档任务、可选归档表策略和归档查询入口。
+13. 增加压测脚本和性能报告，覆盖签名认证、日志写入、统计查询、限流、Redis 降级和调试台。
+14. 更新 README、开发指南、IDEA 部署指南、项目设计文档、API 调用手册、UI 说明、完成总结和数据字典。
 
 ## Verification
 
@@ -965,12 +1229,21 @@ External Controller path <-> sys_external_api_endpoint.path_pattern
 
 - [ ] 密钥轮换过渡期新旧密钥均可用。
 - [ ] 过渡期结束后旧密钥自动失效。
+- [ ] 旧密钥过渡期仍被调用时可以产生提醒或告警事件。
+- [ ] 轮换链路可查询，调用日志可按实际密钥和轮换链合并查看。
 - [ ] 仪表盘指标与调用日志统计一致。
-- [ ] 成功率、响应时间、限流、认证失败、过期提醒告警可触发。
-- [ ] Webhook 通知正常发送。
+- [ ] 仪表盘展示部署级开关和运行时服务开关状态。
+- [ ] 成功率、响应时间、限流、认证失败、过期提醒、服务暂停、旧密钥调用告警可触发。
+- [ ] 站内通知、Webhook、钉钉或企业微信通知正常发送，并支持冷却时间。
 - [ ] 调试控制台不保存 Secret，刷新后 Secret 清空。
-- [ ] SDK 示例按文档可成功调用接口。
+- [ ] 调试控制台与可复制示例使用同一套签名规则，同一测试向量结果一致。
+- [ ] 调试控制台只允许访问 `/api/external/v1/**`，不能代理访问任意 URL。
+- [ ] 示例包下载内容只包含占位符，不包含真实 Secret。
+- [ ] 示例包签名测试向量与后端测试、前端 `SIGNATURE_TEST_VECTOR` 一致。
+- [ ] 端点 schema、API 调用手册和示例资产契约检查通过。
 - [ ] 生产环境敏感操作按审批流生效。
+- [ ] 审批通过前变更不生效，审批拒绝后不改变密钥状态和权限。
+- [ ] 日志归档任务可执行，热数据和归档数据查询边界清晰。
 - [ ] 压测报告满足预设性能指标。
 
 ## 风险与控制
@@ -979,7 +1252,7 @@ External Controller path <-> sys_external_api_endpoint.path_pattern
 |------|----------|
 | Secret 加密主密钥泄露 | 使用环境变量配置，生产定期轮换，禁止提交到仓库 |
 | Secret 主密钥格式错误导致无法解密 | 启动时校验 Base64、长度和版本；生产环境 fail fast |
-| 签名算法跨语言不一致 | 使用明确 canonical string，并提供测试向量和 SDK 示例 |
+| 签名算法跨语言不一致 | 使用明确 canonical string，并提供测试向量和示例资产 |
 | API Key 影响现有内部接口 | 第一阶段使用 `/api/external/v1/**` 独立接口和独立 SecurityFilterChain，不改内部 Controller |
 | API Key 通过认证后被权限拦截 | External Controller 使用 `hasAuthority('API_xxx')`，并用集成测试覆盖 |
 | 签名过滤器读取 body 导致业务接口 body 为空 | 使用可重复读取 request wrapper，并测试 POST/PUT JSON |
@@ -998,11 +1271,11 @@ External Controller path <-> sys_external_api_endpoint.path_pattern
 | 可执行性 | 两阶段拆分，阶段一可独立上线 |
 | 项目一致性 | 保持现有 JWT 和内部 Controller 行为，新增独立外部安全链、菜单、字典和文档 |
 | 可运维性 | 调用日志、操作日志、限流、实时授权生效、日志保留、阶段二监控告警 |
-| 可扩展性 | `/api/external/v1` 版本化、权限映射表、轮换机制、SDK 示例、后续可迁移 API 网关 |
+| 可扩展性 | `/api/external/v1` 版本化、权限映射表、轮换机制、示例资产治理、后续可迁移 API 网关 |
 | 用户体验 | 管理页面、一次性 Secret 展示、调试台和 API 手册 |
 
 ---
 
 *方案评分：9.5+*
 *执行方式：两阶段交付*
-*最后更新：2026-05-30*
+*最后更新：2026-06-02*
