@@ -1,10 +1,12 @@
 ---
 name: deploy
 preamble-tier: 1
-version: 1.0.0
+version: 1.2.0
 description: |
   将价格管理系统部署到生产环境（10.7.5.175）。包含代码提交、推送、
   生产环境同步、Docker镜像构建、容器启动的完整流程。
+  
+  **重要**：每次部署前会先调用 git-version skill 确保版本规范。
   
   使用场景：
   - "部署到生产环境"
@@ -22,6 +24,8 @@ triggers:
 allowed-tools:
   - Bash
   - Read
+  - Write
+  - Skill
   - AskUserQuestion
 ---
 
@@ -33,12 +37,31 @@ allowed-tools:
 
 ## 前置检查
 
-部署前必须确认以下条件：
+### 0.1 版本规范检查（必须）
+
+**在执行任何 Git 操作前，必须先调用 git-version skill：**
+
+```
+/git-version
+```
+
+git-version skill 会：
+1. 检查当前分支是否为 master
+2. 检查工作区是否干净
+3. 确认是否需要创建新版本 tag
+4. 更新 `docs/VERSIONS.md` 版本记录
+
+**如果 git-version skill 返回需要创建新版本，必须先完成版本发布流程再继续部署。**
+
+### 0.2 确认版本状态
 
 ```bash
 # 检查当前分支和修改状态
 git branch --show-current
 git status --short
+
+# 检查最新 tag
+git tag --sort=-creatordate | head -3
 ```
 
 如果输出显示有未提交修改，**必须先提交**再继续部署流程。
@@ -228,13 +251,26 @@ ssh root@10.7.5.175 "cd /opt/price-management-system && git fetch origin && git 
 
 ## 一键部署命令
 
-完整流程合并为一条命令：
+完整流程（包含版本规范检查）：
+
+### 步骤 1：版本规范检查
+
+```
+/git-version
+```
+
+### 步骤 2：本地提交推送
 
 ```bash
-# 本地提交推送
 git add . && git commit -m "<提交信息>" && git push origin master
 
-# 生产部署（等待推送完成后执行）
+# 如果创建了新 tag，推送 tag
+git push origin v<版本号>
+```
+
+### 步骤 3：生产部署
+
+```bash
 ssh root@10.7.5.175 "cd /opt/price-management-system && git checkout -- . && git clean -fd && git pull origin master && docker compose down && docker compose build --no-cache && docker compose up -d"
 ```
 
@@ -260,7 +296,10 @@ ssh root@10.7.5.175 "cd /opt/price-management-system && git checkout -- . && git
 ```
 ✅ 部署完成
 
+版本: v<版本号>
 Commit: <commit hash> - <提交信息>
+Tag: v<版本号> 已推送
+
 前端镜像: price-management-frontend:latest (重建)
 后端镜像: price-management-backend:latest (重建)
 
@@ -269,6 +308,8 @@ Commit: <commit hash> - <提交信息>
 - price-management-frontend: Up
 
 访问地址: http://10.7.5.175:32080（内网） / http://101.254.159.153:32080（外网）
+
+版本记录: docs/VERSIONS.md 已更新
 ```
 
 ---
@@ -284,8 +325,30 @@ Commit: <commit hash> - <提交信息>
 | Dockerfile.frontend | `/opt/price-management-system/` | 前端镜像构建 |
 | nginx.conf | `/opt/price-management-system/` | 前端 nginx 配置 |
 | .env | `/opt/price-management-system/` | 环境变量（敏感信息） |
+| VERSIONS.md | `docs/` | 版本发布记录 |
 
 ---
 
-*Skill 版本: 1.1.0*
-*最后更新: 2026-06-04 — 更新项目目录路径为 price-management-system，统一端口 32080*
+## 与 git-version skill 协作
+
+**调用顺序**：
+
+```
+1. /git-version  → 版本规范检查、创建 tag
+2. /deploy       → 生产环境部署
+```
+
+**git-version skill 职责**：
+- 版本号计算和命名
+- 创建 Git tag
+- 更新 VERSIONS.md
+
+**deploy skill 职责**：
+- 代码推送
+- 生产环境同步
+- Docker 部署
+
+---
+
+*Skill 版本: 1.2.0*
+*最后更新: 2026-06-04 — 增加 git-version skill 前置调用，规范化版本发布流程*
