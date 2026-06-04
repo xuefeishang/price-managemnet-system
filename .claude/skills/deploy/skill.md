@@ -94,7 +94,7 @@ git push origin master
 ### 2.1 SSH 连接并强制同步
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && git checkout -- . && git clean -fd && git pull origin master"
+ssh root@10.7.5.175 "cd /opt/price-management-system && git checkout -- . && git clean -fd && git pull origin master"
 ```
 
 **命令说明：**
@@ -105,7 +105,7 @@ ssh root@10.7.5.175 "cd /opt/price-management && git checkout -- . && git clean 
 ### 2.2 验证同步结果
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && git log --oneline -3"
+ssh root@10.7.5.175 "cd /opt/price-management-system && git log --oneline -3"
 ```
 
 确认最新 commit 已同步到生产环境。
@@ -130,25 +130,25 @@ ssh root@10.7.5.175 "cd /opt/price-management && git log --oneline -3"
 ### 3.2 全部重建部署
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && docker compose down && docker compose build --no-cache && docker compose up -d"
+ssh root@10.7.5.175 "cd /opt/price-management-system && docker compose down && docker compose build --no-cache && docker compose up -d"
 ```
 
 ### 3.3 仅前端重建
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && docker compose build --no-cache frontend && docker compose up -d frontend"
+ssh root@10.7.5.175 "cd /opt/price-management-system && docker compose build --no-cache frontend && docker compose up -d frontend"
 ```
 
 ### 3.4 仅后端重建
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && docker compose build --no-cache backend && docker compose up -d backend"
+ssh root@10.7.5.175 "cd /opt/price-management-system && docker compose build --no-cache backend && docker compose up -d backend"
 ```
 
 ### 3.5 快速重启（不重建）
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && docker compose restart"
+ssh root@10.7.5.175 "cd /opt/price-management-system && docker compose restart"
 ```
 
 ---
@@ -164,7 +164,7 @@ ssh root@10.7.5.175 "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports
 **预期结果：**
 - `price-management-backend` 状态为 `(healthy)`
 - `price-management-frontend` 状态为 `Up`
-- 端口：前端 80，后端 8080
+- 端口：前端 80（可选）、**32080（统一入口）**，后端 8080
 
 ### 4.2 等待健康检查通过
 
@@ -178,8 +178,8 @@ ssh root@10.7.5.175 "sleep 90 && docker ps --format '{{.Names}}\t{{.Status}}' | 
 ### 4.3 API 功能验证
 
 ```bash
-# 验证前端代理
-ssh root@10.7.5.175 "curl -s http://localhost:80/api/auth/captcha | head -c 200"
+# 验证统一入口（32080）
+ssh root@10.7.5.175 "curl -s http://localhost:32080/api/auth/captcha | head -c 200"
 
 # 验证后端直接访问
 ssh root@10.7.5.175 "curl -s http://localhost:8080/api/products?page=0&size=1"
@@ -221,7 +221,7 @@ ssh root@10.7.5.175 "docker logs price-management-backend 2>&1 | grep -i 'error\
 当常规同步失败时使用：
 
 ```bash
-ssh root@10.7.5.175 "cd /opt/price-management && git fetch origin && git reset --hard origin/master && git clean -fd && docker compose down && docker compose up -d"
+ssh root@10.7.5.175 "cd /opt/price-management-system && git fetch origin && git reset --hard origin/master && git clean -fd && docker compose down && docker compose up -d"
 ```
 
 ---
@@ -235,7 +235,7 @@ ssh root@10.7.5.175 "cd /opt/price-management && git fetch origin && git reset -
 git add . && git commit -m "<提交信息>" && git push origin master
 
 # 生产部署（等待推送完成后执行）
-ssh root@10.7.5.175 "cd /opt/price-management && git checkout -- . && git clean -fd && git pull origin master && docker compose down && docker compose build --no-cache && docker compose up -d"
+ssh root@10.7.5.175 "cd /opt/price-management-system && git checkout -- . && git clean -fd && git pull origin master && docker compose down && docker compose build --no-cache && docker compose up -d"
 ```
 
 ---
@@ -247,9 +247,9 @@ ssh root@10.7.5.175 "cd /opt/price-management && git checkout -- . && git clean 
 | 检查项 | 命令 | 预期 |
 |--------|------|------|
 | 容器状态 | `docker ps` | backend (healthy), frontend Up |
-| 前端首页 | `curl localhost:80/` | HTTP 200 |
-| 验证码 API | `curl localhost:80/api/auth/captcha` | JSON 响应 |
-| 登录页面 | 浏览器访问 `http://10.7.5.175` | 显示登录界面 |
+| 统一入口 | `curl localhost:32080/` | HTTP 200 |
+| 验证码 API | `curl localhost:32080/api/auth/captcha` | JSON 响应 |
+| 登录页面 | 浏览器访问 `http://10.7.5.175:32080` | 显示登录界面 |
 
 ---
 
@@ -268,7 +268,7 @@ Commit: <commit hash> - <提交信息>
 - price-management-backend: Up (healthy)
 - price-management-frontend: Up
 
-访问地址: http://10.7.5.175
+访问地址: http://10.7.5.175:32080（内网） / http://101.254.159.153:32080（外网）
 ```
 
 ---
@@ -279,13 +279,13 @@ Commit: <commit hash> - <提交信息>
 
 | 文件 | 路径 | 说明 |
 |------|------|------|
-| docker-compose.yml | `/opt/price-management/` | Docker Compose 配置 |
-| Dockerfile.backend | `/opt/price-management/` | 后端镜像构建 |
-| Dockerfile.frontend | `/opt/price-management/` | 前端镜像构建 |
-| nginx.conf | `/opt/price-management/` | 前端 nginx 配置 |
-| .env | `/opt/price-management/` | 环境变量（敏感信息） |
+| docker-compose.yml | `/opt/price-management-system/` | Docker Compose 配置 |
+| Dockerfile.backend | `/opt/price-management-system/` | 后端镜像构建 |
+| Dockerfile.frontend | `/opt/price-management-system/` | 前端镜像构建 |
+| nginx.conf | `/opt/price-management-system/` | 前端 nginx 配置 |
+| .env | `/opt/price-management-system/` | 环境变量（敏感信息） |
 
 ---
 
-*Skill 版本: 1.0.0*
-*最后更新: 2026-05-27*
+*Skill 版本: 1.1.0*
+*最后更新: 2026-06-04 — 更新项目目录路径为 price-management-system，统一端口 32080*
