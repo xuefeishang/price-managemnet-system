@@ -84,9 +84,8 @@
         </view>
       </view>
 
-      <!-- 操作按钮 -->
-      <view class="action-bar" v-if="userStore.canEdit">
-        <button class="edit-btn" @click="handleEdit">编辑</button>
+      <view class="pc-tip" v-if="userStore.canEdit">
+        <text>产品资料维护请前往 PC 端完成。</text>
       </view>
     </view>
 
@@ -136,10 +135,6 @@ const loadProduct = async () => {
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '-'
   return dateStr.split('T')[0]
-}
-
-const handleEdit = () => {
-  uni.navigateTo({ url: `/pages/products/edit?id=${productId.value}` })
 }
 
 const goBack = () => {
@@ -217,6 +212,17 @@ onMounted(() => {
 .info-status.INACTIVE {
   background: rgba(153, 153, 153, 0.1);
   color: #999999;
+}
+
+.pc-tip {
+  border: 1px solid #D7E7E7;
+  border-radius: 16rpx;
+  background: #F0FAFA;
+  color: #0D6E6E;
+  font-size: 26rpx;
+  line-height: 1.6;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
 }
 
 .info-row {

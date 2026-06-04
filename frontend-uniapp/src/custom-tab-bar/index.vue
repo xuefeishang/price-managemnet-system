@@ -1,11 +1,11 @@
 <template>
   <view class="custom-tabbar">
     <view
-      v-for="(item, index) in tabList"
-      :key="index"
+      v-for="item in tabList"
+      :key="item.key"
       class="tab-item"
-      :class="{ active: props.current === index }"
-      @click="switchTab(index)"
+      :class="{ active: currentPath === item.pagePath }"
+      @click="switchTab(item.pagePath)"
     >
       <text class="tab-icon">{{ item.icon }}</text>
       <text class="tab-text">{{ item.text }}</text>
@@ -14,20 +14,46 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
-  current?: number
-}>()
+import { computed, onMounted, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { useUserStore } from '@/store/useUserStore'
 
-const tabList = [
-  { pagePath: '/pages/home/index', text: '首页', icon: '🏠' },
-  { pagePath: '/pages/products/list', text: '产品', icon: '📦' },
-  { pagePath: '/pages/profile/index', text: '我的', icon: '👤' }
+const userStore = useUserStore()
+const currentPath = ref('')
+
+const baseTabs = [
+  { key: 'home', pagePath: '/pages/home/index', text: '首页', icon: '🏠' },
+  { key: 'history', pagePath: '/pages/history/index', text: '历史', icon: '📈' },
+  { key: 'profile', pagePath: '/pages/profile/index', text: '我的', icon: '👤' }
 ]
 
-const switchTab = (index: number) => {
-  if (props.current === index) return
-  uni.switchTab({ url: tabList[index].pagePath })
+const entryTab = { key: 'entry', pagePath: '/pages/price-maintenance/index', text: '录入', icon: '✍️' }
+
+const tabList = computed(() => {
+  const items = [...baseTabs]
+  if (userStore.canEdit) {
+    items.splice(2, 0, entryTab)
+  }
+  return items
+})
+
+const refreshCurrentPath = () => {
+  const pages = getCurrentPages()
+  const current = pages[pages.length - 1] as any
+  currentPath.value = current?.route ? `/${current.route}` : ''
 }
+
+const switchTab = (pagePath: string) => {
+  if (currentPath.value === pagePath) return
+  uni.switchTab({ url: pagePath })
+}
+
+onMounted(() => {
+  userStore.restoreSession()
+  refreshCurrentPath()
+})
+
+onShow(refreshCurrentPath)
 </script>
 
 <style scoped>

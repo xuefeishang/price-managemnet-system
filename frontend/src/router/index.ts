@@ -219,6 +219,12 @@ const router = createRouter({
           name: 'StyleSettings',
           component: () => import('../views/StyleSettings.vue'),
           meta: { title: '样式设置', adminOnly: true }
+        },
+        {
+          path: 'scheduled-tasks',
+          name: 'ScheduledTasks',
+          component: () => import('../views/ScheduledTasks.vue'),
+          meta: { title: '定时任务', adminOnly: true }
         }
       ]
     }

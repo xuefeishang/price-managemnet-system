@@ -11,32 +11,9 @@
       </view>
     </view>
 
-    <!-- 功能列表 -->
-    <view class="menu-list">
-      <view class="menu-item" @click="navigateTo('/pages/products/list')">
-        <text class="menu-label">产品列表</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="navigateTo('/pages/price-maintenance/index')" v-if="userStore.canEdit">
-        <text class="menu-label">价格维护</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="navigateTo('/pages-sub/basic/categories/index')" v-if="userStore.canEdit">
-        <text class="menu-label">分类管理</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="navigateTo('/pages-sub/basic/origins/index')" v-if="userStore.canEdit">
-        <text class="menu-label">产地管理</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="navigateTo('/pages-sub/basic/customers/index')" v-if="userStore.canEdit">
-        <text class="menu-label">客户管理</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="navigateTo('/pages-sub/approval/index')" v-if="userStore.canEdit">
-        <text class="menu-label">审批管理</text>
-        <text class="menu-arrow">></text>
-      </view>
+    <view class="pc-tip" v-if="userStore.canEdit">
+      <text class="pc-tip-title">完整运维请前往 PC 端</text>
+      <text class="pc-tip-desc">产品、分类、产地、客户、审批配置等复杂维护不在小程序端提供。</text>
     </view>
 
     <!-- 退出登录 -->
@@ -48,12 +25,15 @@
     <view class="version-info">
       <text class="version-text">版本 1.0.0</text>
     </view>
+
+    <CustomTabBar />
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
+import CustomTabBar from '@/custom-tab-bar/index.vue'
 
 const userStore = useUserStore()
 
@@ -63,14 +43,6 @@ const roleLabel = computed(() => {
   if (role === 'EDITOR') return '编辑者'
   return '查看者'
 })
-
-const navigateTo = (url: string) => {
-  if (url.includes('pages-sub')) {
-    uni.navigateTo({ url })
-  } else {
-    uni.switchTab({ url })
-  }
-}
 
 const handleLogout = () => {
   uni.showModal({
@@ -142,32 +114,27 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.menu-list {
-  background: #FFFFFF;
+.pc-tip {
+  border: 1px solid #D7E7E7;
   border-radius: 16rpx;
+  background: #F0FAFA;
+  padding: 24rpx;
   margin-bottom: 32rpx;
 }
 
-.menu-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 32rpx;
-  border-bottom: 1px solid #F5F5F5;
-}
-
-.menu-item:last-child {
-  border-bottom: none;
-}
-
-.menu-label {
-  font-size: 30rpx;
-  color: #1A1A1A;
-}
-
-.menu-arrow {
+.pc-tip-title {
+  display: block;
+  color: #0D6E6E;
   font-size: 28rpx;
-  color: #999999;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.pc-tip-desc {
+  display: block;
+  color: #64748B;
+  font-size: 24rpx;
+  line-height: 1.6;
 }
 
 .logout-section {

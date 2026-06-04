@@ -14,6 +14,12 @@
       }
     },
     {
+      "path": "pages/history/index",
+      "style": {
+        "navigationBarTitleText": "历史"
+      }
+    },
+    {
       "path": "pages/products/list",
       "style": {
         "navigationBarTitleText": "产品列表",
@@ -76,6 +82,7 @@
   ],
 
   "tabBar": {
+    "custom": true,
     "color": "#999999",
     "selectedColor": "#0D6E6E",
     "backgroundColor": "#FFFFFF",
@@ -87,8 +94,12 @@
         "text": "首页"
       },
       {
-        "pagePath": "pages/products/list",
-        "text": "产品"
+        "pagePath": "pages/history/index",
+        "text": "历史"
+      },
+      {
+        "pagePath": "pages/price-maintenance/index",
+        "text": "录入"
       },
       {
         "pagePath": "pages/profile/index",
@@ -107,7 +118,6 @@
   "easycom": {
     "autoscan": true,
     "custom": {
-      "mini-trend-chart": "@/components/mini-trend-chart/index",
       "price-trend-chart": "@/components/price-trend-chart/index"
     }
   }

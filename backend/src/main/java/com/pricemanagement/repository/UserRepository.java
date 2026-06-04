@@ -28,4 +28,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmployeeId(String employeeId);
 
     Optional<User> findByWechatOpenid(String wechatOpenid);
+
+    List<User> findByStatus(com.pricemanagement.constants.CommonStatus status);
 }

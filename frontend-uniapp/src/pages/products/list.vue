@@ -16,37 +16,6 @@
       </view>
     </view>
 
-    <!-- 快捷入口 -->
-    <view class="quick-section">
-      <text class="section-title">快捷入口</text>
-      <view class="quick-grid">
-        <view class="quick-item" @click="navigateTo('/pages/home/index')">
-          <view class="quick-icon home-icon">
-            <text>首页</text>
-          </view>
-          <text class="quick-label">价格概览</text>
-        </view>
-        <view class="quick-item" @click="navigateTo('/pages/price-maintenance/index')">
-          <view class="quick-icon price-icon">
-            <text>价格</text>
-          </view>
-          <text class="quick-label">价格维护</text>
-        </view>
-        <view class="quick-item" @click="navigateTo('/pages-sub/basic/categories/index')" v-if="userStore.canEdit">
-          <view class="quick-icon category-icon">
-            <text>分类</text>
-          </view>
-          <text class="quick-label">分类管理</text>
-        </view>
-        <view class="quick-item" @click="navigateTo('/pages-sub/approval/index')" v-if="userStore.canEdit">
-          <view class="quick-icon approval-icon">
-            <text>审批</text>
-          </view>
-          <text class="quick-label">审批管理</text>
-        </view>
-      </view>
-    </view>
-
     <!-- 最近产品 -->
     <view class="recent-section">
       <text class="section-title">最近产品</text>
@@ -70,13 +39,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useUserStore } from '@/store/useUserStore'
 import { getHomeProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { getCustomers } from '@/api/customers'
 import type { Product } from '@/types'
-
-const userStore = useUserStore()
 
 const stats = ref({
   productCount: 0,
@@ -89,7 +55,7 @@ const recentProducts = ref<Product[]>([])
 const navigateTo = (url: string) => {
   if (url.includes('pages-sub')) {
     uni.navigateTo({ url })
-  } else if (url.includes('home') || url.includes('products/list')) {
+  } else if (url.includes('home') || url.includes('price-maintenance')) {
     uni.switchTab({ url })
   } else {
     uni.navigateTo({ url })
@@ -167,67 +133,12 @@ onMounted(() => {
   color: #666666;
 }
 
-.quick-section {
-  background: #FFFFFF;
-  border-radius: 16rpx;
-  padding: 32rpx;
-  margin-bottom: 32rpx;
-}
-
 .section-title {
   display: block;
   font-size: 32rpx;
   font-weight: 600;
   color: #1A1A1A;
   margin-bottom: 24rpx;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24rpx;
-}
-
-.quick-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.quick-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12rpx;
-}
-
-.quick-icon text {
-  font-size: 24rpx;
-  color: #FFFFFF;
-}
-
-.home-icon {
-  background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
-}
-
-.price-icon {
-  background: linear-gradient(135deg, #FF6B6B 0%, #EE5A5A 100%);
-}
-
-.category-icon {
-  background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
-}
-
-.approval-icon {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.quick-label {
-  font-size: 24rpx;
-  color: #666666;
 }
 
 .recent-section {

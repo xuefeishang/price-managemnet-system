@@ -5,6 +5,7 @@ import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.SysDict;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.repository.SysDictRepository;
+import com.pricemanagement.repository.ScheduledTaskRepository;
 import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.service.MenuItemService;
 import com.pricemanagement.service.PriceService;
@@ -26,6 +27,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final MenuItemService menuItemService;
     private final SysDictRepository sysDictRepository;
+    private final ScheduledTaskRepository scheduledTaskRepository;
     private final PriceService priceService;
     private final SecurityProperties securityProperties;
 
@@ -111,6 +113,7 @@ public class DataInitializer implements CommandLineRunner {
             // 工作流类型 workflow_type
             dicts.add(createDict("workflow_type", "PRICE_CHANGE", "价格变更", null, 1, null));
             dicts.add(createDict("workflow_type", "PRODUCT_CREATE", "产品创建", null, 2, null));
+            dicts.add(createDict("workflow_type", "PRICE_PUBLISH", "价格发布审批", null, 3, "未来价格发布审批预留"));
 
             // 节点类型 node_type
             dicts.add(createDict("node_type", "APPROVER", "审批", null, 1, null));
@@ -155,6 +158,9 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("operation_module", "DICT", "字典管理", "dict", 4, null));
             dicts.add(createDict("operation_module", "MENU", "菜单管理", "menu", 5, null));
             dicts.add(createDict("operation_module", "SYSTEM", "系统管理", "system", 6, null));
+            dicts.add(createDict("operation_module", "价格维护", "价格维护", "price", 7, "价格草稿保存与发布"));
+            dicts.add(createDict("operation_module", "定时任务", "定时任务", "schedule", 8, "通用定时任务配置"));
+            dicts.add(createDict("operation_module", "通知中心", "通知中心", "notification", 9, "通知消息阅读与投递"));
 
             // 菜单图标 menu_icon
             dicts.add(createDict("menu_icon", "home", "首页", "home", 1, null));
@@ -242,6 +248,40 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("login_result", "SUCCESS", "成功", "#52c41a", 1, "登录结果"));
             dicts.add(createDict("login_result", "FAILED", "失败", "#ff4d4f", 2, "登录结果"));
 
+            // 价格发布与通知
+            dicts.add(createDict("price_draft_status", "DRAFT", "草稿", "#64748B", 1, "价格草稿状态"));
+            dicts.add(createDict("price_draft_status", "PENDING_APPROVAL", "待审批", "#F59E0B", 2, "未来审批预留状态"));
+            dicts.add(createDict("price_draft_status", "APPROVED", "已通过", "#10B981", 3, "未来审批预留状态"));
+            dicts.add(createDict("price_draft_status", "REJECTED", "已拒绝", "#EF4444", 4, "未来审批预留状态"));
+            dicts.add(createDict("price_draft_status", "PUBLISHING", "发布中", "#3B82F6", 5, "价格草稿状态"));
+            dicts.add(createDict("price_draft_status", "PUBLISHED", "已发布", "#10B981", 6, "价格草稿状态"));
+            dicts.add(createDict("price_draft_status", "CANCELLED", "已取消", "#9CA3AF", 7, "价格草稿状态"));
+            dicts.add(createDict("price_publish_type", "MANUAL", "手动发布", null, 1, "发布类型"));
+            dicts.add(createDict("price_publish_type", "SCHEDULED", "定时发布", null, 2, "发布类型"));
+            dicts.add(createDict("price_publish_status", "SUCCESS", "成功", "#10B981", 1, "发布结果"));
+            dicts.add(createDict("price_publish_status", "FAILED", "失败", "#EF4444", 2, "发布结果"));
+            dicts.add(createDict("price_publish_status", "PARTIAL", "部分成功", "#F59E0B", 3, "发布结果"));
+            dicts.add(createDict("notification_type", "PRICE_PUBLISHED", "价格已发布", null, 1, "通知类型"));
+            dicts.add(createDict("notification_channel", "IN_APP", "站内通知", null, 1, "通知渠道"));
+            dicts.add(createDict("notification_channel", "APP_PUSH", "App推送", null, 2, "通知渠道"));
+            dicts.add(createDict("notification_channel", "MINI_PROGRAM", "小程序订阅消息", null, 3, "通知渠道"));
+            dicts.add(createDict("notification_read_status", "UNREAD", "未读", "#F59E0B", 1, "阅读状态"));
+            dicts.add(createDict("notification_read_status", "READ", "已读", "#10B981", 2, "阅读状态"));
+            dicts.add(createDict("notification_delivery_status", "PENDING", "待投递", "#64748B", 1, "投递状态"));
+            dicts.add(createDict("notification_delivery_status", "SUCCESS", "成功", "#10B981", 2, "投递状态"));
+            dicts.add(createDict("notification_delivery_status", "FAILED", "失败", "#EF4444", 3, "投递状态"));
+            dicts.add(createDict("notification_delivery_status", "SKIPPED", "已跳过", "#9CA3AF", 4, "投递状态"));
+            dicts.add(createDict("scheduled_task_type", "PRICE_PUBLISH", "价格自动发布", null, 1, "定时任务类型"));
+            dicts.add(createDict("scheduled_task_type", "NOTIFICATION_RETRY", "通知重试", null, 2, "定时任务类型"));
+            dicts.add(createDict("scheduled_task_type", "DATA_CLEANUP", "数据清理", null, 3, "定时任务类型"));
+            dicts.add(createDict("scheduled_task_trigger_type", "SCHEDULED", "自动触发", null, 1, "任务触发方式"));
+            dicts.add(createDict("scheduled_task_trigger_type", "MANUAL_TEST", "手动测试", null, 2, "任务触发方式"));
+            dicts.add(createDict("scheduled_task_trigger_type", "MANUAL_RUN", "手动执行", null, 3, "任务触发方式"));
+            dicts.add(createDict("scheduled_task_run_status", "RUNNING", "执行中", "#3B82F6", 1, "任务执行状态"));
+            dicts.add(createDict("scheduled_task_run_status", "SUCCESS", "成功", "#10B981", 2, "任务执行状态"));
+            dicts.add(createDict("scheduled_task_run_status", "FAILED", "失败", "#EF4444", 3, "任务执行状态"));
+            dicts.add(createDict("scheduled_task_run_status", "SKIPPED", "已跳过", "#9CA3AF", 4, "任务执行状态"));
+
             // 保存到数据库（跳过已存在的）
             int created = 0;
             for (SysDict dict : dicts) {
@@ -251,9 +291,26 @@ public class DataInitializer implements CommandLineRunner {
                 }
             }
             log.info("Dict initialization completed, created {} new items (total {} defined)", created, dicts.size());
+            initScheduledTasks();
         } catch (Exception e) {
             log.error("Dict initialization failed: {}", e.getMessage(), e);
         }
+    }
+
+    private void initScheduledTasks() {
+        scheduledTaskRepository.findByTaskCode("PRICE_AUTO_PUBLISH").orElseGet(() -> {
+            com.pricemanagement.entity.ScheduledTask task = new com.pricemanagement.entity.ScheduledTask();
+            task.setTaskCode("PRICE_AUTO_PUBLISH");
+            task.setTaskName("价格自动发布");
+            task.setTaskType("PRICE_PUBLISH");
+            task.setCronExpression("0 0 9 * * ?");
+            task.setTimezone("Asia/Shanghai");
+            task.setEnabled(false);
+            task.setConfigJson("{\"dateOffsetDays\":-1,\"publishOnlyCompleteDraft\":false,\"notifyChannels\":[\"IN_APP\"],\"recipientRoles\":[\"ADMIN\",\"EDITOR\",\"VIEWER\"],\"systemUserId\":0,\"skipIfNoDraft\":true}");
+            task.setRemark("默认停用，需管理员确认后启用");
+            log.info("Created default scheduled task: PRICE_AUTO_PUBLISH");
+            return scheduledTaskRepository.save(task);
+        });
     }
 
     private SysDict createDict(String category, String dictKey, String dictValue, String extraValue, int sortOrder, String remark) {

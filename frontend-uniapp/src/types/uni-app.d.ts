@@ -6,6 +6,15 @@ declare module '*.vue' {
   export default component
 }
 
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL: string
+  readonly DEV: boolean
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 // 扩展 uni 类型
 declare namespace UniNamespace {
   interface Uni {

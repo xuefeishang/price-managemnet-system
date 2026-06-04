@@ -1,6 +1,6 @@
 # 矿产品价格管理系统 - 多端版本
 
-基于 uni-app Vue3 开发的多端应用，支持 H5、微信小程序、APP。
+基于 uni-app Vue3 开发的多端应用，支持 H5、微信小程序、APP。移动端以价格查看、历史追溯和轻量价格录入为主，产品、分类、产地、客户、审批、字典、用户等完整运维保留在 PC 端。
 
 ## 技术栈
 
@@ -53,8 +53,11 @@ npm run dev:app
 # 构建 H5
 npm run build:h5
 
-# 构建微信小程序
+# 构建微信小程序（生产环境，读取 .env.production）
 npm run build:mp-weixin
+
+# 构建微信小程序（本地联调，读取 .env.development）
+npm run build:mp-weixin:local
 
 # 构建 APP
 npm run build:app
@@ -66,13 +69,14 @@ npm run build:app
 
 | 页面 | 路径 | 说明 |
 |------|------|------|
-| 登录 | pages/login/index | 账号密码登录 + 微信登录 |
-| 首页 | pages/home/index | 价格概览 + 分类筛选 + 价格走势曲线 |
-| 产品列表 | pages/products/list | 统计卡片 + 快捷入口 |
+| 登录 | pages/login/index | 账号密码登录 + 服务器地址配置 |
+| 首页 | pages/home/index | 价格概览 + 分类筛选 + 产品列表 |
+| 历史 | pages/history/index | 只读历史价格查询 + 搜索 + 分类筛选 |
+| 价格录入 | pages/price-maintenance/index | 管理员/编辑者轻量价格录入 |
+| 产品列表 | pages/products/list | 只读产品辅助入口 + PC 运维提示 |
 | 产品详情 | pages/products/detail | 价格走势图（30/180/365天）+ 产品信息 |
-| 产品编辑 | pages/products/edit | 产品信息编辑 |
-| 价格维护 | pages/price-maintenance/index | 价格管理 + 产品规格显示 |
-| 个人中心 | pages/profile/index | 用户信息 + 功能入口 |
+| 产品编辑 | pages/products/edit | 历史保留页面，不作为移动端主入口 |
+| 个人中心 | pages/profile/index | 用户信息 + 账号操作 |
 
 ### 分包页面
 
@@ -83,13 +87,31 @@ npm run build:app
 | pages-sub/basic | customers | 客户管理 |
 | pages-sub/approval | index | 审批管理 |
 
+> 分包运维页面不作为移动端主导航入口。完整基础运维以 PC 端为准，小程序端仅在必要场景保留历史兼容路由。
+
+## 角色化导航
+
+| 角色 | 底部导航 | 说明 |
+|------|----------|------|
+| VIEWER | 首页 / 历史 / 我的 | 只读查看行情和历史价格 |
+| EDITOR | 首页 / 历史 / 录入 / 我的 | 可进行价格录入或补录 |
+| ADMIN | 首页 / 历史 / 录入 / 我的 | 移动端只做应急录入，完整运维回到 PC |
+
+移动端一级功能必须放在底部导航中，页面内部不再放跨功能快捷入口：`首页` 只展示行情概览，`历史` 只做历史查询，`录入` 只做价格录入，`我的` 只承载账号信息和退出登录。
+
 ## 功能特性
+
+### 登录
+- 沿用 PC 端品牌 Logo、系统名称和登录页副标题
+- 仅保留账号密码登录，取消微信一键登录
+- 登录卡片下方提供轻量“配置服务器地址”入口，可分别填写 IP 地址和端口号
+- 服务器配置保存到本地缓存，后续 API 请求优先使用本地配置；未配置时使用 `.env` 中的 `VITE_API_BASE_URL`
 
 ### 首页
 - 日期选择，查看历史价格
 - 分类筛选（横向滚动标签 + 滚动指示箭头）
 - 重点关注指标卡片（左右分栏：产品信息 + 价格/价差）
-- 产品列表网格布局（每行两列）
+- 产品列表展示当日售价、昨日售价和较昨日
 - 价格涨跌趋势标识（↑/↓ + 差值）
 - 继承价格显示（最后一次维护价格）
 
@@ -100,23 +122,19 @@ npm run build:app
 - 销售价 + 生效日期显示
 
 ### 价格维护
-- 产品规格列显示
-- 预算价/昨日价/月均价参考
+- 面向 ADMIN/EDITOR 的轻量价格录入
+- 默认昨日日期，便于次日补录和复盘
+- 支持搜索、分类筛选、录入进度统计
+- 展示预算价、昨日价、较昨日、月均价参考
+- 保存时只提交发生变化的价格行
+
+### 历史
+- 面向所有角色的只读历史价格查询
+- 支持日期选择、产品搜索、分类筛选
+- 展示当日售价、昨日售价、较昨日、月均价
+- 点击产品可进入详情查看趋势
 
 ## 组件说明
-
-### mini-trend-chart
-迷你价格走势图组件，用于首页产品卡片。
-
-```vue
-<mini-trend-chart :productId="1" :days="30" :width="160" :height="40" />
-```
-
-Props:
-- `productId`: 产品ID
-- `days`: 天数（默认30）
-- `width`: 宽度（默认120）
-- `height`: 高度（默认40）
 
 ### price-trend-chart
 详情页价格走势图组件，支持时间范围切换。
@@ -141,6 +159,7 @@ POST /api/auth/wechat-login
 ## 注意事项
 
 1. 微信小程序 AppID 需要在 `manifest.json` 中配置（当前：`wxe6ae2d447abb057e`）
-2. TabBar 使用原生配置，字体大小 12px
-3. 生产环境 API 地址需要在 `.env.production` 中配置
+2. TabBar 使用自定义配置，根据角色展示 首页/历史/录入/我的
+3. 默认 API 地址通过 `.env.production` / `.env.development` 配置；登录页“配置服务器地址”可在本机调试或内网部署时覆盖为指定 IP 与端口
 4. 图表使用 Canvas 2D API，兼容小程序环境
+5. 产品、分类、产地、客户、审批、字典、用户等完整运维在 PC 端完成

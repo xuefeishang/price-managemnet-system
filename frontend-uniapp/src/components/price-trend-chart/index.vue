@@ -131,7 +131,7 @@ const drawChart = () => {
   // Canvas 2D API
   const query = uni.createSelectorQuery().in(instance)
   query.select(`#${canvasId}`)
-    .fields({ node: true, size: true })
+    .fields({ node: true, size: true }, () => {})
     .exec((res) => {
       if (!res || !res[0] || !res[0].node) {
         console.warn('Canvas node not found')

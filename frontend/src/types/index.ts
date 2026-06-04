@@ -156,6 +156,7 @@ export interface Product {
 // 价格类型
 export interface Price {
   id: number
+  version?: number
   productId: number
   product?: Product
   originalPrice?: number
@@ -242,6 +243,115 @@ export interface PageResponse<T> {
   size: number
   first: boolean
   last: boolean
+}
+
+export type PriceDraftStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'PUBLISHING' | 'PUBLISHED' | 'CANCELLED'
+export type PricePublishStatus = 'SUCCESS' | 'FAILED' | 'PARTIAL'
+
+export interface PriceDraftItem {
+  id?: number
+  batchId?: number
+  productId: number
+  basePriceId?: number
+  basePriceVersion?: number
+  originalPrice?: number
+  currentPrice: number
+  costPrice?: number
+  budgetPrice?: number
+  effectiveDate?: string
+  expiryDate?: string
+  unit?: string
+  priceSpec?: string
+  itemStatus?: string
+  lastModifiedBy?: number
+  publishedPriceId?: number
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface PriceDraftBatch {
+  id: number
+  version?: number
+  effectiveDate: string
+  status: PriceDraftStatus
+  sourceType?: 'MANUAL' | 'SCHEDULED'
+  itemCount?: number
+  savedItemCount?: number
+  lastModifiedBy?: number
+  publishedTime?: string
+  publishedBy?: number
+  createdBy?: number
+  createdTime?: string
+  updatedTime?: string
+  items: PriceDraftItem[]
+}
+
+export interface PriceDraftSaveRequest {
+  batchId?: number
+  batchVersion?: number
+  effectiveDate: string
+  items: PriceDraftItem[]
+}
+
+export interface PricePublishResult {
+  batchId: number
+  publishLogId?: number
+  status: PricePublishStatus
+  batchStatus: PriceDraftStatus
+  successCount: number
+  failCount: number
+  notificationMessageId?: number
+  message?: string
+}
+
+export interface ScheduledTask {
+  id?: number
+  version?: number
+  taskCode: string
+  taskName: string
+  taskType: string
+  cronExpression: string
+  timezone: string
+  enabled: boolean
+  configJson?: string
+  lastRunTime?: string
+  nextRunTime?: string
+  lastRunStatus?: string
+  createdBy?: number
+  remark?: string
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface ScheduledTaskLog {
+  id: number
+  taskId: number
+  taskCode: string
+  scheduledTime?: string
+  triggerType: string
+  status: string
+  startedTime?: string
+  finishedTime?: string
+  durationMs?: number
+  businessType?: string
+  businessId?: number
+  message?: string
+  errorStack?: string
+  createdTime: string
+}
+
+export interface NotificationMessage {
+  id: number
+  messageId: number
+  type: string
+  title: string
+  content?: string
+  businessType?: string
+  businessId?: number
+  channels?: string
+  readStatus: 'UNREAD' | 'READ'
+  readTime?: string
+  createdTime?: string
 }
 
 // 日常价格查询行

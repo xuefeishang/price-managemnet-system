@@ -225,7 +225,8 @@ public class MenuItemService {
             createMenuItem(systemMgmt, "菜单配置", "/menu-config", "menu", 2, true, toJsonRoles(User.Role.ADMIN));
             createMenuItem(systemMgmt, "日志管理", "/operation-log", "log", 3, true, toJsonRoles(User.Role.ADMIN));
             createMenuItem(systemMgmt, "审批流配置", "/approval-config", "workflow", 4, true, toJsonRoles(User.Role.ADMIN));
-            createMenuItem(systemMgmt, "样式设置", "/style-settings", "palette", 5, true, toJsonRoles(User.Role.ADMIN));
+            createMenuItem(systemMgmt, "定时任务", "/scheduled-tasks", "clock", 5, true, toJsonRoles(User.Role.ADMIN));
+            createMenuItem(systemMgmt, "样式设置", "/style-settings", "palette", 6, true, toJsonRoles(User.Role.ADMIN));
 
             // Create child menus under 基础运维 - 审批管理
             createMenuItem(basicMgmt, "审批管理", "/approval", "check-circle", 4, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
@@ -271,6 +272,28 @@ public class MenuItemService {
         }
 
         log.info("Normalized price query menu");
+        ensureMenu("/scheduled-tasks", "定时任务", "clock", 5, toJsonRoles(User.Role.ADMIN));
+    }
+
+    private void ensureMenu(String path, String name, String icon, int sortOrder, String roles) {
+        MenuItem systemMgmt = menuItemRepository.findAll().stream()
+                .filter(menu -> menu.getParentId() == null && "系统管理".equals(menu.getName()))
+                .findFirst()
+                .orElseGet(() -> createMenuItem(null, "系统管理", null, "settings", 4, true, toJsonRoles(User.Role.ADMIN)));
+        List<MenuItem> menus = menuItemRepository.findAllByPathOrderByIdAsc(path);
+        if (menus.isEmpty()) {
+            createMenuItem(systemMgmt, name, path, icon, sortOrder, true, roles);
+            log.info("Added menu: {}", name);
+            return;
+        }
+        MenuItem menu = menus.get(0);
+        menu.setParentId(systemMgmt.getId());
+        menu.setName(name);
+        menu.setIcon(icon);
+        menu.setSortOrder(sortOrder);
+        menu.setVisible(true);
+        menu.setRoles(roles);
+        menuItemRepository.save(menu);
     }
 
     @Transactional

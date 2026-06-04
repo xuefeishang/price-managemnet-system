@@ -57,7 +57,7 @@ export const useUserStore = defineStore('user', () => {
       return false
     } catch (error) {
       console.error('登录失败:', error)
-      return false
+      throw error
     }
   }
 

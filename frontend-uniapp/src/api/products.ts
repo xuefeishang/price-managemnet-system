@@ -2,7 +2,7 @@
  * 产品相关 API
  */
 import { get, post, put, del } from './request'
-import type { Product, ApiResponse, PageResponse, PageRequest } from '@/types'
+import type { Product, Price, ApiResponse, PageResponse, PageRequest } from '@/types'
 
 // 获取产品列表（分页）
 export const getProducts = async (params: PageRequest): Promise<ApiResponse<PageResponse<Product>>> => {

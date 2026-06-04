@@ -42,6 +42,16 @@ export const CATEGORY_LABELS: Record<string, string> = {
   profile_table_density: '个人表格密度',
   profile_theme_mode: '个人主题模式',
   login_result: '登录结果',
+  price_draft_status: '价格草稿状态',
+  price_publish_type: '价格发布类型',
+  price_publish_status: '价格发布结果',
+  notification_type: '通知类型',
+  notification_channel: '通知渠道',
+  notification_read_status: '通知阅读状态',
+  notification_delivery_status: '通知投递状态',
+  scheduled_task_type: '定时任务类型',
+  scheduled_task_trigger_type: '定时任务触发方式',
+  scheduled_task_run_status: '定时任务执行状态',
 }
 
 // 加载所有字典数据到缓存

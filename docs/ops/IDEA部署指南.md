@@ -107,6 +107,7 @@ EXIT;
 > `V19__external_api_endpoint_code_examples.sql` 会为外部 API 端点补充结构化示例、参数 schema 和可复制代码元数据。
 > `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
 > `V22__personal_profile_management.sql` 会扩展 Refresh Token 设备信息，并新增登录历史与个人偏好表，用于个人中心账号运维。
+> `V23__price_draft_publish_notification.sql` 会新增价格草稿/发布日志、站内通知、通用定时任务表和相关字典项。默认价格自动发布任务为停用状态，升级后需管理员在“系统管理 -> 定时任务”确认后手动启用。
 > 字典管理分类页签、使用说明和效果展示升级仅涉及前端页面与静态分类元数据，不需要新增数据库迁移；升级时重新打包前端即可。
 > Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
 

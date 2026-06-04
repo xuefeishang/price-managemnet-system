@@ -3,11 +3,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { getCategories } from '@/api/categories'
-import { addProductPrice, updatePrice, getPricesByDateWithStats, getProducts, batchUpdateProductSort } from '@/api/products'
-import type { PageResponse, Price, Product, ProductCategory } from '@/types'
+import { getPricesByDateWithStats, getProducts, batchUpdateProductSort } from '@/api/products'
+import { getPriceDraftByDate, publishPriceDraft, savePriceDraft } from '@/api/priceDraft'
+import type { PageResponse, Price, PriceDraftBatch, Product, ProductCategory } from '@/types'
 import { eventBus } from '@/utils/eventBus'
 import { useLayout } from '@/composables/useLayout'
-import { getCurrencySymbol, getOriginName, loadAllDicts } from '@/composables/useDict'
+import { getCurrencySymbol, getDictValue, getOriginName, loadAllDicts } from '@/composables/useDict'
 import { getCategoryCardStyle, registerCategoryCodes } from '@/composables/useCategoryVisual'
 
 const router = useRouter()
@@ -26,6 +27,8 @@ const searchQuery = ref('')
 const searchQueryDebounced = ref('')
 const selectedCategoryId = ref<number | ''>('')
 const sorting = ref(false)
+const currentDraft = ref<PriceDraftBatch | null>(null)
+const publishing = ref(false)
 const draggingProductId = ref<number | null>(null)
 const dragOverProductId = ref<number | null>(null)
 const dragOverPosition = ref<'before' | 'after'>('before')
@@ -75,6 +78,9 @@ const hasChanges = computed(() => {
   }
   return false
 })
+
+const hasDraft = computed(() => currentDraft.value?.status === 'DRAFT')
+const draftStatusLabel = computed(() => currentDraft.value ? getDictValue('price_draft_status', currentDraft.value.status) : '')
 
 const formatDateDisplay = (dateStr: string) => {
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -224,11 +230,23 @@ const applyPriceStats = (items: Awaited<ReturnType<typeof getPricesByDateWithSta
   products.value.forEach(initEditingData)
 }
 
+const applyDraft = (draft: PriceDraftBatch | null) => {
+  currentDraft.value = draft
+  if (!draft?.items?.length) return
+  for (const item of draft.items) {
+    const text = normalizePriceText(item.currentPrice)
+    editingPrices.value.set(item.productId, text)
+    originalPriceTextMap.value.set(item.productId, text)
+  }
+}
+
 const loadPrices = async () => {
   tableLoading.value = true
   try {
     const response = await getPricesByDateWithStats(selectedDate.value)
     applyPriceStats(response.data || [])
+    const draftResponse = await getPriceDraftByDate(selectedDate.value)
+    applyDraft(draftResponse.data || null)
   } catch (error) {
     console.error('Failed to load prices:', error)
     showToast('加载价格数据失败')
@@ -418,11 +436,10 @@ const handleSave = async () => {
   }
 
   saving.value = true
-  let successCount = 0
   let failCount = 0
 
   try {
-    const saveTasks: Promise<void>[] = []
+    const items = []
     for (const [productId, priceStr] of editingPrices.value) {
       if (priceStr === (originalPriceTextMap.value.get(productId) || '')) continue
       if (!priceStr) continue
@@ -434,39 +451,72 @@ const handleSave = async () => {
       }
 
       const existingPrice = priceMap.value.get(productId)
-      if (existingPrice?.id != null) {
-        saveTasks.push(updatePrice(existingPrice.id, {
-          currentPrice,
-          effectiveDate: selectedDate.value
-        }).then(() => { successCount++ }).catch((error) => {
-          console.error(`Failed to update price for product ${productId}:`, error)
-          failCount++
-        }))
-      } else {
-        saveTasks.push(addProductPrice(productId, {
-          currentPrice,
-          effectiveDate: selectedDate.value
-        } as Price).then(() => { successCount++ }).catch((error) => {
-          console.error(`Failed to add price for product ${productId}:`, error)
-          failCount++
-        }))
-      }
+      const product = productById.value.get(productId)
+      items.push({
+        productId,
+        basePriceId: existingPrice?.id,
+        basePriceVersion: existingPrice?.version,
+        currentPrice,
+        budgetPrice: existingPrice?.budgetPrice ?? product?.budgetPrice,
+        unit: existingPrice?.unit ?? product?.unit,
+        priceSpec: existingPrice?.priceSpec,
+        effectiveDate: selectedDate.value
+      })
     }
 
-    await Promise.allSettled(saveTasks)
-    await loadPrices()
-    eventBus.emit('prices-updated')
-
-    if (failCount === 0) {
-      showToast(`保存成功，共 ${successCount} 条价格记录`)
-    } else {
-      showToast(`部分保存成功，成功 ${successCount} 条，失败 ${failCount} 条`)
+    if (items.length === 0) {
+      showToast(failCount > 0 ? `存在 ${failCount} 条无效价格` : '没有可保存的修改')
+      return
     }
-  } catch (error) {
-    console.error('Failed to save prices:', error)
-    showToast('保存失败')
+
+    const response = await savePriceDraft({
+      batchId: currentDraft.value?.id,
+      batchVersion: currentDraft.value?.version,
+      effectiveDate: selectedDate.value,
+      items
+    })
+    applyDraft(response.data)
+    showToast(`草稿保存成功，共 ${items.length} 条`)
+  } catch (error: any) {
+    console.error('Failed to save price draft:', error)
+    const code = error?.response?.data?.code
+    showToast(code === 409 ? '草稿已被其他用户修改，请刷新后重试' : '草稿保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+const handlePublish = async () => {
+  if (!currentDraft.value?.id) {
+    showToast('请先保存草稿')
+    return
+  }
+  if (hasChanges.value) {
+    showToast('请先保存当前修改')
+    return
+  }
+  try {
+    await showConfirmDialog({
+      title: '确认发布价格',
+      message: `发布后 ${formatDateDisplay(selectedDate.value)} 的价格将对所有用户可见，并生成通知。`,
+      confirmButtonText: '发布',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+
+  publishing.value = true
+  try {
+    const response = await publishPriceDraft(currentDraft.value.id)
+    showToast(`发布完成，成功 ${response.data.successCount} 条`)
+    await loadPrices()
+    eventBus.emit('prices-updated')
+  } catch (error) {
+    console.error('Failed to publish prices:', error)
+    showToast('发布失败')
+  } finally {
+    publishing.value = false
   }
 }
 
@@ -541,6 +591,7 @@ onMounted(async () => {
             <div class="header-text">
               <h1 class="page-title-pc">{{ formatDateDisplay(selectedDate) }} 价格维护</h1>
               <p class="page-subtitle">按当前日期录入当日售价，保留昨日售价、价格变化与月均价对照</p>
+              <p v-if="currentDraft" class="draft-status-line">草稿状态：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</p>
             </div>
           </div>
           <div class="header-actions">
@@ -565,6 +616,10 @@ onMounted(async () => {
               </svg>
               <span v-if="saving" class="btn-spinner"></span>
               {{ saving ? '保存中...' : '保存修改' }}
+            </button>
+            <button class="btn-publish" type="button" @click="handlePublish" :disabled="publishing || saving || !hasDraft || hasChanges">
+              <span v-if="publishing" class="btn-spinner"></span>
+              {{ publishing ? '发布中...' : '发布' }}
             </button>
           </div>
         </div>
@@ -718,9 +773,13 @@ onMounted(async () => {
         <button class="save-btn" type="button" @click="handleSave" :disabled="saving || !hasChanges">
           {{ saving ? '保存中...' : '保存' }}
         </button>
+        <button class="save-btn publish-mobile-btn" type="button" @click="handlePublish" :disabled="publishing || saving || !hasDraft || hasChanges">
+          {{ publishing ? '发布中' : '发布' }}
+        </button>
       </header>
 
       <div class="mobile-toolbar">
+        <div v-if="currentDraft" class="mobile-draft-status">草稿状态：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</div>
         <div class="date-nav">
           <button class="date-nav-btn-mobile" type="button" @click="goToPrevDate" title="前一天">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -931,6 +990,14 @@ onMounted(async () => {
   font-size: var(--font-size-sm);
 }
 
+.draft-status-line,
+.mobile-draft-status {
+  margin: 6px 0 0;
+  color: var(--primary-color);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
 .date-picker {
   display: grid;
   grid-template-columns: 32px 150px 32px;
@@ -973,6 +1040,7 @@ onMounted(async () => {
 }
 
 .btn-save,
+.btn-publish,
 .save-btn {
   display: inline-flex;
   align-items: center;
@@ -994,7 +1062,15 @@ onMounted(async () => {
   padding: 0 var(--spacing-md);
 }
 
+.btn-publish {
+  min-height: 40px;
+  min-width: 96px;
+  padding: 0 var(--spacing-md);
+  background: #0f766e;
+}
+
 .btn-save:disabled,
+.btn-publish:disabled,
 .save-btn:disabled,
 .page-btn:disabled {
   opacity: 0.45;

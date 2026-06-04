@@ -28,7 +28,7 @@ const initChart = () => {
   const query = uni.createSelectorQuery().in(instance)
   query
     .select(`#${canvasId.value}`)
-    .fields({ node: true, size: true })
+    .fields({ node: true, size: true }, () => {})
     .exec((res) => {
       if (!res || !res[0]) {
         console.warn('Canvas not found:', canvasId.value)
@@ -58,7 +58,7 @@ const initChart = () => {
           img.src = src
           return img
         }
-      })
+      } as any)
 
       chart = echarts.init(canvasNode, undefined, {
         width: res[0].width,

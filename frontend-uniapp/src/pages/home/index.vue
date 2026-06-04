@@ -68,45 +68,26 @@
         <view class="section-header">
           <text class="section-title">重点关注指标</text>
         </view>
-        <scroll-view class="featured-scroll" scroll-x enable-flex>
+        <view class="featured-grid">
           <view
             class="featured-card"
-            v-for="product in homeProducts"
+            v-for="product in homeProducts.slice(0, 4)"
             :key="product.id"
             @click="goToDetail(product.id)"
           >
-            <view class="card-left">
+            <view class="featured-main">
               <text class="product-name">{{ product.name }}</text>
               <text class="product-specs" v-if="product.specs">{{ product.specs }}</text>
             </view>
-            <view class="card-right">
-              <view class="price-area">
-                <text class="price-large" v-if="getPriceInfo(product.id)?.price">
-                  ¥{{ getPriceInfo(product.id)?.price }}
-                </text>
-                <text class="price-large empty" v-else>--</text>
-              </view>
-              <view class="trend-area">
-                <view
-                  class="trend-badge"
-                  :class="getPriceInfo(product.id)?.trend || 'flat'"
-                  v-if="getPriceInfo(product.id)?.diff"
-                >
-                  <text>{{ getTrendIcon(getPriceInfo(product.id)?.trend) }} {{ getPriceInfo(product.id)?.diff }}</text>
-                </view>
-                <text class="trend-flat" v-else>--</text>
+            <view class="featured-price">
+              <text class="price-large">{{ formatPriceValue(getCurrentPrice(product.id)) }}</text>
+              <view class="trend-badge" :class="getDiffClass(product.id)">
+                <text>{{ getDiffText(product.id) }}</text>
               </view>
             </view>
           </view>
-        </scroll-view>
+        </view>
       </view>
-
-      <!-- 重点走势 -->
-      <TrendChart
-        :trend="trendAnalysis"
-        :loading="trendLoading"
-        @range-change="onTrendRangeChange"
-      />
 
       <!-- 产品列表 -->
       <view class="product-section">
@@ -137,33 +118,29 @@
         </view>
 
         <!-- 产品列表 -->
-        <view class="product-grid" v-else>
+        <view class="product-list" v-else>
           <view
-            class="product-card"
+            class="product-row"
             v-for="product in filteredProducts"
             :key="product.id"
             @click="goToDetail(product.id)"
           >
-            <view class="card-left-info">
+            <view class="product-main">
               <text class="product-name">{{ product.name }}</text>
-              <text class="product-specs" v-if="product.specs">{{ product.specs }}</text>
+              <text class="product-specs">{{ getProductMeta(product) }}</text>
             </view>
-            <view class="card-right-info">
-              <view class="price-top">
-                <text class="price-value" v-if="getPriceInfo(product.id)?.price">
-                  ¥{{ getPriceInfo(product.id)?.price }}
-                </text>
-                <text class="price-value empty" v-else>--</text>
+            <view class="price-columns">
+              <view class="price-col current">
+                <text class="price-label">当日</text>
+                <text class="price-value">{{ formatPriceValue(getCurrentPrice(product.id)) }}</text>
               </view>
-              <view class="trend-bottom">
-                <view
-                  class="trend-badge small"
-                  :class="getPriceInfo(product.id)?.trend || 'flat'"
-                  v-if="getPriceInfo(product.id)?.diff"
-                >
-                  <text>{{ getTrendIcon(getPriceInfo(product.id)?.trend) }} {{ getPriceInfo(product.id)?.diff }}</text>
-                </view>
-                <text class="trend-flat" v-else>--</text>
+              <view class="price-col">
+                <text class="price-label">昨日</text>
+                <text class="price-sub">{{ formatPriceValue(getYesterdayPrice(product.id)) }}</text>
+              </view>
+              <view class="price-col diff" :class="getDiffClass(product.id)">
+                <text class="price-label">较昨日</text>
+                <text class="price-sub">{{ getDiffText(product.id) }}</text>
               </view>
             </view>
           </view>
@@ -178,10 +155,7 @@
       />
     </template>
 
-    <!-- 价格维护入口 -->
-    <view class="fab-btn" v-if="userStore.canEdit" @click="goToPriceMaintenance">
-      <text>价格维护</text>
-    </view>
+    <CustomTabBar />
   </view>
 </template>
 
@@ -190,13 +164,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts, getPricesByDateWithStats } from '@/api/products'
 import { getCategories } from '@/api/categories'
-import { getHomeSummary, getPriceAlerts, getTrendAnalysis } from '@/api/home'
+import { getHomeSummary, getPriceAlerts } from '@/api/home'
 import type { Product, ProductCategory } from '@/types'
 import type { PriceWithStats } from '@/api/products'
-import type { HomeSummary, PriceAlert, TrendAnalysis } from '@/api/home'
+import type { HomeSummary, PriceAlert } from '@/api/home'
 import SummarySection from '@/components/home/SummarySection.vue'
-import TrendChart from '@/components/home/TrendChart.vue'
 import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
+import CustomTabBar from '@/custom-tab-bar/index.vue'
 
 const userStore = useUserStore()
 
@@ -214,11 +188,8 @@ const showScrollIndicator = ref(true)
 // 新增状态
 const homeSummary = ref<HomeSummary | null>(null)
 const priceAlerts = ref<PriceAlert[]>([])
-const trendAnalysis = ref<TrendAnalysis | null>(null)
 const summaryLoading = ref(false)
 const alertsLoading = ref(false)
-const trendLoading = ref(false)
-const trendDays = ref(30)
 
 // 计算属性
 const homeProducts = computed(() => {
@@ -253,48 +224,45 @@ function getYesterday(): string {
   return date.toISOString().split('T')[0]
 }
 
-function getPriceInfo(productId: number) {
+function getCurrentPrice(productId: number): number | null {
   const data = priceDataMap.value.get(productId)
-
-  let current: number | null = null
-  if (data?.price?.currentPrice != null) {
-    current = data.price.currentPrice
-  } else if (data?.inheritedPrice != null) {
-    current = data.inheritedPrice
-  }
-
-  if (current == null) return null
-
-  let previous: number | null = null
-  if (data?.yesterdayPrice?.currentPrice != null) {
-    previous = data.yesterdayPrice.currentPrice
-  } else if (data?.inheritedPrice != null) {
-    previous = data.inheritedPrice
-  }
-
-  if (previous == null) {
-    return { price: current, trend: 'flat', diff: '' }
-  }
-
-  const diff = current - previous
-
-  const formattedDiff = diff === 0
-    ? '0'
-    : diff > 0
-      ? `+${diff.toFixed(2).replace(/\.?0+$/, '')}`
-      : diff.toFixed(2).replace(/\.?0+$/, '')
-
-  return {
-    price: current,
-    trend: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat',
-    diff: formattedDiff
-  }
+  return data?.price?.currentPrice ?? data?.inheritedPrice ?? null
 }
 
-function getTrendIcon(trend?: string): string {
-  if (trend === 'up') return '↑'
-  if (trend === 'down') return '↓'
-  return '—'
+function getYesterdayPrice(productId: number): number | null {
+  const data = priceDataMap.value.get(productId)
+  return data?.yesterdayPrice?.currentPrice ?? data?.inheritedPrice ?? null
+}
+
+function formatPriceValue(value: number | null | undefined): string {
+  if (value == null) return '--'
+  return `¥${Number(value).toFixed(2)}`
+}
+
+function getDiffValue(productId: number): number | null {
+  const current = getCurrentPrice(productId)
+  const previous = getYesterdayPrice(productId)
+  if (current == null || previous == null) return null
+  return current - previous
+}
+
+function getDiffText(productId: number): string {
+  const diff = getDiffValue(productId)
+  if (diff == null) return '--'
+  if (diff > 0) return `+¥${diff.toFixed(2)}`
+  if (diff < 0) return `-¥${Math.abs(diff).toFixed(2)}`
+  return '¥0.00'
+}
+
+function getDiffClass(productId: number): string {
+  const diff = getDiffValue(productId)
+  if (diff == null || diff === 0) return 'flat'
+  return diff > 0 ? 'up' : 'down'
+}
+
+function getProductMeta(product: Product): string {
+  const parts = [product.category?.name, product.specs, product.unit].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '暂无规格'
 }
 
 // 数据加载
@@ -337,20 +305,6 @@ async function loadAlerts() {
   }
 }
 
-async function loadTrend() {
-  trendLoading.value = true
-  try {
-    const res = await getTrendAnalysis(selectedDate.value, trendDays.value)
-    if (res.code === 200 && res.data) {
-      trendAnalysis.value = res.data
-    }
-  } catch (error) {
-    console.error('加载趋势失败:', error)
-  } finally {
-    trendLoading.value = false
-  }
-}
-
 async function loadData() {
   isLoading.value = true
   errorMsg.value = ''
@@ -375,7 +329,6 @@ async function loadData() {
     // 加载新增数据
     loadSummary()
     loadAlerts()
-    loadTrend()
   } catch (err: any) {
     errorMsg.value = err?.message || '加载数据失败，请重试'
     console.error('Failed to load data:', err)
@@ -404,11 +357,6 @@ function onCategoryScroll(e: any) {
   showScrollIndicator.value = scrollLeft + clientWidth < scrollWidth - 20
 }
 
-function onTrendRangeChange(days: number) {
-  trendDays.value = days
-  loadTrend()
-}
-
 function onAlertClick(alert: PriceAlert) {
   goToDetail(alert.productId)
 }
@@ -423,10 +371,6 @@ function onSearchInput() {
 
 function goToDetail(id: number) {
   uni.navigateTo({ url: `/pages/products/detail?id=${id}` })
-}
-
-function goToPriceMaintenance() {
-  uni.navigateTo({ url: '/pages/price-maintenance/index' })
 }
 
 onMounted(() => {
@@ -649,36 +593,31 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.featured-scroll {
-  display: flex;
-  gap: 24rpx;
-  white-space: nowrap;
-  width: 100%;
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
 }
 
 .featured-card {
-  min-width: 280rpx;
-  width: 280rpx;
-  background: #FFFFFF;
-  border: 2rpx solid #E5E5E5;
+  min-width: 0;
+  background: #F8FAFC;
+  border: 1rpx solid #E5E7EB;
   border-radius: 12rpx;
-  padding: 20rpx;
+  padding: 18rpx;
   display: flex;
-  flex-direction: row;
-  gap: 16rpx;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 14rpx;
 }
 
-.card-left {
-  flex: 1;
+.featured-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8rpx;
+  gap: 6rpx;
 }
 
-.card-left .product-name {
+.featured-main .product-name {
   font-size: 28rpx;
   font-weight: 600;
   color: #1A1A1A;
@@ -687,7 +626,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.card-left .product-specs {
+.featured-main .product-specs {
   font-size: 22rpx;
   color: #999999;
   overflow: hidden;
@@ -695,46 +634,25 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.card-right {
+.featured-price {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: flex-end;
-  gap: 8rpx;
-  flex-shrink: 0;
-}
-
-.price-area {
-  display: flex;
-  align-items: baseline;
+  justify-content: space-between;
+  gap: 12rpx;
 }
 
 .price-large {
-  font-size: 36rpx;
+  font-size: 34rpx;
   font-weight: 700;
   color: #0D6E6E;
-}
-
-.price-large.empty {
-  color: #CCCCCC;
-  font-size: 28rpx;
-}
-
-.trend-area {
-  display: flex;
-  align-items: center;
-}
-
-.trend-flat {
-  font-size: 22rpx;
-  color: #CCCCCC;
 }
 
 .trend-badge {
   padding: 4rpx 12rpx;
   border-radius: 8rpx;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .trend-badge.up {
@@ -750,11 +668,6 @@ onMounted(() => {
 .trend-badge.flat {
   background: #F0F0F0;
   color: #999999;
-}
-
-.trend-badge.small {
-  font-size: 20rpx;
-  padding: 4rpx 8rpx;
 }
 
 /* 产品列表 */
@@ -810,36 +723,31 @@ onMounted(() => {
   color: #999999;
 }
 
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20rpx;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.product-card {
-  background: #F5F5F5;
-  border-radius: 12rpx;
-  padding: 16rpx;
+.product-list {
   display: flex;
-  flex-direction: row;
-  gap: 12rpx;
-  min-width: 0;
-  box-sizing: border-box;
+  flex-direction: column;
+  border-top: 1rpx solid #EEF2F7;
 }
 
-.card-left-info {
-  flex: 1;
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 118rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #EEF2F7;
+}
+
+.product-main {
+  flex: 1.1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 6rpx;
 }
 
-.card-left-info .product-name {
-  font-size: 24rpx;
+.product-main .product-name {
+  font-size: 28rpx;
   font-weight: 600;
   color: #1A1A1A;
   overflow: hidden;
@@ -847,59 +755,59 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.card-left-info .product-specs {
-  font-size: 20rpx;
+.product-main .product-specs {
+  font-size: 22rpx;
   color: #999999;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.card-right-info {
+.price-columns {
+  flex: 1.55;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 14rpx;
+}
+
+.price-col {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: flex-end;
-  gap: 6rpx;
-  flex-shrink: 0;
+  min-width: 84rpx;
+  gap: 4rpx;
 }
 
-.price-top {
-  display: flex;
-  align-items: baseline;
+.price-label {
+  font-size: 20rpx;
+  color: #9CA3AF;
 }
 
-.price-top .price-value {
-  font-size: 30rpx;
+.price-value {
+  font-size: 28rpx;
   font-weight: 700;
   color: #0D6E6E;
+  white-space: nowrap;
 }
 
-.price-top .price-value.empty {
-  color: #CCCCCC;
+.price-sub {
   font-size: 24rpx;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
 }
 
-.trend-bottom {
-  display: flex;
-  align-items: center;
+.price-col.up .price-sub {
+  color: #E03B3B;
 }
 
-/* 浮动按钮 */
-.fab-btn {
-  position: fixed;
-  right: 32rpx;
-  bottom: 180rpx;
-  background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
-  color: #FFFFFF;
-  padding: 24rpx 32rpx;
-  border-radius: 40rpx;
-  box-shadow: 0 8rpx 24rpx rgba(13, 110, 110, 0.3);
-  z-index: 100;
+.price-col.down .price-sub {
+  color: #16A34A;
 }
 
-.fab-btn text {
-  font-size: 28rpx;
-  font-weight: 500;
+.price-col.flat .price-sub {
+  color: #64748B;
 }
+
 </style>

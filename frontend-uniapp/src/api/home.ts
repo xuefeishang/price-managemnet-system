@@ -1,4 +1,4 @@
-import http from '@/utils/http'
+import { get } from './request'
 import type { ApiResponse } from '@/types'
 
 export interface HomeSummary {
@@ -25,27 +25,12 @@ export interface PriceAlert {
   changePercent: number
 }
 
-export interface TrendAnalysis {
-  rangeLabel: string
-  days: number
-  dates: string[]
-  productTrends: Record<number, (number | null)[]>
-  avgTrend: (number | null)[]
-}
-
 export const getHomeSummary = async (date?: string): Promise<ApiResponse<HomeSummary>> => {
   const params = date ? { date } : {}
-  return await http.get('/api/home/summary', { params })
+  return await get('/api/home/summary', params)
 }
 
 export const getPriceAlerts = async (date?: string): Promise<ApiResponse<PriceAlert[]>> => {
   const params = date ? { date } : {}
-  return await http.get('/api/home/alerts', { params })
-}
-
-export const getTrendAnalysis = async (date?: string, days?: number): Promise<ApiResponse<TrendAnalysis>> => {
-  const params: Record<string, any> = {}
-  if (date) params.date = date
-  if (days) params.days = days
-  return await http.get('/api/home/trend', { params })
+  return await get('/api/home/alerts', params)
 }
