@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { showDialog, showToast } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
 import {
@@ -33,6 +33,7 @@ import type {
 import type { OperationLog } from '@/api/logs'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 type TabKey = 'basic' | 'security' | 'logs' | 'loginHistory' | 'sessions'
@@ -209,6 +210,17 @@ const switchTab = async (tab: TabKey) => {
   if (tab === 'loginHistory') await loadLoginHistory()
   if (tab === 'sessions') await loadSessions()
 }
+const resolveRouteTab = (): TabKey | null => {
+  const value = route.query.tab
+  if (typeof value !== 'string') return null
+  return tabs.some(tab => tab.key === value) ? value as TabKey : null
+}
+const syncRouteTab = async () => {
+  const tab = resolveRouteTab()
+  if (tab && tab !== activeTab.value) {
+    await switchTab(tab)
+  }
+}
 const goDashboard = async () => {
   await router.push('/home')
 }
@@ -308,6 +320,11 @@ const nextLoginPage = async () => {
 onMounted(async () => {
   await loadAllDicts()
   await refreshAll()
+  await syncRouteTab()
+})
+
+watch(() => route.query.tab, () => {
+  syncRouteTab()
 })
 </script>
 

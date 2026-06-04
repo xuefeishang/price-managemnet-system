@@ -512,6 +512,7 @@ const handlePublish = async () => {
     showToast(`发布完成，成功 ${response.data.successCount} 条`)
     await loadPrices()
     eventBus.emit('prices-updated')
+    window.dispatchEvent(new Event('price-notifications:refresh'))
   } catch (error) {
     console.error('Failed to publish prices:', error)
     showToast('发布失败')

@@ -36,6 +36,12 @@ public class PricePublishService {
     public PricePublishResultDTO publishBatch(Long batchId, PricePublishLog.PublishType publishType, Long userId) {
         PriceDraftBatch batch = batchRepository.findByIdForUpdate(batchId)
                 .orElseThrow(() -> new IllegalArgumentException("草稿批次不存在"));
+        if (batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHED) {
+            throw new IllegalStateException("该草稿批次已发布，请勿重复发布");
+        }
+        if (batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHING) {
+            throw new IllegalStateException("该草稿批次正在发布，请稍后刷新查看结果");
+        }
         if (batch.getStatus() != PriceDraftBatch.DraftStatus.DRAFT) {
             throw new IllegalArgumentException("当前状态不允许发布");
         }
@@ -43,6 +49,9 @@ public class PricePublishService {
         if (items.isEmpty()) {
             throw new IllegalArgumentException("草稿批次没有可发布明细");
         }
+        List<PriceDraftItem> publishableItems = items.stream()
+                .filter(item -> !isPublishedItem(item))
+                .toList();
 
         batch.setStatus(PriceDraftBatch.DraftStatus.PUBLISHING);
         batchRepository.saveAndFlush(batch);
@@ -51,7 +60,7 @@ public class PricePublishService {
         int failCount = 0;
         StringBuilder message = new StringBuilder();
 
-        for (PriceDraftItem draftItem : items) {
+        for (PriceDraftItem draftItem : publishableItems) {
             try {
                 Price price = new Price();
                 price.setOriginalPrice(draftItem.getOriginalPrice());
@@ -77,11 +86,16 @@ public class PricePublishService {
             }
         }
 
+        int totalPublishedCount = (int) items.stream()
+                .filter(this::isPublishedItem)
+                .count();
+        boolean allItemsPublished = totalPublishedCount == items.size();
+
         PricePublishLog logEntity = new PricePublishLog();
         logEntity.setBatchId(batch.getId());
         logEntity.setEffectiveDate(batch.getEffectiveDate());
         logEntity.setPublishType(publishType);
-        logEntity.setTotalCount(items.size());
+        logEntity.setTotalCount(publishableItems.size());
         logEntity.setSuccessCount(successCount);
         logEntity.setFailCount(failCount);
         logEntity.setStatus(failCount == 0 ? PricePublishLog.PublishStatus.SUCCESS
@@ -90,7 +104,7 @@ public class PricePublishService {
         logEntity.setCreatedBy(userId);
         PricePublishLog savedLog = publishLogRepository.save(logEntity);
 
-        if (failCount == 0) {
+        if (failCount == 0 && allItemsPublished) {
             batch.setStatus(PriceDraftBatch.DraftStatus.PUBLISHED);
             batch.setPublishedBy(userId);
             batch.setPublishedTime(LocalDateTime.now());
@@ -100,11 +114,13 @@ public class PricePublishService {
         batchRepository.save(batch);
 
         Long notificationMessageId = null;
-        if (successCount > 0) {
+        if (successCount > 0 && batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHED) {
             NotificationMessage notification = notificationService.createPricePublishedNotification(
                     "价格已更新",
-                    batch.getEffectiveDate() + " 价格已发布，共更新 " + successCount + " 个产品，请查看最新价格。",
+                    batch.getEffectiveDate() + " 价格已发布，共更新 " + totalPublishedCount + " 个产品，请查看最新价格。",
                     savedLog.getId(),
+                    batch.getEffectiveDate(),
+                    batch.getId(),
                     userId,
                     List.of(NotificationService.CHANNEL_IN_APP, NotificationService.CHANNEL_APP_PUSH, NotificationService.CHANNEL_MINI_PROGRAM),
                     List.of(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER)
@@ -122,5 +138,10 @@ public class PricePublishService {
         result.setNotificationMessageId(notificationMessageId);
         result.setMessage(savedLog.getMessage());
         return result;
+    }
+
+    private boolean isPublishedItem(PriceDraftItem item) {
+        return item.getItemStatus() == PriceDraftItem.ItemStatus.PUBLISHED
+                && item.getPublishedPriceId() != null;
     }
 }

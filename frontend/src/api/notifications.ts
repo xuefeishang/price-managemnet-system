@@ -16,3 +16,7 @@ export const getUnreadNotificationCount = async (): Promise<ApiResponse<number>>
 export const markNotificationRead = async (messageId: number): Promise<ApiResponse<void>> => {
   return await http.post(`/api/notifications/${messageId}/read`)
 }
+
+export const markAllNotificationsRead = async (): Promise<ApiResponse<number>> => {
+  return await http.post('/api/notifications/read-all')
+}

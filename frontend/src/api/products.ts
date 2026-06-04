@@ -66,13 +66,21 @@ export const getPriceByDate = async (productId: number, date: string): Promise<A
 }
 
 // 添加产品价格
-export const addProductPrice = async (productId: number, price: Price): Promise<ApiResponse<Price>> => {
-  return await http.post(`/api/products/${productId}/prices`, price)
+export const addProductPrice = async (
+  productId: number,
+  price: Price,
+  source = 'FORMAL_PRICE_MAINTENANCE'
+): Promise<ApiResponse<Price>> => {
+  return await http.post(`/api/products/${productId}/prices`, price, { params: { source } })
 }
 
 // 更新价格
-export const updatePrice = async (id: number, price: Partial<Price>): Promise<ApiResponse<Price>> => {
-  return await http.put(`/api/prices/${id}`, price)
+export const updatePrice = async (
+  id: number,
+  price: Partial<Price>,
+  source = 'FORMAL_PRICE_MAINTENANCE'
+): Promise<ApiResponse<Price>> => {
+  return await http.put(`/api/prices/${id}`, price, { params: { source } })
 }
 
 // 获取某产品昨日的价格

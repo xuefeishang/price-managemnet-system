@@ -1140,14 +1140,22 @@ CREATE TABLE IF NOT EXISTS notification_message (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知消息ID',
     type VARCHAR(50) NOT NULL COMMENT '通知类型',
     title VARCHAR(100) NOT NULL COMMENT '标题',
+    summary VARCHAR(300) COMMENT '通知摘要',
     content TEXT COMMENT '内容',
     business_type VARCHAR(50) COMMENT '业务类型',
     business_id BIGINT COMMENT '业务ID',
     channels VARCHAR(200) COMMENT '通知渠道',
+    priority VARCHAR(20) NOT NULL DEFAULT 'NORMAL' COMMENT '通知优先级',
+    link_type VARCHAR(50) COMMENT '跳转类型',
+    link_params TEXT COMMENT '跳转参数JSON',
+    dedupe_key VARCHAR(150) COMMENT '通知幂等键',
+    expire_time DATETIME COMMENT '过期时间',
     created_by BIGINT COMMENT '创建人',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    CONSTRAINT uk_notification_dedupe_key UNIQUE (dedupe_key),
     INDEX idx_notification_type (type),
-    INDEX idx_notification_business (business_type, business_id)
+    INDEX idx_notification_business (business_type, business_id),
+    INDEX idx_notification_type_created (type, created_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知消息表';
 
 CREATE TABLE IF NOT EXISTS notification_recipient (
@@ -1156,9 +1164,13 @@ CREATE TABLE IF NOT EXISTS notification_recipient (
     user_id BIGINT NOT NULL COMMENT '接收用户ID',
     read_status VARCHAR(20) NOT NULL DEFAULT 'UNREAD' COMMENT '阅读状态',
     read_time DATETIME COMMENT '阅读时间',
+    archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否归档',
+    archived_time DATETIME COMMENT '归档时间',
+    first_seen_time DATETIME COMMENT '首次触达时间',
     CONSTRAINT uk_notification_message_user UNIQUE (message_id, user_id),
     INDEX idx_notification_recipient_user (user_id, read_status),
     INDEX idx_notification_recipient_message (message_id),
+    INDEX idx_notification_recipient_user_time (user_id, id),
     CONSTRAINT fk_notification_recipient_message FOREIGN KEY (message_id) REFERENCES notification_message(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知接收人表';
 
@@ -1262,6 +1274,19 @@ SELECT * FROM (
     UNION ALL SELECT 'notification_channel', 'MINI_PROGRAM', '小程序订阅消息', NULL, 3, 'ACTIVE', '通知渠道', NOW(), NOW()
     UNION ALL SELECT 'notification_read_status', 'UNREAD', '未读', '#F59E0B', 1, 'ACTIVE', '阅读状态', NOW(), NOW()
     UNION ALL SELECT 'notification_read_status', 'READ', '已读', '#10B981', 2, 'ACTIVE', '阅读状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_priority', 'LOW', '低', '#64748B', 1, 'ACTIVE', '通知优先级', NOW(), NOW()
+    UNION ALL SELECT 'notification_priority', 'NORMAL', '普通', '#0D6E6E', 2, 'ACTIVE', '通知优先级', NOW(), NOW()
+    UNION ALL SELECT 'notification_priority', 'HIGH', '高', '#F59E0B', 3, 'ACTIVE', '通知优先级', NOW(), NOW()
+    UNION ALL SELECT 'notification_priority', 'URGENT', '紧急', '#EF4444', 4, 'ACTIVE', '通知优先级', NOW(), NOW()
+    UNION ALL SELECT 'notification_link_type', 'PRICE_QUERY', '价格查询', NULL, 1, 'ACTIVE', '通知跳转类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_link_type', 'APPROVAL_DETAIL', '审批详情', NULL, 2, 'ACTIVE', '通知跳转类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_link_type', 'TASK_LOG', '任务日志', NULL, 3, 'ACTIVE', '通知跳转类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_link_type', 'SYSTEM_NOTICE', '系统通知', NULL, 4, 'ACTIVE', '通知跳转类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_business_type', 'PRICE', '价格', NULL, 1, 'ACTIVE', '通知业务类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_business_type', 'APPROVAL', '审批', NULL, 2, 'ACTIVE', '通知业务类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_business_type', 'TASK', '任务', NULL, 3, 'ACTIVE', '通知业务类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_business_type', 'SYSTEM', '系统', NULL, 4, 'ACTIVE', '通知业务类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_business_type', 'SECURITY', '安全', NULL, 5, 'ACTIVE', '通知业务类型', NOW(), NOW()
     UNION ALL SELECT 'notification_delivery_status', 'PENDING', '待投递', '#64748B', 1, 'ACTIVE', '投递状态', NOW(), NOW()
     UNION ALL SELECT 'notification_delivery_status', 'SUCCESS', '成功', '#10B981', 2, 'ACTIVE', '投递状态', NOW(), NOW()
     UNION ALL SELECT 'notification_delivery_status', 'FAILED', '失败', '#EF4444', 3, 'ACTIVE', '投递状态', NOW(), NOW()

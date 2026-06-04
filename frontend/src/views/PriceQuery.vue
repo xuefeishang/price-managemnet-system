@@ -6,6 +6,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { showToast } from 'vant'
+import { useRoute } from 'vue-router'
 import { getCategories } from '@/api/categories'
 import { getPriceTrend, type PriceTrendPoint } from '@/api/products'
 import { exportPriceQueryRows, getPriceQueryRows, type PriceQueryParams } from '@/api/priceQuery'
@@ -21,6 +22,7 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineCompon
 const { chartAutoresize } = useSafeChartAutoresize()
 const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
+const route = useRoute()
 
 const loading = ref(false)
 const trendLoading = ref(false)
@@ -139,7 +141,12 @@ const getDefaultQueryDate = () => {
   return formatLocalDate(date)
 }
 
-selectedDate.value = getDefaultQueryDate()
+const getRouteQueryDate = () => {
+  const value = route.query.date
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
+}
+
+selectedDate.value = getRouteQueryDate() || getDefaultQueryDate()
 
 const formatShortDate = (dateStr?: string) => {
   if (!dateStr) return '--'
@@ -633,6 +640,13 @@ watch(keyword, value => {
 watch(selectedDate, () => {
   tablePage.value = 0
   loadRows()
+})
+
+watch(() => route.query.date, () => {
+  const nextDate = getRouteQueryDate()
+  if (nextDate && nextDate !== selectedDate.value) {
+    selectedDate.value = nextDate
+  }
 })
 
 watch(selectedRow, () => {

@@ -247,7 +247,9 @@
       "PowerShell(& \"D:\\\\node22\\\\npm.cmd\" --version)",
       "PowerShell(npm run *)",
       "Bash(mvnw.cmd clean *)",
-      "Bash(./mvnw.cmd clean *)"
+      "Bash(./mvnw.cmd clean *)",
+      "Bash(GIT_CURL_VERBOSE=1 git push origin master)",
+      "Bash(cmdkey /list)"
     ]
   },
   "enabledMcpjsonServers": [

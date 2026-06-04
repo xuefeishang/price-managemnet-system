@@ -345,10 +345,15 @@ export interface NotificationMessage {
   messageId: number
   type: string
   title: string
+  summary?: string
   content?: string
   businessType?: string
   businessId?: number
   channels?: string
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+  linkType?: string
+  linkParams?: string
+  archived?: boolean
   readStatus: 'UNREAD' | 'READ'
   readTime?: string
   createdTime?: string

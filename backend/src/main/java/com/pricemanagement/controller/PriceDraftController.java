@@ -53,6 +53,8 @@ public class PriceDraftController {
         try {
             return Result.success("价格发布完成",
                     pricePublishService.publishBatch(batchId, PricePublishLog.PublishType.MANUAL, SecurityUtils.getCurrentUserId()));
+        } catch (IllegalStateException e) {
+            return Result.error(409, e.getMessage());
         } catch (IllegalArgumentException e) {
             return Result.error(400, e.getMessage());
         }
@@ -66,6 +68,8 @@ public class PriceDraftController {
         try {
             return Result.success("价格发布完成",
                     pricePublishService.publishByDate(date, PricePublishLog.PublishType.MANUAL, SecurityUtils.getCurrentUserId()));
+        } catch (IllegalStateException e) {
+            return Result.error(409, e.getMessage());
         } catch (IllegalArgumentException e) {
             return Result.error(400, e.getMessage());
         }

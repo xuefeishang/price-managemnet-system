@@ -4,6 +4,7 @@ import com.pricemanagement.entity.NotificationRecipient;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -19,6 +20,13 @@ public interface NotificationRecipientRepository extends JpaRepository<Notificat
     Optional<NotificationRecipient> findByMessageIdAndUserId(Long messageId, Long userId);
 
     List<NotificationRecipient> findByMessageId(Long messageId);
+
+    @Modifying
+    @Query("UPDATE NotificationRecipient r SET r.readStatus = :readStatus, r.readTime = CURRENT_TIMESTAMP " +
+            "WHERE r.userId = :userId AND r.readStatus = :unreadStatus")
+    int markAllReadByUserId(@Param("userId") Long userId,
+                            @Param("readStatus") NotificationRecipient.ReadStatus readStatus,
+                            @Param("unreadStatus") NotificationRecipient.ReadStatus unreadStatus);
 
     @Query("SELECT r FROM NotificationRecipient r WHERE r.userId = :userId ORDER BY r.id DESC")
     Page<NotificationRecipient> findMyRecipients(@Param("userId") Long userId, Pageable pageable);

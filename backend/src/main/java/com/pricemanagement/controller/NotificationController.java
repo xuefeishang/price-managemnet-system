@@ -49,6 +49,14 @@ public class NotificationController {
         return Result.success("通知已读");
     }
 
+    @PostMapping("/read-all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "全部通知已读")
+    public Result<Integer> markAllRead() {
+        int count = notificationService.markAllRead(SecurityUtils.getCurrentUserId());
+        return Result.success("全部通知已读", count);
+    }
+
     @GetMapping("/{messageId}/deliveries")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<List<NotificationDeliveryLog>> deliveries(@PathVariable Long messageId) {

@@ -5,9 +5,11 @@ import com.pricemanagement.constants.SystemConstants;
 import com.pricemanagement.dto.PriceTrendDTO;
 import com.pricemanagement.dto.PriceWithStatsDTO;
 import com.pricemanagement.dto.Result;
+import com.pricemanagement.entity.OperationLog;
 import com.pricemanagement.entity.Price;
 import com.pricemanagement.entity.PriceHistory;
 import com.pricemanagement.service.PriceService;
+import com.pricemanagement.util.OperationLogHelper;
 import com.pricemanagement.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +26,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PriceController {
 
+    private static final String DEFAULT_FORMAL_PRICE_SOURCE = "FORMAL_PRICE_MAINTENANCE";
+
     private final PriceService priceService;
+    private final OperationLogHelper operationLogHelper;
 
     @GetMapping("/products/{productId}/price-history")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
@@ -114,15 +119,20 @@ public class PriceController {
     @PostMapping("/products/{productId}/prices")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public Result<Price> addProductPrice(@PathVariable Long productId,
-                                          @RequestBody Price price) {
+                                          @RequestBody Price price,
+                                          @RequestParam(required = false, defaultValue = DEFAULT_FORMAL_PRICE_SOURCE) String source) {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Price savedPrice = priceService.addProductPrice(productId, price, userId);
+            operationLogHelper.logSuccess("正式价格维护", OperationLog.OperationType.CREATE,
+                    "直接维护正式价格：新增价格", buildFormalPriceLogParams(productId, savedPrice.getId(), source));
             if (SystemConstants.PENDING_APPROVAL.equals(savedPrice.getRemark())) {
                 return Result.success("价格已提交，等待审批", savedPrice);
             }
             return Result.success("添加价格成功", savedPrice);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("正式价格维护", OperationLog.OperationType.CREATE,
+                    "直接维护正式价格失败：新增价格", buildFormalPriceLogParams(productId, null, source), e.getMessage());
             return Result.error(404, e.getMessage());
         }
     }
@@ -130,17 +140,28 @@ public class PriceController {
     @PutMapping("/prices/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public Result<Price> updatePrice(@PathVariable Long id,
-                                      @RequestBody Price price) {
+                                      @RequestBody Price price,
+                                      @RequestParam(required = false, defaultValue = DEFAULT_FORMAL_PRICE_SOURCE) String source) {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             Price updatedPrice = priceService.updatePrice(id, price, userId);
+            operationLogHelper.logSuccess("正式价格维护", OperationLog.OperationType.UPDATE,
+                    "直接维护正式价格：更新价格", buildFormalPriceLogParams(null, id, source));
             if (SystemConstants.PENDING_APPROVAL.equals(updatedPrice.getRemark())) {
                 return Result.success("价格已提交，等待审批", updatedPrice);
             }
             return Result.success("更新价格成功", updatedPrice);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("正式价格维护", OperationLog.OperationType.UPDATE,
+                    "直接维护正式价格失败：更新价格", buildFormalPriceLogParams(null, id, source), e.getMessage());
             return Result.error(404, e.getMessage());
         }
+    }
+
+    private String buildFormalPriceLogParams(Long productId, Long priceId, String source) {
+        return "source=" + (source == null || source.isBlank() ? DEFAULT_FORMAL_PRICE_SOURCE : source)
+                + (productId == null ? "" : ", productId=" + productId)
+                + (priceId == null ? "" : ", priceId=" + priceId);
     }
 
     /**

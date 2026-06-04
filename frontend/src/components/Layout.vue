@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { useMenuStore } from '@/store/useMenuStore'
 import { useRouter, useRoute } from 'vue-router'
-import { getRoleLabel, loadAllDicts } from '@/composables/useDict'
+import { showToast } from 'vant'
+import { getDictValue, getRoleLabel, loadAllDicts } from '@/composables/useDict'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
+import {
+  getMyNotifications,
+  getUnreadNotificationCount,
+  markAllNotificationsRead,
+  markNotificationRead
+} from '@/api/notifications'
+import type { NotificationMessage } from '@/types'
 import SidebarMenuTree from '@/components/layout/SidebarMenuTree.vue'
 import ContextSubNav from '@/components/layout/ContextSubNav.vue'
 import { findMenuByPath, normalizeMenuTree, type MenuMatch, type MenuNode } from '@/components/layout/menuUtils'
@@ -47,6 +55,15 @@ const logoSizeStyle = computed(() => {
 const isMobileMenuOpen = ref(false)
 const expandedMenuIds = ref<Set<number>>(new Set())
 const pendingMenuPath = ref<string | null>(null)
+const notificationDrawerOpen = ref(false)
+const notifications = ref<NotificationMessage[]>([])
+const notificationsLoading = ref(false)
+const notificationReadFilter = ref<'ALL' | 'UNREAD'>('ALL')
+const unreadNotificationCount = ref(0)
+const userMenuOpen = ref(false)
+const unreadCountInitialized = ref(false)
+let notificationTimer: ReturnType<typeof setTimeout> | null = null
+let notificationBackoffLevel = 0
 
 // 使用 menuStore 的菜单数据
 const menus = computed(() => menuStore.visibleMenus)
@@ -131,12 +148,199 @@ const navigateTo = async (path: string) => {
 }
 
 const handleLogout = () => {
+  stopNotificationPolling()
+  closeUserMenu()
   userStore.logoutAction()
   // 跳转由 watch(() => userStore.isAuthenticated) 统一处理
 }
 
 const goProfile = () => {
+  closeUserMenu()
   navigateTo('/profile')
+}
+
+const goChangePassword = () => {
+  closeUserMenu()
+  router.push({ path: '/profile', query: { tab: 'security' } })
+}
+
+const toggleUserMenu = () => {
+  userMenuOpen.value = !userMenuOpen.value
+}
+
+const closeUserMenu = () => {
+  userMenuOpen.value = false
+}
+
+const loadUnreadNotificationCount = async () => {
+  if (!userStore.isAuthenticated || !userStore.token) return false
+  try {
+    const response = await getUnreadNotificationCount()
+    const nextCount = response.data || 0
+    if (unreadCountInitialized.value && nextCount > unreadNotificationCount.value && !notificationDrawerOpen.value) {
+      showToast({
+        message: '收到新的消息通知',
+        position: 'bottom'
+      })
+    }
+    unreadNotificationCount.value = nextCount
+    unreadCountInitialized.value = true
+    notificationBackoffLevel = 0
+    return true
+  } catch (error) {
+    notificationBackoffLevel = Math.min(notificationBackoffLevel + 1, 3)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load notification unread count:', error)
+    }
+    return false
+  }
+}
+
+const loadNotifications = async () => {
+  if (!userStore.isAuthenticated || !userStore.token) return
+  notificationsLoading.value = true
+  try {
+    const response = await getMyNotifications({
+      page: 0,
+      size: 20,
+      readStatus: notificationReadFilter.value === 'UNREAD' ? 'UNREAD' : undefined
+    })
+    notifications.value = response.data?.content || []
+    await loadUnreadNotificationCount()
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to load notifications:', error)
+    }
+  } finally {
+    notificationsLoading.value = false
+  }
+}
+
+const openNotificationDrawer = async () => {
+  closeUserMenu()
+  notificationDrawerOpen.value = true
+  await loadNotifications()
+}
+
+const closeNotificationDrawer = () => {
+  notificationDrawerOpen.value = false
+}
+
+const setNotificationReadFilter = async (filter: 'ALL' | 'UNREAD') => {
+  if (notificationReadFilter.value === filter) return
+  notificationReadFilter.value = filter
+  await loadNotifications()
+}
+
+const markAllNotificationsAsRead = async () => {
+  if (unreadNotificationCount.value <= 0) return
+  try {
+    await markAllNotificationsRead()
+    unreadNotificationCount.value = 0
+    notifications.value = notifications.value.map(notification => ({
+      ...notification,
+      readStatus: 'READ'
+    }))
+    if (notificationReadFilter.value === 'UNREAD') {
+      await loadNotifications()
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to mark all notifications read:', error)
+    }
+  }
+}
+
+const parseNotificationLinkParams = (notification: NotificationMessage) => {
+  if (!notification.linkParams) return {}
+  try {
+    return JSON.parse(notification.linkParams) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+const getNotificationDate = (notification: NotificationMessage) => {
+  const params = parseNotificationLinkParams(notification)
+  if (params.date) return params.date
+  const matched = notification.content?.match(/\d{4}-\d{2}-\d{2}/)
+  return matched?.[0]
+}
+
+const getNotificationPriorityLabel = (priority?: string) => {
+  if (!priority || priority === 'NORMAL') return ''
+  return getDictValue('notification_priority', priority)
+}
+
+const handleNotificationClick = async (notification: NotificationMessage) => {
+  if (notification.readStatus === 'UNREAD') {
+    notification.readStatus = 'READ'
+    unreadNotificationCount.value = Math.max(unreadNotificationCount.value - 1, 0)
+    markNotificationRead(notification.messageId).catch(async (error) => {
+      if (import.meta.env.DEV) {
+        console.error('Failed to mark notification read:', error)
+      }
+      await loadUnreadNotificationCount()
+      if (notificationDrawerOpen.value) {
+        await loadNotifications()
+      }
+    })
+  }
+
+  closeNotificationDrawer()
+  if (notification.linkType === 'PRICE_QUERY' || notification.type === 'PRICE_PUBLISHED') {
+    const date = getNotificationDate(notification)
+    router.push({ path: '/price-query', query: date ? { date } : undefined })
+  }
+}
+
+const formatNotificationTime = (time?: string) => {
+  if (!time) return ''
+  return time.replace('T', ' ').slice(0, 16)
+}
+
+const getNotificationPollingDelay = () => {
+  const baseDelay = notificationBackoffLevel > 0
+    ? Math.min(30000 * 2 ** notificationBackoffLevel, 120000)
+    : 30000
+  return baseDelay + Math.floor(Math.random() * 15000)
+}
+
+const scheduleNotificationPolling = () => {
+  if (notificationTimer || document.visibilityState === 'hidden') return
+  notificationTimer = setTimeout(async () => {
+    notificationTimer = null
+    await loadUnreadNotificationCount()
+    scheduleNotificationPolling()
+  }, getNotificationPollingDelay())
+}
+
+const refreshNotifications = async () => {
+  await loadUnreadNotificationCount()
+  if (notificationDrawerOpen.value) {
+    await loadNotifications()
+  }
+}
+
+const startNotificationPolling = () => {
+  stopNotificationPolling()
+  if (document.visibilityState === 'hidden') return
+  loadUnreadNotificationCount().finally(scheduleNotificationPolling)
+}
+
+const stopNotificationPolling = () => {
+  if (notificationTimer) {
+    clearTimeout(notificationTimer)
+    notificationTimer = null
+  }
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    startNotificationPolling()
+  } else {
+    stopNotificationPolling()
+  }
 }
 
 onMounted(async () => {
@@ -156,11 +360,32 @@ onMounted(async () => {
     loadAllDicts(),
     loadThemeConfig()
   ])
+
+  startNotificationPolling()
+  document.addEventListener('click', closeUserMenu)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('price-notifications:refresh', refreshNotifications)
+})
+
+onUnmounted(() => {
+  stopNotificationPolling()
+  document.removeEventListener('click', closeUserMenu)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('price-notifications:refresh', refreshNotifications)
+})
+
+watch(() => route.fullPath, () => {
+  closeUserMenu()
 })
 
 watch(() => userStore.isAuthenticated, (isAuth) => {
   if (!isAuth) {
+    stopNotificationPolling()
+    unreadCountInitialized.value = false
+    unreadNotificationCount.value = 0
     router.push('/login')
+  } else {
+    startNotificationPolling()
   }
 })
 
@@ -175,6 +400,7 @@ watch(() => menuStore.version, () => {
 
 watch(() => route.path, () => {
   syncExpandedMenuByRoute()
+  refreshNotifications()
 })
 </script>
 
@@ -218,22 +444,68 @@ watch(() => route.path, () => {
 
         <!-- 用户信息 -->
         <div class="sidebar-footer">
-          <div class="user-info">
-            <button class="user-avatar avatar-button" @click="goProfile" title="进入个人中心" type="button">
-              {{ userStore.user?.nickname?.charAt(0) || 'U' }}
+          <div class="user-panel" @click.stop>
+            <button class="user-card" type="button" @click="goProfile" title="进入个人中心">
+              <span class="user-avatar">
+                {{ userStore.user?.nickname?.charAt(0) || 'U' }}
+              </span>
+              <span class="user-details">
+                <span class="user-name">{{ userStore.user?.nickname }}</span>
+                <span class="user-role">{{ userRoleLabel }}</span>
+              </span>
             </button>
-            <div class="user-details">
-              <div class="user-name">{{ userStore.user?.nickname }}</div>
-              <div class="user-role">{{ userRoleLabel }}</div>
+
+            <button
+              class="user-more-btn"
+              :class="{ active: userMenuOpen, attention: unreadNotificationCount > 0 }"
+              type="button"
+              title="用户操作"
+              @click="toggleUserMenu"
+            >
+              <span v-if="unreadNotificationCount > 0" class="menu-notice-count">
+                {{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}
+              </span>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="12" cy="5" r="1.8" />
+                <circle cx="12" cy="12" r="1.8" />
+                <circle cx="12" cy="19" r="1.8" />
+              </svg>
+            </button>
+
+            <div v-if="userMenuOpen" class="user-action-menu">
+              <button type="button" class="user-action-item" @click="goProfile">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <span>个人中心</span>
+              </button>
+              <button type="button" class="user-action-item" @click="goChangePassword">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+                <span>修改密码</span>
+              </button>
+              <button type="button" class="user-action-item" @click="openNotificationDrawer">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                </svg>
+                <span>消息通知</span>
+                <span v-if="unreadNotificationCount > 0" class="user-action-badge">
+                  {{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}
+                </span>
+              </button>
+              <button type="button" class="user-action-item danger" @click="handleLogout">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span>退出登录</span>
+              </button>
             </div>
           </div>
-          <button class="logout-btn" @click="handleLogout" title="退出登录">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
         </div>
       </aside>
 
@@ -319,6 +591,69 @@ watch(() => route.path, () => {
         </router-view>
       </main>
     </template>
+
+    <div v-if="notificationDrawerOpen" class="notification-overlay" @click="closeNotificationDrawer"></div>
+    <aside v-if="notificationDrawerOpen" class="notification-drawer">
+      <header class="notification-header">
+        <div>
+          <h2>通知消息</h2>
+          <p>{{ unreadNotificationCount }} 条未读</p>
+        </div>
+        <div class="notification-header-actions">
+          <button
+            type="button"
+            class="notification-read-all"
+            :disabled="unreadNotificationCount <= 0"
+            @click="markAllNotificationsAsRead"
+          >
+            全部已读
+          </button>
+          <button type="button" class="notification-close" @click="closeNotificationDrawer">×</button>
+        </div>
+      </header>
+
+      <div class="notification-tabs">
+        <button
+          type="button"
+          :class="{ active: notificationReadFilter === 'ALL' }"
+          @click="setNotificationReadFilter('ALL')"
+        >
+          全部
+        </button>
+        <button
+          type="button"
+          :class="{ active: notificationReadFilter === 'UNREAD' }"
+          @click="setNotificationReadFilter('UNREAD')"
+        >
+          未读
+        </button>
+      </div>
+
+      <div v-if="notificationsLoading" class="notification-state">加载中...</div>
+      <div v-else-if="notifications.length === 0" class="notification-state">暂无通知</div>
+      <div v-else class="notification-list">
+        <button
+          v-for="notification in notifications"
+          :key="notification.id"
+          type="button"
+          class="notification-item"
+          :class="{ unread: notification.readStatus === 'UNREAD' }"
+          @click="handleNotificationClick(notification)"
+        >
+          <span class="notification-dot"></span>
+          <span class="notification-content">
+            <span class="notification-title-row">
+              <strong>{{ notification.title }}</strong>
+              <em v-if="getNotificationPriorityLabel(notification.priority)">
+                {{ getNotificationPriorityLabel(notification.priority) }}
+              </em>
+            </span>
+            <span>{{ notification.summary || notification.content || '暂无内容' }}</span>
+            <small>{{ formatNotificationTime(notification.createdTime) }}</small>
+          </span>
+        </button>
+      </div>
+    </aside>
   </div>
 </template>
 
@@ -401,11 +736,9 @@ watch(() => route.path, () => {
 
 /* 用户信息 */
 .sidebar-footer {
-  padding: 16px;
+  padding: 16px 18px 20px;
   border-top: 1px solid #F3F4F6;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  position: relative;
 }
 
 .user-info {
@@ -413,6 +746,34 @@ watch(() => route.path, () => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.user-panel {
+  position: relative;
+  width: 100%;
+}
+
+.user-card {
+  width: 100%;
+  min-height: 54px;
+  padding: 9px 48px 9px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.84);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  color: var(--app-nav-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.user-card:hover {
+  border-color: rgba(13, 110, 110, 0.24);
+  background: #FFFFFF;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.09);
 }
 
 .user-avatar {
@@ -439,8 +800,16 @@ watch(() => route.path, () => {
   box-shadow: 0 6px 14px rgba(13, 110, 110, 0.22);
 }
 
+.user-card .user-avatar {
+  flex-shrink: 0;
+}
+
 .user-details {
+  min-width: 0;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .user-name {
@@ -448,6 +817,9 @@ watch(() => route.path, () => {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--app-nav-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-role {
@@ -455,25 +827,316 @@ watch(() => route.path, () => {
   font-size: var(--font-size-xs);
   color: var(--app-nav-text);
   opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.logout-btn {
-  width: 36px;
-  height: 36px;
+.user-more-btn {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
   border: none;
-  background: transparent;
-  color: var(--app-nav-text);
+  border-radius: 50%;
+  background: #EEF2F7;
+  color: #475569;
   cursor: pointer;
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 150ms;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
-.logout-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
+.user-more-btn:hover,
+.user-more-btn.active {
+  background: #E2E8F0;
+  color: #0D6E6E;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
+}
+
+.menu-notice-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #E03B3B;
+  color: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(224, 59, 59, 0.12);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+}
+
+.user-action-menu {
+  position: absolute;
+  right: 0;
+  bottom: 66px;
+  z-index: 510;
+  width: 148px;
+  padding: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.user-action-menu::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(226, 232, 240, 0.86);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+  background: rgba(255, 255, 255, 0.96);
+  transform: rotate(45deg);
+}
+
+.user-action-item {
+  position: relative;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.user-action-item:hover {
+  background: #F8FAFC;
+  color: #0D6E6E;
+}
+
+.user-action-item.danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #DC2626;
+}
+
+.user-action-item svg {
+  flex-shrink: 0;
+}
+
+.user-action-item span:not(.user-action-badge) {
+  min-width: 0;
+  flex: 1;
+}
+
+.user-action-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #E03B3B;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.notification-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.notification-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 501;
+  width: 360px;
+  max-width: 92vw;
+  height: 100vh;
+  background: #FFFFFF;
+  box-shadow: -16px 0 40px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-header {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid #EEF2F7;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notification-header h2 {
+  margin: 0;
+  color: #1A1A1A;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.notification-header p {
+  margin: 6px 0 0;
+  color: #64748B;
+  font-size: 13px;
+}
+
+.notification-header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.notification-read-all {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #D8E1EA;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #0D6E6E;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.notification-read-all:disabled {
+  cursor: not-allowed;
+  color: #94A3B8;
+  background: #F8FAFC;
+}
+
+.notification-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: #64748B;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.notification-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #EEF2F7;
+}
+
+.notification-tabs button {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: #64748B;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-tabs button.active {
+  border-color: rgba(13, 110, 110, 0.22);
+  background: rgba(13, 110, 110, 0.1);
+  color: #0D6E6E;
+}
+
+.notification-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.notification-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: flex;
+  gap: 10px;
+  padding: 14px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.notification-item:hover {
+  background: #F8FAFC;
+}
+
+.notification-item.unread {
+  background: rgba(13, 110, 110, 0.06);
+}
+
+.notification-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.notification-item.unread .notification-dot {
+  background: #0D6E6E;
+}
+
+.notification-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.notification-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-content strong {
+  color: #1A1A1A;
+  font-size: 14px;
+  flex: 1;
+}
+
+.notification-content em {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(224, 59, 59, 0.1);
+  color: #B42318;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.notification-content span {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notification-content small {
+  color: #94A3B8;
+  font-size: 12px;
+}
+
+.notification-state {
+  padding: 48px 20px;
+  color: #94A3B8;
+  text-align: center;
+  font-size: 14px;
 }
 
 /* 内容区域 */
