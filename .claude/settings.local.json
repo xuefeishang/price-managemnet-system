@@ -239,7 +239,15 @@
       "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management product price_history product_category origin customer)",
       "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management price)",
       "Skill(deploy)",
-      "Bash(Get-Content *)"
+      "Bash(Get-Content *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(& \"D:\\\\node22\\\\node.exe\" --version)",
+      "PowerShell(& \"D:\\\\node22\\\\npm.cmd\" --version)",
+      "PowerShell(npm run *)",
+      "Bash(mvnw.cmd clean *)",
+      "Bash(./mvnw.cmd clean *)"
     ]
   },
   "enabledMcpjsonServers": [

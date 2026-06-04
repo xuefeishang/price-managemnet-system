@@ -124,12 +124,22 @@ public class SecurityConfig {
 
         List<String> allowedOrigins = securityProperties.getCorsAllowedOrigins();
         if (allowedOrigins.isEmpty()) {
-            // 无配置时仅允许本地开发来源
+            // 无配置时允许本地开发和生产环境常用来源
             allowedOrigins = List.of(
                     "http://localhost:5173",
                     "http://127.0.0.1:5173",
                     "http://localhost:80",
-                    "http://127.0.0.1:80"
+                    "http://127.0.0.1:80",
+                    "http://localhost:32080",
+                    "http://127.0.0.1:32080",
+                    // 生产环境内网地址
+                    "http://10.7.5.175",
+                    "http://10.7.5.175:80",
+                    "http://10.7.5.175:32080",
+                    // 生产环境外网地址
+                    "http://101.254.159.153",
+                    "http://101.254.159.153:80",
+                    "http://101.254.159.153:32080"
             );
         }
         configuration.setAllowedOrigins(allowedOrigins);
