@@ -58,42 +58,83 @@
         </button>
       </view>
 
-      <text class="server-link" @click="openServerSettings">配置服务器地址</text>
+      <!-- 网络模式切换入口 -->
+      <view class="network-switch-section">
+        <text class="network-status" @click="openNetworkSettings">
+          当前网络：{{ currentNetworkLabel }}
+        </text>
+        <text class="network-hint" @click="openNetworkSettings">点击切换内外网</text>
+      </view>
     </view>
 
-    <view v-if="showServerSettings" class="settings-mask" @click="closeServerSettings">
+    <!-- 网络设置弹窗 -->
+    <view v-if="showNetworkSettings" class="settings-mask" @click="closeNetworkSettings">
       <view class="settings-panel" @click.stop>
-        <text class="settings-title">服务器设置</text>
+        <text class="settings-title">网络设置</text>
 
-        <view class="settings-field">
-          <text class="settings-label">IP 地址</text>
-          <input
-            v-model="serverForm.ip"
-            class="settings-input"
-            type="text"
-            placeholder="例如 127.0.0.1"
-            placeholder-class="placeholder"
-            :adjust-position="true"
-            :cursor-spacing="132"
-          />
+        <!-- 网络模式选择 -->
+        <view class="network-options">
+          <view
+            v-for="option in networkOptions"
+            :key="option.value"
+            class="network-option"
+            :class="{ active: selectedNetworkMode === option.value }"
+            @click="selectNetworkMode(option.value)"
+          >
+            <view class="option-header">
+              <text class="option-title">{{ option.label }}</text>
+              <view v-if="selectedNetworkMode === option.value" class="option-check">
+                <text>✓</text>
+              </view>
+            </view>
+            <text class="option-desc">{{ option.description }}</text>
+          </view>
         </view>
 
-        <view class="settings-field">
-          <text class="settings-label">端口号</text>
-          <input
-            v-model="serverForm.port"
-            class="settings-input"
-            type="number"
-            placeholder="例如 8080"
-            placeholder-class="placeholder"
-            :adjust-position="true"
-            :cursor-spacing="132"
-          />
+        <!-- 当前服务器地址显示 -->
+        <view class="current-address">
+          <text class="address-label">当前服务器地址</text>
+          <text class="address-value">{{ currentServerAddress }}</text>
+        </view>
+
+        <!-- 高级设置：手动输入 IP 和端口 -->
+        <view class="advanced-section">
+          <text class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+            {{ showAdvanced ? '收起高级设置' : '展开高级设置（手动输入）' }}
+          </text>
+
+          <view v-if="showAdvanced" class="advanced-fields">
+            <view class="settings-field">
+              <text class="settings-label">IP 地址</text>
+              <input
+                v-model="manualServerForm.ip"
+                class="settings-input"
+                type="text"
+                placeholder="例如 10.7.5.175"
+                placeholder-class="placeholder"
+              />
+            </view>
+
+            <view class="settings-field">
+              <text class="settings-label">端口号</text>
+              <input
+                v-model="manualServerForm.port"
+                class="settings-input"
+                type="number"
+                placeholder="例如 32080"
+                placeholder-class="placeholder"
+              />
+            </view>
+
+            <button class="manual-save-btn" @click="handleSaveManualServer">保存手动配置</button>
+          </view>
         </view>
 
         <view class="settings-actions">
-          <button class="settings-btn secondary" @click="closeServerSettings">取消</button>
-          <button class="settings-btn primary" @click="handleSaveServer">保存</button>
+          <button class="settings-btn secondary" @click="closeNetworkSettings">关闭</button>
+          <button class="settings-btn primary" :loading="detecting" @click="handleApplyNetwork">
+            {{ detecting ? '检测中...' : '应用' }}
+          </button>
         </view>
       </view>
     </view>
@@ -108,7 +149,15 @@ import {
   getServerConfig,
   isValidServerConfig,
   saveServerConfig,
-  type ServerConfig
+  getNetworkMode,
+  setNetworkMode,
+  switchNetworkMode,
+  initNetworkDetection,
+  getInternalBaseUrl,
+  getExternalBaseUrl,
+  getApiBaseUrl,
+  type ServerConfig,
+  type NetworkMode
 } from '@/utils/serverConfig'
 
 const userStore = useUserStore()
@@ -118,30 +167,97 @@ const form = ref({ username: '', password: '' })
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
-const showServerSettings = ref(false)
-const serverForm = ref<ServerConfig>(getServerConfig())
+
+// 网络设置相关
+const showNetworkSettings = ref(false)
+const showAdvanced = ref(false)
+const detecting = ref(false)
+const selectedNetworkMode = ref<NetworkMode>('auto')
+const manualServerForm = ref<ServerConfig>({ ip: '', port: '' })
 
 const logoUrl = computed(() => themeConfig.value.logoUrlLogin || themeConfig.value.logoUrl)
 const logoSizeClass = computed(() => `logo-${themeConfig.value.logoSizeLogin || themeConfig.value.logoSize || 'medium'}`)
 
-const openServerSettings = () => {
-  serverForm.value = getServerConfig()
-  showServerSettings.value = true
+// 网络选项配置
+const networkOptions = computed(() => [
+  {
+    value: 'auto',
+    label: '自动检测',
+    description: '系统自动检测网络环境，优先使用内网'
+  },
+  {
+    value: 'internal',
+    label: '内网模式',
+    description: `公司 WiFi 内网访问 (${getInternalBaseUrl()})`
+  },
+  {
+    value: 'external',
+    label: '外网模式',
+    description: `外网远程访问 (${getExternalBaseUrl()})`
+  }
+])
+
+// 当前网络模式标签
+const currentNetworkLabel = computed(() => {
+  const mode = getNetworkMode()
+  const labels: Record<NetworkMode, string> = {
+    'auto': '自动检测',
+    'internal': '内网',
+    'external': '外网',
+    'dev': '开发'
+  }
+  return labels[mode] || '自动检测'
+})
+
+// 当前服务器地址
+const currentServerAddress = computed(() => getApiBaseUrl())
+
+const openNetworkSettings = () => {
+  selectedNetworkMode.value = getNetworkMode()
+  manualServerForm.value = getServerConfig()
+  showAdvanced.value = false
+  showNetworkSettings.value = true
 }
 
-const closeServerSettings = () => {
-  showServerSettings.value = false
+const closeNetworkSettings = () => {
+  showNetworkSettings.value = false
 }
 
-const handleSaveServer = () => {
-  if (!isValidServerConfig(serverForm.value)) {
+const selectNetworkMode = (mode: NetworkMode) => {
+  selectedNetworkMode.value = mode
+}
+
+const handleApplyNetwork = async () => {
+  detecting.value = true
+
+  try {
+    const baseUrl = await switchNetworkMode(selectedNetworkMode.value)
+    closeNetworkSettings()
+    uni.showToast({
+      title: `已切换到${currentNetworkLabel.value}`,
+      icon: 'success'
+    })
+  } catch (error) {
+    uni.showToast({
+      title: '网络切换失败',
+      icon: 'none'
+    })
+  } finally {
+    detecting.value = false
+  }
+}
+
+const handleSaveManualServer = () => {
+  if (!isValidServerConfig(manualServerForm.value)) {
     uni.showToast({ title: '请输入正确的IP和端口', icon: 'none' })
     return
   }
 
-  saveServerConfig(serverForm.value)
-  showServerSettings.value = false
-  uni.showToast({ title: '已保存', icon: 'success' })
+  saveServerConfig(manualServerForm.value)
+  setNetworkMode('external') // 手动配置视为外网模式
+  showAdvanced.value = false
+  closeNetworkSettings()
+  uni.showToast({ title: '已保存手动配置', icon: 'success' })
 }
 
 // 账号密码登录
@@ -172,9 +288,12 @@ const handleLogin = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // 加载主题配置（获取Logo）
   loadThemeConfig()
+
+  // 初始化网络检测（自动选择最佳网络）
+  await initNetworkDetection()
 
   // 恢复会话
   userStore.restoreSession()
@@ -202,7 +321,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 64rpx;
+  gap: 48rpx;
   padding: 40rpx 0 72rpx;
   box-sizing: border-box;
   transform: translateY(-44rpx);
@@ -281,15 +400,6 @@ onMounted(() => {
   border-radius: 24rpx;
   padding: 28rpx 28rpx 32rpx;
   box-shadow: 0 24rpx 60rpx rgba(4, 55, 55, 0.18);
-}
-
-.server-link {
-  display: block;
-  align-self: center;
-  margin-top: -44rpx;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 24rpx;
-  text-decoration: underline;
 }
 
 .form-item {
@@ -377,6 +487,26 @@ onMounted(() => {
   color: #E03B3B;
 }
 
+/* 网络切换区域 */
+.network-switch-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.network-status {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 26rpx;
+}
+
+.network-hint {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 24rpx;
+  text-decoration: underline;
+}
+
+/* 设置弹窗 */
 .settings-mask {
   position: fixed;
   inset: 0;
@@ -391,10 +521,14 @@ onMounted(() => {
 
 .settings-panel {
   width: 100%;
+  max-height: 80vh;
   background: #FFFFFF;
   border-radius: 24rpx;
   padding: 36rpx 32rpx 32rpx;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
 }
 
 .settings-title {
@@ -402,19 +536,107 @@ onMounted(() => {
   color: #1A1A1A;
   font-size: 34rpx;
   font-weight: 700;
-  margin-bottom: 28rpx;
+}
+
+/* 网络选项 */
+.network-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.network-option {
+  padding: 20rpx 24rpx;
+  border: 2rpx solid #E5EDF0;
+  border-radius: 16rpx;
+  background: #F8FAFC;
+}
+
+.network-option.active {
+  border-color: #0D6E6E;
+  background: rgba(13, 110, 110, 0.06);
+}
+
+.option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.option-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.option-check {
+  width: 36rpx;
+  height: 36rpx;
+  background: #0D6E6E;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.option-check text {
+  color: #FFFFFF;
+  font-size: 20rpx;
+}
+
+.option-desc {
+  font-size: 24rpx;
+  color: #64748B;
+}
+
+/* 当前地址显示 */
+.current-address {
+  padding: 16rpx 24rpx;
+  background: #F1F5F9;
+  border-radius: 12rpx;
+}
+
+.address-label {
+  font-size: 24rpx;
+  color: #64748B;
+  margin-bottom: 8rpx;
+}
+
+.address-value {
+  font-size: 28rpx;
+  color: #1A1A1A;
+  font-weight: 500;
+}
+
+/* 高级设置 */
+.advanced-section {
+  border-top: 1rpx solid #E5EDF0;
+  padding-top: 16rpx;
+}
+
+.advanced-toggle {
+  font-size: 26rpx;
+  color: #0D6E6E;
+}
+
+.advanced-fields {
+  margin-top: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
 }
 
 .settings-field {
-  margin-bottom: 22rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
 .settings-label {
-  display: block;
-  color: #334155;
   font-size: 26rpx;
+  color: #334155;
   font-weight: 600;
-  margin-bottom: 12rpx;
 }
 
 .settings-input {
@@ -429,10 +651,21 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
+.manual-save-btn {
+  width: 100%;
+  height: 72rpx;
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 28rpx;
+  border-radius: 14rpx;
+  border: none;
+}
+
+/* 操作按钮 */
 .settings-actions {
   display: flex;
   gap: 20rpx;
-  margin-top: 30rpx;
+  margin-top: 8rpx;
 }
 
 .settings-btn {

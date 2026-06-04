@@ -238,7 +238,8 @@
       "PowerShell(ssh root@10.7.5.175 \"ls -la /opt/price-management/frontend/dist/assets/ | wc -l\")",
       "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management product price_history product_category origin customer)",
       "Bash(mysqldump -h127.0.0.1 -uroot -p'Root@2026' price_management price)",
-      "Skill(deploy)"
+      "Skill(deploy)",
+      "Bash(Get-Content *)"
     ]
   },
   "enabledMcpjsonServers": [

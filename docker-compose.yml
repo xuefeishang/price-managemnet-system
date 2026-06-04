@@ -62,8 +62,8 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: price-management-frontend
     ports:
-      - "80:80"        # H5 前端（内网）
-      - "32080:32080"  # 小程序 API 专用（外网）
+      - "80:80"        # H5 前端（保留，可选）
+      - "32080:32080"  # 统一入口：PC端 + 小程序（内网/外网）
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
