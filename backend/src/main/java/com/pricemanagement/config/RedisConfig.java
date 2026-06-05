@@ -1,5 +1,9 @@
 package com.pricemanagement.config;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -12,6 +16,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -85,11 +90,19 @@ public class RedisConfig {
     private CacheManager createRedisCacheManager(RedisConnectionFactory connectionFactory) {
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
 
-        // 默认配置：使用随机过期时间防止缓存雪崩
+        // JSON 序列化器 - 支持复杂对象
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.activateDefaultTyping(objectMapper.getPolymorphicTypeValidator(),
+                ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+
+        // 默认配置：使用 JSON 序列化器
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofSeconds(getRandomTtl(BASE_TTL_SECONDS)))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues();
 
         // 为不同缓存设置不同的过期时间
@@ -99,28 +112,35 @@ public class RedisConfig {
         cacheConfigurations.put(CACHE_PRODUCTS, RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofSeconds(getRandomTtl(1800)))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues());
 
         // 字典缓存：2小时随机过期（字典变化较少）
         cacheConfigurations.put(CACHE_DICT, RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofSeconds(getRandomTtl(7200)))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues());
 
         // 用户缓存：15分钟随机过期
         cacheConfigurations.put(CACHE_USERS, RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofSeconds(getRandomTtl(900)))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues());
 
         // 菜单缓存：1小时随机过期
         cacheConfigurations.put(CACHE_MENU, RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofSeconds(getRandomTtl(3600)))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
+                .disableCachingNullValues());
+
+        // 样式缓存：1小时随机过期
+        cacheConfigurations.put(CACHE_STYLE, RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofSeconds(getRandomTtl(3600)))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 .disableCachingNullValues());
 
         return RedisCacheManager.builder(connectionFactory)
