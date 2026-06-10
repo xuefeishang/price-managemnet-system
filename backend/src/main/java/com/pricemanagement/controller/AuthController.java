@@ -12,6 +12,7 @@ import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.service.CaptchaService;
 import com.pricemanagement.service.EmployeeIdService;
 import com.pricemanagement.service.LoginHistoryService;
+import com.pricemanagement.service.NotificationMiniProgramEligibilityService;
 import com.pricemanagement.service.PermissionService;
 import com.pricemanagement.service.ProfileService;
 import com.pricemanagement.service.RefreshTokenService;
@@ -48,6 +49,7 @@ public class AuthController {
     private final EmployeeIdService employeeIdService;
     private final PermissionService permissionService;
     private final ProfileService profileService;
+    private final NotificationMiniProgramEligibilityService notificationMiniProgramEligibilityService;
     private final LoginHistoryService loginHistoryService;
 
     @PostMapping("/login")
@@ -129,8 +131,11 @@ public class AuthController {
             // 主角色：优先使用 UserRole 表的第一个角色，否则使用 User.role 枚举
             String primaryRole = roleCodes.get(0);
 
-            // 生成JWT令牌（包含角色列表）
-            String token = jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, primaryRole);
+            // 获取用户权限列表
+            Set<String> permissions = permissionService.getUserPermissions(user.getId());
+
+            // 生成JWT令牌（包含角色列表和权限码）
+            String token = jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, primaryRole, permissions);
             log.debug("User logged in successfully: {} with roles: {}", loginIdentifier, roleCodes);
 
             // 创建刷新令牌
@@ -146,9 +151,6 @@ public class AuthController {
             operationLogHelper.logSuccess("用户认证", OperationLog.OperationType.LOGIN,
                     "用户登录成功", user.getUsername());
             loginHistoryService.recordSuccess(user, httpRequest);
-
-            // 获取用户权限列表
-            Set<String> permissions = permissionService.getUserPermissions(user.getId());
 
             // 构建响应（包含角色列表）
             LoginResponse response = new LoginResponse(token, user.getId(), user.getUsername(),
@@ -261,6 +263,7 @@ public class AuthController {
         user.setPhone("");
 
         User savedUser = userRepository.save(user);
+        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
         log.debug("New user registered: {}", registerRequest.getUsername());
 
         return Result.success("注册成功", savedUser);

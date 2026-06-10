@@ -12,6 +12,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class JwtUtil {
@@ -34,11 +35,16 @@ public class JwtUtil {
      * @param primaryRole 主角色（用于兼容旧逻辑）
      */
     public String generateToken(Long userId, String username, List<String> roles, String primaryRole) {
+        return generateToken(userId, username, roles, primaryRole, Set.of());
+    }
+
+    public String generateToken(Long userId, String username, List<String> roles, String primaryRole, Set<String> permissions) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("username", username);
         claims.put("roles", roles);  // 角色列表
         claims.put("role", primaryRole);  // 主角色（兼容）
+        claims.put("permissions", permissions == null ? Set.of() : permissions);
         return createToken(claims, username);
     }
 
@@ -111,6 +117,19 @@ public class JwtUtil {
         // 兼容旧令牌：从 role 字段获取
         String role = claims.get("role", String.class);
         return role != null ? List.of(role) : List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getPermissionsFromToken(String token) {
+        Claims claims = parseToken(token);
+        if (claims == null) {
+            return List.of();
+        }
+        Object permissionsObj = claims.get("permissions");
+        if (permissionsObj instanceof List) {
+            return (List<String>) permissionsObj;
+        }
+        return List.of();
     }
 
     public boolean validateToken(String token) {

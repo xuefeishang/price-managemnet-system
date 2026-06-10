@@ -1,23 +1,15 @@
 <template>
   <view class="page">
-    <!-- 顶部导航 -->
-    <view class="navbar">
-      <view class="navbar-left">
-        <text class="navbar-title">{{ formatDateDisplay(selectedDate) }}</text>
-      </view>
-      <text class="navbar-status">{{ hasChanges ? '有未保存修改' : '暂无修改' }}</text>
-    </view>
-
-    <!-- 日期选择 -->
-    <view class="date-section">
-      <view class="date-nav">
-        <button class="date-btn" @click="goToPrevDate">前一天</button>
-        <picker mode="date" :value="selectedDate" @change="onDateChange">
-          <view class="date-picker">
-            <text>{{ selectedDate }}</text>
-          </view>
-        </picker>
-        <button class="date-btn" @click="goToNextDate">后一天</button>
+    <!-- 与首页一致的紧凑日期栏 -->
+    <view class="header">
+      <picker mode="date" :value="selectedDate" @change="onDateChange">
+        <view class="date-picker">
+          <text class="date-text">{{ selectedDate }}</text>
+          <text class="date-icon">▼</text>
+        </view>
+      </picker>
+      <view class="header-status" :class="{ changed: hasChanges }">
+        <text>{{ hasChanges ? '有未保存修改' : '暂无修改' }}</text>
       </view>
     </view>
 
@@ -72,19 +64,19 @@
     <scroll-view class="content" scroll-y v-if="!loading">
       <view class="price-list">
         <view v-for="(product, index) in filteredProducts" :key="product.id" class="price-card">
-          <view class="card-header">
-            <text class="card-seq">{{ index + 1 }}</text>
-            <view class="card-title">
-              <text class="card-name">{{ product.name }}</text>
-              <text class="card-specs" v-if="product.specs">{{ product.specs }}</text>
+          <view class="card-main">
+            <view class="card-header">
+              <text class="card-seq">{{ index + 1 }}</text>
+              <view class="card-title">
+                <text class="card-name">{{ product.name }}</text>
+                <text class="card-specs" v-if="product.specs">{{ product.specs }}</text>
+              </view>
             </view>
-          </view>
 
-          <view class="price-row">
             <view class="price-field">
-              <text class="price-label">当日售价</text>
+              <text class="price-label">当日价格</text>
               <view class="price-input-wrapper">
-                <text class="price-unit">¥</text>
+                <text class="price-unit">{{ getProductCurrencySymbol(product.id) }}</text>
                 <input
                   class="price-input"
                   type="digit"
@@ -103,7 +95,7 @@
             </view>
             <view class="stat-item">
               <text class="stat-label">昨日价</text>
-              <text class="stat-value">{{ formatPrice(getYesterdayPrice(product.id)) }}</text>
+              <text class="stat-value">{{ formatPrice(product.id, getYesterdayPrice(product.id)) }}</text>
             </view>
             <view class="stat-item">
               <text class="stat-label">较昨日</text>
@@ -111,7 +103,7 @@
             </view>
             <view class="stat-item">
               <text class="stat-label">月均价</text>
-              <text class="stat-value">{{ formatPrice(getMonthlyAvg(product.id)) }}</text>
+              <text class="stat-value">{{ formatPrice(product.id, getMonthlyAvg(product.id)) }}</text>
             </view>
           </view>
         </view>
@@ -128,11 +120,16 @@
 
     <view class="save-bar">
       <view class="save-info">
-        <text class="save-title">{{ hasChanges ? '价格已修改' : '修改价格后可保存' }}</text>
-        <text class="save-desc">保存 {{ selectedDate }} 报价</text>
+        <text class="save-title">{{ hasChanges ? '价格已修改' : currentDraft ? '草稿已保存' : '修改价格后可保存' }}</text>
+        <text class="save-desc">
+          {{ currentDraft ? `草稿 ${currentDraft.savedItemCount || 0} 条 · ${selectedDate}` : `尚未保存草稿 · ${selectedDate}` }}
+        </text>
       </view>
-      <button class="save-btn" @click="handleSave" :disabled="saving || !hasChanges">
+      <button class="action-btn save-btn" @click="handleSave" :disabled="saving || publishing || !hasChanges">
         {{ saving ? '保存中' : '保存' }}
+      </button>
+      <button class="action-btn publish-btn" @click="handlePublish" :disabled="publishing || saving || !currentDraft || hasChanges">
+        {{ publishing ? '发布中' : '发布' }}
       </button>
     </view>
 
@@ -144,10 +141,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts } from '@/api/products'
-import { getPricesByDateWithStats, addProductPrice, updatePrice as updateProductPrice } from '@/api/products'
+import { getPricesByDateWithStats } from '@/api/products'
+import { getPriceDraftByDate, publishPriceDraft, savePriceDraft } from '@/api/priceDraft'
 import { getCategories } from '@/api/categories'
-import type { Product, Price, PageResponse, ProductCategory } from '@/types'
+import type { PriceDraftBatch, Product, Price, PageResponse, ProductCategory } from '@/types'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
+import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+import { refreshNotificationIndicator, showNotificationBubble } from '@/composables/useNotificationIndicator'
 
 const userStore = useUserStore()
 
@@ -156,6 +156,7 @@ const products = ref<Product[]>([])
 const categories = ref<ProductCategory[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const publishing = ref(false)
 const searchQuery = ref('')
 const selectedCategoryId = ref<number | null>(null)
 
@@ -165,6 +166,8 @@ const monthlyAverageMap = ref<Map<number, number>>(new Map())
 const inheritedPriceMap = ref<Map<number, number>>(new Map())
 const inheritedBudgetPriceMap = ref<Map<number, number>>(new Map())
 const editingPrices = ref<Map<number, string>>(new Map())
+const originalPriceTextMap = ref<Map<number, string>>(new Map())
+const currentDraft = ref<PriceDraftBatch | null>(null)
 
 const filteredProducts = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -193,24 +196,27 @@ function getYesterday(): string {
 }
 
 const isProductChanged = (productId: number, editPrice: string) => {
-  const normalizedEdit = editPrice.trim()
-  const original = priceMap.value.get(productId)
-  const originalValue = original?.currentPrice != null ? String(original.currentPrice) : ''
-  return normalizedEdit !== originalValue
+  return editPrice.trim() !== (originalPriceTextMap.value.get(productId) || '')
 }
 
-const formatDateDisplay = (dateStr: string) => {
-  const date = new Date(dateStr)
-  return `${date.getMonth() + 1}月${date.getDate()}日`
+const applyDraft = (draft: PriceDraftBatch | null) => {
+  currentDraft.value = draft
+  if (!draft?.items?.length) return
+  for (const item of draft.items) {
+    const value = String(item.currentPrice)
+    editingPrices.value.set(item.productId, value)
+    originalPriceTextMap.value.set(item.productId, value)
+  }
 }
 
 const loadData = async () => {
   loading.value = true
   try {
-    const [productRes, categoryRes, priceRes] = await Promise.all([
+    const [productRes, categoryRes, priceRes, draftRes] = await Promise.all([
       getProducts({ page: 0, size: 1000, status: 'ACTIVE' }),
       getCategories('ACTIVE'),
-      getPricesByDateWithStats(selectedDate.value)
+      getPricesByDateWithStats(selectedDate.value),
+      getPriceDraftByDate(selectedDate.value)
     ])
 
     const productList = (productRes.data as PageResponse<Product>).content || []
@@ -224,6 +230,8 @@ const loadData = async () => {
     inheritedPriceMap.value = new Map()
     inheritedBudgetPriceMap.value = new Map()
     editingPrices.value = new Map()
+    originalPriceTextMap.value = new Map()
+    currentDraft.value = null
 
     const items = priceRes.data || []
     for (const item of items) {
@@ -231,9 +239,12 @@ const loadData = async () => {
         const productId = item.price.product.id
         priceMap.value.set(productId, item.price)
         if (item.price.currentPrice != null) {
-          editingPrices.value.set(productId, String(item.price.currentPrice))
+          const value = String(item.price.currentPrice)
+          editingPrices.value.set(productId, value)
+          originalPriceTextMap.value.set(productId, value)
         } else {
           editingPrices.value.set(productId, '')
+          originalPriceTextMap.value.set(productId, '')
         }
         if (item.yesterdayPrice) {
           yesterdayPriceMap.value.set(productId, item.yesterdayPrice)
@@ -253,8 +264,10 @@ const loadData = async () => {
     products.value.forEach(product => {
       if (!editingPrices.value.has(product.id)) {
         editingPrices.value.set(product.id, '')
+        originalPriceTextMap.value.set(product.id, '')
       }
     })
+    applyDraft(draftRes.data || null)
   } catch (error) {
     console.error('加载数据失败:', error)
   } finally {
@@ -272,13 +285,17 @@ const getPricePlaceholder = (productId: number): string => {
   return '0.00'
 }
 
+const getProductCurrencySymbol = (productId: number) =>
+  getCurrencySymbol(products.value.find(product => product.id === productId)?.currency)
+
 const formatBudgetPrice = (productId: number): string => {
   const price = priceMap.value.get(productId)
-  if (price?.budgetPrice != null) return '¥' + price.budgetPrice.toFixed(2)
+  const symbol = getProductCurrencySymbol(productId)
+  if (price?.budgetPrice != null) return symbol + price.budgetPrice.toFixed(2)
   const inherited = inheritedBudgetPriceMap.value.get(productId)
-  if (inherited != null) return '¥' + inherited.toFixed(2)
+  if (inherited != null) return symbol + inherited.toFixed(2)
   const product = products.value.find(p => p.id === productId)
-  if (product?.budgetPrice != null) return '¥' + product.budgetPrice.toFixed(2)
+  if (product?.budgetPrice != null) return symbol + product.budgetPrice.toFixed(2)
   return '-'
 }
 
@@ -294,9 +311,9 @@ const getMonthlyAvg = (productId: number): number | null => {
   return inheritedPriceMap.value.get(productId) ?? null
 }
 
-const formatPrice = (price: number | null | undefined): string => {
+const formatPrice = (productId: number, price: number | null | undefined): string => {
   if (price === null || price === undefined) return '-'
-  return price.toFixed(2)
+  return `${getProductCurrencySymbol(productId)}${price.toFixed(2)}`
 }
 
 const getDiff = (productId: number): number | null => {
@@ -310,9 +327,10 @@ const getDiff = (productId: number): number | null => {
 const formatDiff = (productId: number): string => {
   const diff = getDiff(productId)
   if (diff === null) return '-'
-  if (diff > 0) return `+${diff.toFixed(2)}`
-  if (diff < 0) return `-${Math.abs(diff).toFixed(2)}`
-  return '0.00'
+  const symbol = getProductCurrencySymbol(productId)
+  if (diff > 0) return `+${symbol}${diff.toFixed(2)}`
+  if (diff < 0) return `-${symbol}${Math.abs(diff).toFixed(2)}`
+  return `${symbol}0.00`
 }
 
 const getDiffClass = (productId: number) => {
@@ -331,59 +349,89 @@ const handleSave = async () => {
   }
 
   saving.value = true
-  let successCount = 0
   let failCount = 0
 
   try {
-    const saveTasks: Promise<void>[] = []
+    const draftItems = []
     for (const [productId, priceStr] of editingPrices.value) {
       if (!isProductChanged(productId, priceStr)) continue
       if (!priceStr.trim()) continue
-      const currentPrice = parseFloat(priceStr)
-      if (isNaN(currentPrice)) continue
+      const currentPrice = Number(priceStr)
+      if (Number.isNaN(currentPrice)) {
+        failCount++
+        continue
+      }
 
       const existingPrice = priceMap.value.get(productId)
-
-      if (existingPrice?.id != null) {
-        saveTasks.push(
-          updateProductPrice(existingPrice.id, { currentPrice, effectiveDate: selectedDate.value })
-            .then(() => { successCount++ })
-            .catch(() => { failCount++ })
-        )
-      } else {
-        saveTasks.push(
-          addProductPrice(productId, { currentPrice, effectiveDate: selectedDate.value })
-            .then(() => { successCount++ })
-            .catch(() => { failCount++ })
-        )
-      }
+      const product = products.value.find(item => item.id === productId)
+      draftItems.push({
+        productId,
+        basePriceId: existingPrice?.id,
+        basePriceVersion: existingPrice?.version,
+        currentPrice,
+        budgetPrice: existingPrice?.budgetPrice ?? product?.budgetPrice,
+        unit: existingPrice?.unit ?? product?.unit,
+        priceSpec: existingPrice?.priceSpec,
+        effectiveDate: selectedDate.value
+      })
     }
 
-    await Promise.allSettled(saveTasks)
-    loadData()
-
-    if (failCount === 0) {
-      uni.showToast({ title: `保存成功 ${successCount} 条`, icon: 'none' })
-    } else {
-      uni.showToast({ title: `成功 ${successCount} 失败 ${failCount}`, icon: 'none' })
+    if (draftItems.length === 0) {
+      uni.showToast({ title: failCount > 0 ? `存在 ${failCount} 条无效价格` : '没有可保存的修改', icon: 'none' })
+      return
     }
+
+    const response = await savePriceDraft({
+      batchId: currentDraft.value?.id,
+      batchVersion: currentDraft.value?.version,
+      effectiveDate: selectedDate.value,
+      items: draftItems
+    })
+    applyDraft(response.data)
+    uni.showToast({ title: `草稿保存成功 ${draftItems.length} 条`, icon: 'none' })
   } catch (error) {
-    console.error('保存失败:', error)
+    console.error('保存草稿失败:', error)
+    uni.showToast({ title: '草稿保存失败', icon: 'none' })
   } finally {
     saving.value = false
   }
 }
 
-const goToPrevDate = () => {
-  const date = new Date(selectedDate.value)
-  date.setDate(date.getDate() - 1)
-  selectedDate.value = date.toISOString().split('T')[0]
-}
+const handlePublish = async () => {
+  if (!currentDraft.value?.id) {
+    uni.showToast({ title: '请先保存草稿', icon: 'none' })
+    return
+  }
+  if (hasChanges.value) {
+    uni.showToast({ title: '请先保存当前修改', icon: 'none' })
+    return
+  }
 
-const goToNextDate = () => {
-  const date = new Date(selectedDate.value)
-  date.setDate(date.getDate() + 1)
-  selectedDate.value = date.toISOString().split('T')[0]
+  const confirmed = await new Promise<boolean>(resolve => {
+    uni.showModal({
+      title: '确认发布价格',
+      content: `发布后 ${selectedDate.value} 的价格将对所有用户可见，并生成通知。`,
+      confirmText: '发布',
+      confirmColor: '#0D6E6E',
+      success: result => resolve(result.confirm),
+      fail: () => resolve(false)
+    })
+  })
+  if (!confirmed) return
+
+  publishing.value = true
+  try {
+    const response = await publishPriceDraft(currentDraft.value.id)
+    uni.showToast({ title: `发布完成 ${response.data.successCount} 条`, icon: 'none' })
+    showNotificationBubble('价格已发布，通知已生成')
+    await refreshNotificationIndicator(false)
+    await loadData()
+  } catch (error) {
+    console.error('发布价格失败:', error)
+    uni.showToast({ title: '发布失败', icon: 'none' })
+  } finally {
+    publishing.value = false
+  }
 }
 
 const onDateChange = (e: any) => {
@@ -391,7 +439,7 @@ const onDateChange = (e: any) => {
 }
 
 watch(selectedDate, () => {
-  loadData()
+  Promise.all([loadAllDicts(), loadData()])
 })
 
 onMounted(() => {
@@ -418,66 +466,44 @@ onMounted(() => {
   padding-bottom: 240rpx;
 }
 
-.navbar {
-  height: 88rpx;
-  background: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32rpx;
-  border-bottom: 1px solid #E5E5E5;
-}
-
-.navbar-left {
-  display: flex;
-  align-items: center;
-}
-
-.navbar-title {
-  font-size: 34rpx;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.navbar-status {
-  color: #64748B;
-  font-size: 24rpx;
-}
-
-.date-section {
-  background: #FFFFFF;
+.header {
+  background: linear-gradient(135deg, #0D6E6E 0%, #0A5555 100%);
   padding: 24rpx 32rpx;
-  border-bottom: 1px solid #E5E5E5;
-}
-
-.date-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24rpx;
-}
-
-.date-btn {
-  padding: 16rpx 24rpx;
-  background: #F5F5F5;
-  font-size: 26rpx;
-  color: #666666;
-  border: none;
-  border-radius: 8rpx;
 }
 
 .date-picker {
-  flex: 1;
-  text-align: center;
-  padding: 16rpx;
-  background: #F9FAFB;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 20rpx;
   border-radius: 8rpx;
-  border: 1px solid #E5E5E5;
+  background: rgba(255, 255, 255, 0.2);
 }
 
-.date-picker text {
-  font-size: 28rpx;
-  color: #1A1A1A;
+.date-text {
+  font-size: 26rpx;
+  color: #FFFFFF;
+}
+
+.date-icon {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 18rpx;
+}
+
+.header-status {
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 22rpx;
+}
+
+.header-status.changed {
+  background: #E07B54;
+  color: #FFFFFF;
 }
 
 .entry-summary {
@@ -582,19 +608,28 @@ onMounted(() => {
 .price-card {
   background: #FFFFFF;
   border-radius: 16rpx;
-  padding: 24rpx;
+  padding: 20rpx;
+}
+
+.card-main {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 16rpx;
 }
 
 .card-header {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  margin-bottom: 20rpx;
+  gap: 12rpx;
 }
 
 .card-seq {
-  width: 48rpx;
-  height: 48rpx;
+  flex: 0 0 42rpx;
+  width: 42rpx;
+  height: 42rpx;
   background: rgba(13, 110, 110, 0.1);
   color: #0D6E6E;
   font-size: 24rpx;
@@ -606,39 +641,49 @@ onMounted(() => {
 }
 
 .card-name {
+  display: block;
+  overflow: hidden;
   font-size: 30rpx;
   font-weight: 600;
   color: #1A1A1A;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-specs {
+  display: block;
+  overflow: hidden;
   font-size: 24rpx;
   color: #999999;
   margin-top: 4rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-title {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-.price-row {
-  margin-bottom: 20rpx;
 }
 
 .price-field {
+  flex: 0 0 264rpx;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  align-items: stretch;
+  gap: 6rpx;
 }
 
 .price-label {
-  font-size: 24rpx;
+  align-self: flex-start;
+  font-size: 20rpx;
   color: #888888;
 }
 
 .price-input-wrapper {
+  width: 100%;
   display: flex;
   align-items: center;
   background: #F9FAFB;
@@ -648,17 +693,19 @@ onMounted(() => {
 }
 
 .price-unit {
-  padding: 16rpx 20rpx;
-  font-size: 28rpx;
+  font-family: Arial, sans-serif;
+  padding: 12rpx 10rpx 12rpx 14rpx;
+  font-size: 26rpx;
   font-weight: 500;
   color: #666666;
 }
 
 .price-input {
   flex: 1;
-  height: 72rpx;
-  padding: 0 20rpx;
-  font-size: 32rpx;
+  min-width: 0;
+  height: 64rpx;
+  padding: 0 12rpx;
+  font-size: 30rpx;
   font-weight: 500;
   color: #1A1A1A;
 }
@@ -666,8 +713,8 @@ onMounted(() => {
 .stats-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16rpx;
-  padding: 16rpx;
+  gap: 12rpx;
+  padding: 14rpx;
   background: #F9FAFB;
   border-radius: 8rpx;
 }
@@ -684,6 +731,8 @@ onMounted(() => {
 }
 
 .stat-value {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   display: block;
   font-size: 26rpx;
   font-weight: 500;
@@ -759,8 +808,8 @@ onMounted(() => {
   font-size: 22rpx;
 }
 
-.save-btn {
-  min-width: 176rpx;
+.action-btn {
+  min-width: 132rpx;
   height: 76rpx;
   margin: 0;
   border: none;
@@ -772,8 +821,20 @@ onMounted(() => {
   line-height: 76rpx;
 }
 
-.save-btn[disabled] {
+.save-btn {
+  background: #FFFFFF;
+  color: #0D6E6E;
+  border: 1rpx solid #0D6E6E;
+}
+
+.publish-btn {
+  background: #0D6E6E;
+  color: #FFFFFF;
+}
+
+.action-btn[disabled] {
   background: #CBD5E1;
+  border-color: #CBD5E1;
   color: #FFFFFF;
 }
 </style>

@@ -33,6 +33,7 @@ public class ScheduledTaskService {
     private final ScheduledTaskRepository taskRepository;
     private final ScheduledTaskLogRepository logRepository;
     private final PricePublishService pricePublishService;
+    private final NotificationEventService notificationEventService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -180,6 +181,7 @@ public class ScheduledTaskService {
         task.setLockUntil(finished);
         task.setLockedBy(null);
         taskRepository.save(task);
+        notificationEventService.scheduledTaskFailed(savedLog);
         return savedLog;
     }
 

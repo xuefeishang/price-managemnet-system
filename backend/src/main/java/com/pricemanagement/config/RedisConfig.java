@@ -87,6 +87,7 @@ public class RedisConfig {
     /**
      * 创建 Redis 缓存管理器
      */
+    @SuppressWarnings("removal")
     private CacheManager createRedisCacheManager(RedisConnectionFactory connectionFactory) {
         StringRedisSerializer stringSerializer = new StringRedisSerializer();
 

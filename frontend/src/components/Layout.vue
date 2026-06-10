@@ -8,12 +8,13 @@ import { getDictValue, getRoleLabel, loadAllDicts } from '@/composables/useDict'
 import { useTheme } from '@/composables/useTheme'
 import { useLayout } from '@/composables/useLayout'
 import {
+  archiveNotification,
   getMyNotifications,
   getUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead
 } from '@/api/notifications'
-import type { NotificationMessage } from '@/types'
+import type { NotificationMessage, NotificationSseEvent } from '@/types'
 import SidebarMenuTree from '@/components/layout/SidebarMenuTree.vue'
 import ContextSubNav from '@/components/layout/ContextSubNav.vue'
 import { findMenuByPath, normalizeMenuTree, type MenuMatch, type MenuNode } from '@/components/layout/menuUtils'
@@ -64,6 +65,7 @@ const userMenuOpen = ref(false)
 const unreadCountInitialized = ref(false)
 let notificationTimer: ReturnType<typeof setTimeout> | null = null
 let notificationBackoffLevel = 0
+let notificationStreamAbortController: AbortController | null = null
 
 // 使用 menuStore 的菜单数据
 const menus = computed(() => menuStore.visibleMenus)
@@ -148,7 +150,7 @@ const navigateTo = async (path: string) => {
 }
 
 const handleLogout = () => {
-  stopNotificationPolling()
+  stopNotificationUpdates()
   closeUserMenu()
   userStore.logoutAction()
   // 跳转由 watch(() => userStore.isAuthenticated) 统一处理
@@ -172,19 +174,23 @@ const closeUserMenu = () => {
   userMenuOpen.value = false
 }
 
+const applyUnreadNotificationCount = (nextCount: number, showNewToast = false) => {
+  if (showNewToast && unreadCountInitialized.value && nextCount > unreadNotificationCount.value && !notificationDrawerOpen.value) {
+    showToast({
+      message: '收到新的消息通知',
+      position: 'bottom'
+    })
+  }
+  unreadNotificationCount.value = nextCount
+  unreadCountInitialized.value = true
+}
+
 const loadUnreadNotificationCount = async () => {
   if (!userStore.isAuthenticated || !userStore.token) return false
   try {
     const response = await getUnreadNotificationCount()
     const nextCount = response.data || 0
-    if (unreadCountInitialized.value && nextCount > unreadNotificationCount.value && !notificationDrawerOpen.value) {
-      showToast({
-        message: '收到新的消息通知',
-        position: 'bottom'
-      })
-    }
-    unreadNotificationCount.value = nextCount
-    unreadCountInitialized.value = true
+    applyUnreadNotificationCount(nextCount, true)
     notificationBackoffLevel = 0
     return true
   } catch (error) {
@@ -294,6 +300,20 @@ const handleNotificationClick = async (notification: NotificationMessage) => {
   }
 }
 
+const archiveNotificationItem = async (notification: NotificationMessage) => {
+  try {
+    await archiveNotification(notification.messageId)
+    notifications.value = notifications.value.filter(item => item.id !== notification.id)
+    if (notification.readStatus === 'UNREAD') {
+      await loadUnreadNotificationCount()
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to archive notification:', error)
+    }
+  }
+}
+
 const formatNotificationTime = (time?: string) => {
   if (!time) return ''
   return time.replace('T', ' ').slice(0, 16)
@@ -322,6 +342,89 @@ const refreshNotifications = async () => {
   }
 }
 
+const handleNotificationRealtimeEvent = async (event: NotificationSseEvent) => {
+  if (typeof event.unreadCount === 'number') {
+    applyUnreadNotificationCount(event.unreadCount, event.eventType === 'newNotification')
+  } else {
+    await loadUnreadNotificationCount()
+  }
+  if (event.eventType === 'newNotification' && notificationDrawerOpen.value) {
+    await loadNotifications()
+  }
+}
+
+const parseNotificationEventChunk = async (chunk: string) => {
+  const dataLine = chunk
+    .split(/\r?\n/)
+    .find(line => line.startsWith('data:'))
+  if (!dataLine) return
+  try {
+    const payload = JSON.parse(dataLine.slice(5).trim()) as NotificationSseEvent
+    if (payload.eventType !== 'connected') {
+      await handleNotificationRealtimeEvent(payload)
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to parse notification realtime event:', error)
+    }
+  }
+}
+
+const stopNotificationRealtime = () => {
+  if (notificationStreamAbortController) {
+    notificationStreamAbortController.abort()
+    notificationStreamAbortController = null
+  }
+}
+
+const startNotificationRealtime = async () => {
+  if (!userStore.isAuthenticated || !userStore.token || document.visibilityState === 'hidden') return
+  if (notificationStreamAbortController) return
+
+  const controller = new AbortController()
+  notificationStreamAbortController = controller
+  const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+
+  try {
+    const response = await fetch(`${baseURL}/api/notifications/events`, {
+      headers: {
+        Authorization: `Bearer ${userStore.token}`
+      },
+      signal: controller.signal
+    })
+    if (!response.ok || !response.body) {
+      throw new Error(`SSE connect failed: ${response.status}`)
+    }
+
+    stopNotificationPolling()
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (!controller.signal.aborted) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split(/\r?\n\r?\n/)
+      buffer = chunks.pop() || ''
+      for (const chunk of chunks) {
+        await parseNotificationEventChunk(chunk)
+      }
+    }
+  } catch (error) {
+    if (!controller.signal.aborted && import.meta.env.DEV) {
+      console.error('Notification realtime disconnected:', error)
+    }
+  } finally {
+    if (notificationStreamAbortController === controller) {
+      notificationStreamAbortController = null
+    }
+    if (!controller.signal.aborted && userStore.isAuthenticated && document.visibilityState === 'visible') {
+      scheduleNotificationPolling()
+    }
+  }
+}
+
 const startNotificationPolling = () => {
   stopNotificationPolling()
   if (document.visibilityState === 'hidden') return
@@ -335,11 +438,23 @@ const stopNotificationPolling = () => {
   }
 }
 
+const startNotificationUpdates = () => {
+  stopNotificationPolling()
+  if (document.visibilityState === 'hidden') return
+  startNotificationPolling()
+  startNotificationRealtime()
+}
+
+const stopNotificationUpdates = () => {
+  stopNotificationPolling()
+  stopNotificationRealtime()
+}
+
 const handleVisibilityChange = () => {
   if (document.visibilityState === 'visible') {
-    startNotificationPolling()
+    startNotificationUpdates()
   } else {
-    stopNotificationPolling()
+    stopNotificationUpdates()
   }
 }
 
@@ -361,14 +476,14 @@ onMounted(async () => {
     loadThemeConfig()
   ])
 
-  startNotificationPolling()
+  startNotificationUpdates()
   document.addEventListener('click', closeUserMenu)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('price-notifications:refresh', refreshNotifications)
 })
 
 onUnmounted(() => {
-  stopNotificationPolling()
+  stopNotificationUpdates()
   document.removeEventListener('click', closeUserMenu)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('price-notifications:refresh', refreshNotifications)
@@ -380,12 +495,12 @@ watch(() => route.fullPath, () => {
 
 watch(() => userStore.isAuthenticated, (isAuth) => {
   if (!isAuth) {
-    stopNotificationPolling()
+    stopNotificationUpdates()
     unreadCountInitialized.value = false
     unreadNotificationCount.value = 0
     router.push('/login')
   } else {
-    startNotificationPolling()
+    startNotificationUpdates()
   }
 })
 
@@ -632,13 +747,15 @@ watch(() => route.path, () => {
       <div v-if="notificationsLoading" class="notification-state">加载中...</div>
       <div v-else-if="notifications.length === 0" class="notification-state">暂无通知</div>
       <div v-else class="notification-list">
-        <button
+        <article
           v-for="notification in notifications"
           :key="notification.id"
-          type="button"
+          role="button"
+          tabindex="0"
           class="notification-item"
           :class="{ unread: notification.readStatus === 'UNREAD' }"
           @click="handleNotificationClick(notification)"
+          @keydown.enter.prevent="handleNotificationClick(notification)"
         >
           <span class="notification-dot"></span>
           <span class="notification-content">
@@ -647,11 +764,19 @@ watch(() => route.path, () => {
               <em v-if="getNotificationPriorityLabel(notification.priority)">
                 {{ getNotificationPriorityLabel(notification.priority) }}
               </em>
+              <button
+                class="notification-archive"
+                type="button"
+                title="归档"
+                @click.stop="archiveNotificationItem(notification)"
+              >
+                归档
+              </button>
             </span>
             <span>{{ notification.summary || notification.content || '暂无内容' }}</span>
             <small>{{ formatNotificationTime(notification.createdTime) }}</small>
           </span>
-        </button>
+        </article>
       </div>
     </aside>
   </div>
@@ -1068,6 +1193,7 @@ watch(() => route.path, () => {
   border-radius: 10px;
   cursor: pointer;
   text-align: left;
+  box-sizing: border-box;
 }
 
 .notification-item:hover {
@@ -1119,6 +1245,24 @@ watch(() => route.path, () => {
   font-size: 11px;
   font-style: normal;
   font-weight: 700;
+}
+
+.notification-archive {
+  flex-shrink: 0;
+  min-height: calc(var(--spacing-md) + var(--spacing-xs));
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--gray-600);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.notification-archive:hover {
+  border-color: color-mix(in srgb, var(--primary-color, #0D6E6E) 28%, var(--gray-200));
+  color: var(--primary-color);
 }
 
 .notification-content span {

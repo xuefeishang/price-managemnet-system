@@ -2,6 +2,7 @@ package com.pricemanagement.config;
 
 import com.pricemanagement.annotation.OperationLog;
 import com.pricemanagement.util.OperationLogHelper;
+import com.pricemanagement.util.SensitiveDataMasker;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -52,13 +53,13 @@ public class OperationLogAspect {
             return null;
         }
         try {
-            return Arrays.stream(args)
+            return SensitiveDataMasker.mask(Arrays.stream(args)
                     .filter(arg -> arg != null)
                     .filter(arg -> !(arg instanceof ServletRequest))
                     .filter(arg -> !(arg instanceof ServletResponse))
                     .filter(arg -> !(arg instanceof MultipartFile))
                     .map(String::valueOf)
-                    .collect(Collectors.joining(", "));
+                    .collect(Collectors.joining(", ")));
         } catch (Exception e) {
             log.debug("Could not build operation log params: {}", e.getMessage());
             return null;

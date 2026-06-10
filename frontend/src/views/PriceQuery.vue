@@ -6,7 +6,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { showToast } from 'vant'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getCategories } from '@/api/categories'
 import { getPriceTrend, type PriceTrendPoint } from '@/api/products'
 import { exportPriceQueryRows, getPriceQueryRows, type PriceQueryParams } from '@/api/priceQuery'
@@ -23,6 +23,7 @@ const { chartAutoresize } = useSafeChartAutoresize()
 const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
 const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const trendLoading = ref(false)
@@ -399,6 +400,11 @@ const submitJumpPage = () => {
 
 const selectRow = (row: PriceQueryRow) => {
   selectedRow.value = row
+}
+
+const viewSelectedProductDetail = () => {
+  if (!selectedRow.value) return
+  router.push({ path: `/product-detail/${selectedRow.value.productId}`, query: { date: selectedDate.value } })
 }
 
 const handleTrendRangeChange = (days: number) => {
@@ -829,10 +835,12 @@ onUnmounted(() => {
 
       <aside class="trend-panel" :class="{ 'has-category': selectedRow?.categoryId }" :style="getRowCategoryStyle(selectedRow)">
         <div class="trend-top">
-          <div class="selected-name-row trend-title-row" v-if="selectedRow">
-            <strong>{{ selectedRow.productName }}</strong>
-            <span v-if="getRowOriginLabel(selectedRow) !== '--'" class="selected-origin">{{ getRowOriginLabel(selectedRow) }}</span>
-            <span v-if="selectedRow.specification">{{ selectedRow.specification }}</span>
+          <div v-if="selectedRow" class="trend-title-area">
+            <div class="selected-name-row trend-title-row">
+              <strong>{{ selectedRow.productName }}</strong>
+              <span v-if="getRowOriginLabel(selectedRow) !== '--'" class="selected-origin">{{ getRowOriginLabel(selectedRow) }}</span>
+              <span v-if="selectedRow.specification">{{ selectedRow.specification }}</span>
+            </div>
           </div>
           <div class="selected-name-row trend-title-row muted" v-else>
             <strong>暂无选中产品</strong>
@@ -857,6 +865,12 @@ onUnmounted(() => {
               {{ displayPrice(selectedRow, selectedRow.currentPrice ?? selectedRow.latestPrice) }}
               <small v-if="selectedRow.unit">/ {{ getUnitLabel(selectedRow.unit) }}</small>
             </div>
+            <button class="detail-link-btn" type="button" @click="viewSelectedProductDetail">
+              查看详情
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
           </div>
 
           <div class="trend-chart-shell">
@@ -1463,6 +1477,36 @@ onUnmounted(() => {
   gap: var(--spacing-md);
 }
 
+.trend-title-area {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.detail-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  background: var(--primary-color);
+  color: #FFFFFF;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.detail-link-btn:hover {
+  border-color: var(--primary-light);
+  background: var(--primary-light);
+}
+
 .range-tabs {
   gap: 2px;
   padding: 3px;
@@ -1495,8 +1539,11 @@ onUnmounted(() => {
 
 .selected-summary {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--spacing-sm);
+  min-height: 42px;
 }
 
 .selected-name-row {
@@ -1859,6 +1906,19 @@ onUnmounted(() => {
 
   .trend-title-row {
     width: 100%;
+  }
+
+  .trend-title-area {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .detail-link-btn {
+    margin-left: auto;
+  }
+
+  .selected-summary {
+    flex-wrap: wrap;
   }
 
   .range-tab {

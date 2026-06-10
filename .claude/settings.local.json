@@ -249,7 +249,12 @@
       "Bash(mvnw.cmd clean *)",
       "Bash(./mvnw.cmd clean *)",
       "Bash(GIT_CURL_VERBOSE=1 git push origin master)",
-      "Bash(cmdkey /list)"
+      "Bash(cmdkey /list)",
+      "Bash(dir *)",
+      "mcp__codegraph__codegraph_files",
+      "mcp__codegraph__codegraph_explore",
+      "Bash(grep *)",
+      "Skill(git-version)"
     ]
   },
   "enabledMcpjsonServers": [

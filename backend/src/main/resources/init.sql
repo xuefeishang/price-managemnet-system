@@ -358,7 +358,8 @@ SELECT * FROM (
     UNION ALL SELECT 31, 4, '菜单配置', '/menu-config', 'menu', 3, TRUE, '["ADMIN"]', NOW(), NOW()
     UNION ALL SELECT 32, 4, '日志管理', '/operation-log', 'log', 4, TRUE, '["ADMIN"]', NOW(), NOW()
     UNION ALL SELECT 33, 4, '审批流配置', '/approval-config', 'workflow', 5, TRUE, '["ADMIN"]', NOW(), NOW()
-    UNION ALL SELECT 35, 4, '样式设置', '/style-settings', 'palette', 6, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 36, 4, '通知管理', '/notifications', 'bell', 6, TRUE, '["ADMIN"]', NOW(), NOW()
+    UNION ALL SELECT 35, 4, '样式设置', '/style-settings', 'palette', 7, TRUE, '["ADMIN"]', NOW(), NOW()
     UNION ALL SELECT 40, 24, '产地管理', '/origins', NULL, 1, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 41, 24, '客户管理', '/customers', NULL, 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 42, 24, '数据字典', '/dict-management', NULL, 3, TRUE, '["ADMIN"]', NOW(), NOW()
@@ -831,10 +832,19 @@ SELECT * FROM (
     UNION ALL SELECT 29, 'log:view', '日志查看', 'MENU', NULL, '/operation-log', 130, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 30, 'log:export', '日志导出', 'BUTTON', 29, NULL, 131, 'ACTIVE', NOW(), NOW()
     UNION ALL SELECT 31, 'system:setting', '系统设置', 'MENU', NULL, '/system-settings', 140, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 33, 'notification:view', '通知管理查看', 'MENU', NULL, '/notifications', 150, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 34, 'notification:retry', '通知投递重试', 'BUTTON', 33, NULL, 151, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 35, 'system-notice:create', '系统公告创建', 'BUTTON', 33, NULL, 152, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 36, 'system-notice:cancel', '系统公告撤回', 'BUTTON', 33, NULL, 153, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 37, 'notification:subscription:view', '订阅授权查看', 'BUTTON', 33, NULL, 154, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 38, 'notification:subscription:guide', '订阅授权引导', 'BUTTON', 33, NULL, 155, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 39, 'notification:subscription:resolve', '订阅异常处理', 'BUTTON', 33, NULL, 156, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 40, 'notification:test-token', '通知渠道远程校验', 'BUTTON', 33, NULL, 157, 'ACTIVE', NOW(), NOW()
+    UNION ALL SELECT 41, 'notification:test-delivery', '通知渠道测试投递', 'BUTTON', 33, NULL, 158, 'ACTIVE', NOW(), NOW()
 ) AS tmp
 WHERE @has_sys_permission = 0;
 
-SELECT CONCAT('权限数据: ', IF(@has_sys_permission > 0, '已存在，跳过', '初始化完成（32个权限）')) AS status;
+SELECT CONCAT('权限数据: ', IF(@has_sys_permission > 0, '已存在，跳过', '初始化完成（41个权限）')) AS status;
 
 -- =====================================================
 -- 19. 初始化角色权限关联
@@ -1150,6 +1160,7 @@ CREATE TABLE IF NOT EXISTS notification_message (
     link_params TEXT COMMENT '跳转参数JSON',
     dedupe_key VARCHAR(150) COMMENT '通知幂等键',
     expire_time DATETIME COMMENT '过期时间',
+    event_count BIGINT NOT NULL DEFAULT 1 COMMENT '聚合消息包含的事件数量',
     created_by BIGINT COMMENT '创建人',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     CONSTRAINT uk_notification_dedupe_key UNIQUE (dedupe_key),
@@ -1187,14 +1198,153 @@ CREATE TABLE IF NOT EXISTS notification_delivery_log (
     delivered_time DATETIME COMMENT '投递时间',
     error_code VARCHAR(100) COMMENT '错误编码',
     error_message VARCHAR(500) COMMENT '错误信息',
+    is_test BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否测试投递',
     created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
     updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_notification_delivery_message (message_id),
     INDEX idx_notification_delivery_user (user_id),
     INDEX idx_notification_delivery_status (status),
+    INDEX idx_notification_delivery_test (is_test),
     CONSTRAINT fk_notification_delivery_message FOREIGN KEY (message_id) REFERENCES notification_message(id),
     CONSTRAINT fk_notification_delivery_recipient FOREIGN KEY (recipient_id) REFERENCES notification_recipient(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知渠道投递日志表';
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知Outbox ID',
+    event_type VARCHAR(50) NOT NULL COMMENT '事件类型',
+    aggregate_type VARCHAR(50) NOT NULL COMMENT '聚合类型',
+    aggregate_id BIGINT NOT NULL COMMENT '聚合ID',
+    payload_json TEXT COMMENT '事件快照JSON',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'Outbox状态',
+    retry_count INT NOT NULL DEFAULT 0 COMMENT '重试次数',
+    next_retry_time DATETIME COMMENT '下次重试时间',
+    locked_by VARCHAR(100) COMMENT '锁定实例',
+    lock_until DATETIME COMMENT '锁定到期时间',
+    last_error_code VARCHAR(100) COMMENT '最近错误编码',
+    last_error_message VARCHAR(500) COMMENT '最近错误信息',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    CONSTRAINT uk_notification_outbox_aggregate UNIQUE (aggregate_type, aggregate_id),
+    INDEX idx_notification_outbox_status_retry (status, next_retry_time),
+    INDEX idx_notification_outbox_lock (locked_by, lock_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知可靠投递Outbox表';
+
+CREATE TABLE IF NOT EXISTS notification_preference (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知偏好ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    notification_type VARCHAR(50) NOT NULL COMMENT '通知类型',
+    channel VARCHAR(50) NOT NULL COMMENT '渠道',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    quiet_start_time TIME COMMENT '免打扰开始时间',
+    quiet_end_time TIME COMMENT '免打扰结束时间',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    CONSTRAINT uk_notification_preference_user_type_channel UNIQUE (user_id, notification_type, channel),
+    INDEX idx_notification_preference_user (user_id),
+    INDEX idx_notification_preference_type_channel (notification_type, channel),
+    CONSTRAINT fk_notification_preference_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户通知偏好表';
+
+CREATE TABLE IF NOT EXISTS notification_mini_program_subscription (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '小程序订阅授权ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    openid VARCHAR(100) NOT NULL COMMENT '微信小程序openid',
+    notification_type VARCHAR(50) NOT NULL COMMENT '通知类型',
+    template_id VARCHAR(100) NOT NULL COMMENT '订阅消息模板ID',
+    status VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN' COMMENT '授权状态',
+    available_count INT NOT NULL DEFAULT 0 COMMENT '可用授权次数',
+    last_authorized_time DATETIME COMMENT '最近授权时间',
+    source VARCHAR(50) COMMENT '授权来源',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    CONSTRAINT uk_notification_mini_sub_user_type_template UNIQUE (user_id, notification_type, template_id),
+    INDEX idx_notification_mini_sub_user (user_id),
+    INDEX idx_notification_mini_sub_template (template_id),
+    INDEX idx_notification_mini_sub_type (notification_type),
+    CONSTRAINT fk_notification_mini_sub_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅消息授权表';
+
+CREATE TABLE IF NOT EXISTS notification_mini_program_eligibility (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '小程序订阅用户资格快照ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    row_status VARCHAR(20) NOT NULL COMMENT '聚合行状态',
+    openid_bound BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否绑定小程序openid',
+    configured_template_count INT NOT NULL DEFAULT 0 COMMENT '已配置模板数',
+    authorized_template_count INT NOT NULL DEFAULT 0 COMMENT '当前可用授权模板数',
+    available_total INT NOT NULL DEFAULT 0 COMMENT '当前可用授权总次数',
+    last_authorized_time DATETIME COMMENT '最近授权时间',
+    config_fingerprint VARCHAR(64) NOT NULL COMMENT '模板配置指纹',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    CONSTRAINT uk_notification_mini_eligibility_user UNIQUE (user_id),
+    INDEX idx_notification_mini_eligibility_status_user (row_status, user_id),
+    INDEX idx_notification_mini_eligibility_authorized (last_authorized_time),
+    CONSTRAINT fk_notification_mini_eligibility_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅用户资格查询快照';
+
+CREATE TABLE IF NOT EXISTS notification_mini_program_resolution (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '订阅异常处理ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    resolve_status VARCHAR(20) NOT NULL DEFAULT 'OPEN' COMMENT '处理状态',
+    resolve_remark VARCHAR(500) COMMENT '处理备注',
+    remind_after DATETIME COMMENT '暂不提醒截止时间',
+    follow_up_required BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要跟进',
+    resolved_by BIGINT COMMENT '处理人',
+    resolved_time DATETIME COMMENT '处理时间',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    CONSTRAINT uk_notification_mini_resolution_user UNIQUE (user_id),
+    INDEX idx_notification_mini_resolution_status (resolve_status),
+    CONSTRAINT fk_notification_mini_resolution_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅异常处理记录';
+
+CREATE TABLE IF NOT EXISTS notification_channel_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知渠道配置ID',
+    channel VARCHAR(50) NOT NULL COMMENT '通知渠道',
+    enabled BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否启用',
+    app_id VARCHAR(100) COMMENT '非敏感应用标识',
+    endpoint_url VARCHAR(500) COMMENT '接口地址',
+    secret_cipher TEXT COMMENT '敏感密钥密文',
+    secret_key_version VARCHAR(20) COMMENT '密钥加密版本',
+    secret_fingerprint VARCHAR(64) COMMENT '密钥指纹',
+    timeout_ms INT COMMENT '接口超时时间毫秒',
+    default_page VARCHAR(200) COMMENT '默认跳转页',
+    config_json TEXT COMMENT '渠道扩展配置JSON',
+    created_by BIGINT COMMENT '创建人',
+    updated_by BIGINT COMMENT '更新人',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    CONSTRAINT uk_notification_channel_config_channel UNIQUE (channel),
+    INDEX idx_notification_channel_config_channel (channel),
+    INDEX idx_notification_channel_config_status (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知渠道运行配置表';
+
+CREATE TABLE IF NOT EXISTS system_notice (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '系统公告ID',
+    title VARCHAR(200) NOT NULL COMMENT '标题',
+    summary VARCHAR(500) COMMENT '摘要',
+    content TEXT NOT NULL COMMENT '内容',
+    target_roles TEXT NOT NULL COMMENT '目标角色JSON',
+    channels TEXT NOT NULL COMMENT '通知渠道JSON',
+    priority VARCHAR(20) NOT NULL DEFAULT 'NORMAL' COMMENT '通知优先级',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' COMMENT '公告状态',
+    scheduled_publish_time DATETIME COMMENT '计划发布时间',
+    published_time DATETIME COMMENT '发布时间',
+    cancelled_time DATETIME COMMENT '撤回时间',
+    expire_time DATETIME COMMENT '过期时间',
+    notification_message_id BIGINT COMMENT '发布后通知消息ID',
+    created_by BIGINT COMMENT '创建人',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_system_notice_status_schedule (status, scheduled_publish_time),
+    INDEX idx_system_notice_created (created_time),
+    INDEX idx_system_notice_message (notification_message_id),
+    CONSTRAINT fk_system_notice_message FOREIGN KEY (notification_message_id) REFERENCES notification_message(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统公告表';
 
 CREATE TABLE IF NOT EXISTS sys_scheduled_task (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '定时任务ID',
@@ -1269,9 +1419,17 @@ SELECT * FROM (
     UNION ALL SELECT 'price_publish_status', 'FAILED', '失败', '#EF4444', 2, 'ACTIVE', '发布结果', NOW(), NOW()
     UNION ALL SELECT 'price_publish_status', 'PARTIAL', '部分成功', '#F59E0B', 3, 'ACTIVE', '发布结果', NOW(), NOW()
     UNION ALL SELECT 'notification_type', 'PRICE_PUBLISHED', '价格已发布', NULL, 1, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'APPROVAL_PENDING', '审批待处理', NULL, 2, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'APPROVAL_FINISHED', '审批完成', NULL, 3, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'TASK_FAILED', '任务失败', NULL, 4, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'API_LIMIT_WARNING', 'API告警', NULL, 5, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'IMPORT_EXPORT_FINISHED', '导入导出完成', NULL, 6, 'ACTIVE', '通知类型', NOW(), NOW()
+    UNION ALL SELECT 'notification_type', 'SYSTEM_NOTICE', '系统公告', NULL, 7, 'ACTIVE', '通知类型', NOW(), NOW()
     UNION ALL SELECT 'notification_channel', 'IN_APP', '站内通知', NULL, 1, 'ACTIVE', '通知渠道', NOW(), NOW()
     UNION ALL SELECT 'notification_channel', 'APP_PUSH', 'App推送', NULL, 2, 'ACTIVE', '通知渠道', NOW(), NOW()
     UNION ALL SELECT 'notification_channel', 'MINI_PROGRAM', '小程序订阅消息', NULL, 3, 'ACTIVE', '通知渠道', NOW(), NOW()
+    UNION ALL SELECT 'notification_channel', 'WEBHOOK', 'Webhook', NULL, 4, 'ACTIVE', '通知渠道', NOW(), NOW()
+    UNION ALL SELECT 'notification_channel', 'WECHAT_WORK', '企业微信', NULL, 5, 'ACTIVE', '通知渠道', NOW(), NOW()
     UNION ALL SELECT 'notification_read_status', 'UNREAD', '未读', '#F59E0B', 1, 'ACTIVE', '阅读状态', NOW(), NOW()
     UNION ALL SELECT 'notification_read_status', 'READ', '已读', '#10B981', 2, 'ACTIVE', '阅读状态', NOW(), NOW()
     UNION ALL SELECT 'notification_priority', 'LOW', '低', '#64748B', 1, 'ACTIVE', '通知优先级', NOW(), NOW()
@@ -1291,6 +1449,34 @@ SELECT * FROM (
     UNION ALL SELECT 'notification_delivery_status', 'SUCCESS', '成功', '#10B981', 2, 'ACTIVE', '投递状态', NOW(), NOW()
     UNION ALL SELECT 'notification_delivery_status', 'FAILED', '失败', '#EF4444', 3, 'ACTIVE', '投递状态', NOW(), NOW()
     UNION ALL SELECT 'notification_delivery_status', 'SKIPPED', '已跳过', '#9CA3AF', 4, 'ACTIVE', '投递状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_outbox_status', 'PENDING', '待处理', '#64748B', 1, 'ACTIVE', 'Outbox状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_outbox_status', 'PROCESSING', '处理中', '#3B82F6', 2, 'ACTIVE', 'Outbox状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_outbox_status', 'SUCCESS', '成功', '#10B981', 3, 'ACTIVE', 'Outbox状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_outbox_status', 'FAILED', '失败', '#EF4444', 4, 'ACTIVE', 'Outbox状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_provider_health_status', 'OK', '正常', '#10B981', 1, 'ACTIVE', 'Provider健康状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_provider_health_status', 'DEGRADED', '降级', '#F59E0B', 2, 'ACTIVE', 'Provider健康状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_provider_health_status', 'DOWN', '异常', '#EF4444', 3, 'ACTIVE', 'Provider健康状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_provider_health_status', 'NOT_CONFIGURED', '未配置', '#9CA3AF', 4, 'ACTIVE', 'Provider健康状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_status', 'UNKNOWN', '未知', '#9CA3AF', 1, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_status', 'ACCEPT', '已授权', '#10B981', 2, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_status', 'REJECT', '已拒绝', '#EF4444', 3, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_status', 'BAN', '已禁用', '#64748B', 4, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_row_status', 'NORMAL', '正常', '#10B981', 1, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_row_status', 'LOW_BALANCE', '低余量', '#F59E0B', 2, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_row_status', 'UNBOUND', '未绑定', '#9CA3AF', 3, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_subscription_row_status', 'REJECTED', '拒绝/禁用', '#EF4444', 4, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_resolution_status', 'OPEN', '待处理', '#F59E0B', 1, 'ACTIVE', '小程序订阅异常处理状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_resolution_status', 'RESOLVED', '已处理', '#10B981', 2, 'ACTIVE', '小程序订阅异常处理状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_resolution_status', 'SNOOZED', '暂不提醒', '#64748B', 3, 'ACTIVE', '小程序订阅异常处理状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_resolution_status', 'FOLLOW_UP', '跟进标记', '#3B82F6', 4, 'ACTIVE', '小程序订阅异常处理状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_frequency_rule', 'TASK_FAILED', '任务失败聚合频控', '{"enabled":true,"windowMinutes":30,"maxCount":5}', 1, 'ACTIVE', '任务失败消息在时间窗内超过阈值后聚合', NOW(), NOW()
+    UNION ALL SELECT 'notification_frequency_rule', 'API_LIMIT_WARNING', 'API告警聚合频控', '{"enabled":true,"windowMinutes":30,"maxCount":5}', 2, 'ACTIVE', 'API告警消息在时间窗内超过阈值后聚合', NOW(), NOW()
+    UNION ALL SELECT 'notification_frequency_rule', 'IMPORT_EXPORT_FINISHED', '导入导出完成聚合频控', '{"enabled":true,"windowMinutes":60,"maxCount":10}', 3, 'ACTIVE', '导入导出完成消息在时间窗内超过阈值后聚合', NOW(), NOW()
+    UNION ALL SELECT 'system_notice_status', 'DRAFT', '草稿', '#64748B', 1, 'ACTIVE', '系统公告状态', NOW(), NOW()
+    UNION ALL SELECT 'system_notice_status', 'SCHEDULED', '待发布', '#3B82F6', 2, 'ACTIVE', '系统公告状态', NOW(), NOW()
+    UNION ALL SELECT 'system_notice_status', 'PUBLISHED', '已发布', '#10B981', 3, 'ACTIVE', '系统公告状态', NOW(), NOW()
+    UNION ALL SELECT 'system_notice_status', 'CANCELLED', '已撤回', '#9CA3AF', 4, 'ACTIVE', '系统公告状态', NOW(), NOW()
+    UNION ALL SELECT 'system_notice_status', 'EXPIRED', '已过期', '#F59E0B', 5, 'ACTIVE', '系统公告状态', NOW(), NOW()
     UNION ALL SELECT 'scheduled_task_type', 'PRICE_PUBLISH', '价格自动发布', NULL, 1, 'ACTIVE', '定时任务类型', NOW(), NOW()
     UNION ALL SELECT 'scheduled_task_type', 'NOTIFICATION_RETRY', '通知重试', NULL, 2, 'ACTIVE', '定时任务类型', NOW(), NOW()
     UNION ALL SELECT 'scheduled_task_type', 'DATA_CLEANUP', '数据清理', NULL, 3, 'ACTIVE', '定时任务类型', NOW(), NOW()

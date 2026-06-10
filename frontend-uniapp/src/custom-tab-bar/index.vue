@@ -1,14 +1,35 @@
 <template>
-  <view class="custom-tabbar">
+  <view class="custom-tabbar-shell">
     <view
-      v-for="item in tabList"
-      :key="item.key"
-      class="tab-item"
-      :class="{ active: currentPath === item.pagePath }"
-      @click="switchTab(item.pagePath)"
+      class="notification-bubble"
+      :class="{ visible: bubbleVisible && currentPath === activeHostPath }"
+      @click="goNotifications"
     >
-      <text class="tab-icon">{{ item.icon }}</text>
-      <text class="tab-text">{{ item.text }}</text>
+      <view class="bubble-dot" />
+      <text>{{ bubbleText }}</text>
+      <text class="bubble-arrow">›</text>
+    </view>
+
+    <view class="custom-tabbar">
+      <view
+        v-for="item in tabList"
+        :key="item.key"
+        class="tab-item"
+        :class="{ active: currentPath === item.pagePath }"
+        @click="switchTab(item.pagePath)"
+      >
+        <view class="tab-icon-wrap">
+          <text class="tab-icon">{{ item.icon }}</text>
+          <text
+            v-if="item.key === 'profile'"
+            class="tab-badge"
+            :class="{ visible: unreadCount > 0 }"
+          >
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </text>
+        </view>
+        <text class="tab-text">{{ item.text }}</text>
+      </view>
     </view>
   </view>
 </template>
@@ -17,9 +38,19 @@
 import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/useUserStore'
+import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 
 const userStore = useUserStore()
 const currentPath = ref('')
+const {
+  unreadCount,
+  bubbleVisible,
+  bubbleText,
+  activeHostPath,
+  refreshNotificationIndicator,
+  startNotificationPolling,
+  setActiveNotificationHost
+} = useNotificationIndicator()
 
 const baseTabs = [
   { key: 'home', pagePath: '/pages/home/index', text: '首页', icon: '🏠' },
@@ -41,6 +72,7 @@ const refreshCurrentPath = () => {
   const pages = getCurrentPages()
   const current = pages[pages.length - 1] as any
   currentPath.value = current?.route ? `/${current.route}` : ''
+  setActiveNotificationHost(currentPath.value)
 }
 
 const switchTab = (pagePath: string) => {
@@ -48,12 +80,21 @@ const switchTab = (pagePath: string) => {
   uni.switchTab({ url: pagePath })
 }
 
+const goNotifications = () => {
+  bubbleVisible.value = false
+  uni.navigateTo({ url: '/pages/notifications/index' })
+}
+
 onMounted(() => {
   userStore.restoreSession()
   refreshCurrentPath()
+  startNotificationPolling()
 })
 
-onShow(refreshCurrentPath)
+onShow(() => {
+  refreshCurrentPath()
+  refreshNotificationIndicator(true)
+})
 </script>
 
 <style scoped>
@@ -70,6 +111,10 @@ onShow(refreshCurrentPath)
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.custom-tabbar-shell {
+  position: relative;
+}
+
 .tab-item {
   flex: 1;
   display: flex;
@@ -79,11 +124,90 @@ onShow(refreshCurrentPath)
   gap: 4rpx;
 }
 
+.tab-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .tab-icon {
   font-size: 44rpx;
   line-height: 1;
   opacity: 0.6;
   transition: all 0.2s ease;
+}
+
+.tab-badge {
+  position: absolute;
+  top: -12rpx;
+  right: -24rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 7rpx;
+  border: 3rpx solid #FFFFFF;
+  border-radius: 999rpx;
+  background: #E03B3B;
+  color: #FFFFFF;
+  font-family: Arial, sans-serif;
+  font-size: 18rpx;
+  font-weight: 700;
+  line-height: 30rpx;
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.7);
+  visibility: hidden;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.tab-badge.visible {
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+}
+
+.notification-bubble {
+  position: fixed;
+  right: 24rpx;
+  bottom: calc(118rpx + env(safe-area-inset-bottom));
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  max-width: 560rpx;
+  padding: 20rpx 24rpx;
+  border: 1rpx solid #B7DBDB;
+  border-radius: 16rpx;
+  background: #FFFFFF;
+  box-shadow: 0 12rpx 36rpx rgba(15, 23, 42, 0.16);
+  color: #1A1A1A;
+  font-size: 26rpx;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(20rpx) scale(0.96);
+  visibility: hidden;
+  transition: opacity 0.28s ease-out, transform 0.28s ease-out;
+}
+
+.notification-bubble.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+}
+
+.bubble-dot {
+  flex: 0 0 16rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #E03B3B;
+}
+
+.bubble-arrow {
+  color: #0D6E6E;
+  font-size: 34rpx;
+  line-height: 1;
 }
 
 .tab-text {

@@ -51,6 +51,16 @@ const hideRequestLoading = () => {
   }
 }
 
+const sanitizeQueryData = (data: any) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return data
+  }
+
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined && value !== null)
+  )
+}
+
 /**
  * 统一请求方法
  */
@@ -63,16 +73,18 @@ export const request = async <T = any>(options: RequestOptions): Promise<ApiResp
       showRequestLoading()
     }
 
+    const method = options.method || 'GET'
+    const requestData = method === 'GET' ? sanitizeQueryData(options.data) : options.data
     const fullUrl = getApiBaseUrl() + options.url
     // 仅开发环境打印调试日志
     if (import.meta.env.DEV) {
-      console.log('[API Request]', options.method || 'GET', fullUrl, options.data)
+      console.log('[API Request]', method, fullUrl, requestData)
     }
 
     uni.request({
       url: fullUrl,
-      method: options.method || 'GET',
-      data: options.data,
+      method,
+      data: requestData,
       timeout: 30000,
       header: {
         'Content-Type': 'application/json',
@@ -87,11 +99,13 @@ export const request = async <T = any>(options: RequestOptions): Promise<ApiResp
         const data = res.data as ApiResponse<T>
 
         if (import.meta.env.DEV) {
-          console.log('[API Response]', options.method || 'GET', fullUrl, res.statusCode, data)
+          console.log('[API Response]', method, fullUrl, res.statusCode, data)
         }
         // 小程序构建后 import.meta.env.DEV 可能被折叠为 false，本地联调仍保留关键响应日志。
         // #ifdef MP-WEIXIN
-        console.log('[API Response]', options.method || 'GET', fullUrl, res.statusCode, data)
+        if (!import.meta.env.DEV) {
+          console.log('[API Response]', method, fullUrl, res.statusCode, data)
+        }
         // #endif
 
         // 处理 401 Token 过期
@@ -133,7 +147,7 @@ export const request = async <T = any>(options: RequestOptions): Promise<ApiResp
         if (res.statusCode < 200 || res.statusCode >= 300) {
           const message = data?.message || `HTTP ${res.statusCode}`
           if (import.meta.env.DEV) {
-            console.error('[API HTTP Error]', options.method || 'GET', fullUrl, res.statusCode, res.data)
+            console.error('[API HTTP Error]', method, fullUrl, res.statusCode, res.data)
           }
           if (options.showError !== false) {
             uni.showToast({ title: message, icon: 'none' })
@@ -144,7 +158,7 @@ export const request = async <T = any>(options: RequestOptions): Promise<ApiResp
         } else {
           const message = data?.message || '请求失败'
           if (import.meta.env.DEV) {
-            console.error('[API Business Error]', options.method || 'GET', fullUrl, data)
+            console.error('[API Business Error]', method, fullUrl, data)
           }
           if (options.showError !== false) {
             uni.showToast({ title: message, icon: 'none' })
@@ -158,10 +172,10 @@ export const request = async <T = any>(options: RequestOptions): Promise<ApiResp
         }
         const message = typeof error?.errMsg === 'string' ? error.errMsg : '网络错误'
         if (import.meta.env.DEV) {
-          console.error('[API Network Error]', options.method || 'GET', fullUrl, error)
+          console.error('[API Network Error]', method, fullUrl, error)
         }
         // #ifdef MP-WEIXIN
-        console.error('[API Network Error]', options.method || 'GET', fullUrl, error)
+        console.error('[API Network Error]', method, fullUrl, error)
         // #endif
         if (options.showError !== false) {
           uni.showToast({ title: message, icon: 'none' })

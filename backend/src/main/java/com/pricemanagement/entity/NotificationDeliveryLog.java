@@ -56,6 +56,9 @@ public class NotificationDeliveryLog {
     @Column(name = "error_message", length = 500)
     private String errorMessage;
 
+    @Column(name = "is_test", nullable = false)
+    private Boolean test = false;
+
     @CreationTimestamp
     @Column(name = "created_time", nullable = false, updatable = false)
     private LocalDateTime createdTime;

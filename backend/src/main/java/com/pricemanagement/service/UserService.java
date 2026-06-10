@@ -32,6 +32,7 @@ public class UserService {
     private final EmployeeIdService employeeIdService;
     private final SysRoleRepository sysRoleRepository;
     private final UserRoleRepository userRoleRepository;
+    private final NotificationMiniProgramEligibilityService notificationMiniProgramEligibilityService;
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
@@ -94,6 +95,7 @@ public class UserService {
         }
 
         User savedUser = userRepository.save(user);
+        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
 
         // 同步写入sys_user_role表（根据role枚举找到对应角色）
         if (user.getRole() != null) {
@@ -157,6 +159,7 @@ public class UserService {
         }
 
         User savedUser = userRepository.save(existingUser);
+        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
         log.info("Updated user: {}", savedUser.getUsername());
         return savedUser;
     }

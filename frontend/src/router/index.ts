@@ -225,6 +225,12 @@ const router = createRouter({
           name: 'ScheduledTasks',
           component: () => import('../views/ScheduledTasks.vue'),
           meta: { title: '定时任务', adminOnly: true }
+        },
+        {
+          path: 'notifications',
+          name: 'Notifications',
+          component: () => import('../views/Notifications.vue'),
+          meta: { title: '通知管理', adminOnly: true }
         }
       ]
     }

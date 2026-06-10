@@ -23,7 +23,7 @@ public class PricePublishService {
     private final PriceDraftItemRepository itemRepository;
     private final PricePublishLogRepository publishLogRepository;
     private final PriceService priceService;
-    private final NotificationService notificationService;
+    private final NotificationEventService notificationEventService;
 
     @Transactional
     public PricePublishResultDTO publishByDate(LocalDate effectiveDate, PricePublishLog.PublishType publishType, Long userId) {
@@ -113,9 +113,8 @@ public class PricePublishService {
         }
         batchRepository.save(batch);
 
-        Long notificationMessageId = null;
         if (successCount > 0 && batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHED) {
-            NotificationMessage notification = notificationService.createPricePublishedNotification(
+            notificationEventService.pricePublished(
                     "价格已更新",
                     batch.getEffectiveDate() + " 价格已发布，共更新 " + totalPublishedCount + " 个产品，请查看最新价格。",
                     savedLog.getId(),
@@ -125,7 +124,6 @@ public class PricePublishService {
                     List.of(NotificationService.CHANNEL_IN_APP, NotificationService.CHANNEL_APP_PUSH, NotificationService.CHANNEL_MINI_PROGRAM),
                     List.of(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER)
             );
-            notificationMessageId = notification.getId();
         }
 
         PricePublishResultDTO result = new PricePublishResultDTO();
@@ -135,7 +133,7 @@ public class PricePublishService {
         result.setBatchStatus(batch.getStatus());
         result.setSuccessCount(successCount);
         result.setFailCount(failCount);
-        result.setNotificationMessageId(notificationMessageId);
+        result.setNotificationMessageId(null);
         result.setMessage(savedLog.getMessage());
         return result;
     }

@@ -60,6 +60,9 @@ public class NotificationMessage {
     @Column(name = "expire_time")
     private LocalDateTime expireTime;
 
+    @Column(name = "event_count", nullable = false)
+    private Long eventCount = 1L;
+
     @Column(name = "created_by")
     private Long createdBy;
 

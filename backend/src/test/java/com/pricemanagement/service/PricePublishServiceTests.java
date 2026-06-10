@@ -1,7 +1,6 @@
 package com.pricemanagement.service;
 
 import com.pricemanagement.dto.PricePublishResultDTO;
-import com.pricemanagement.entity.NotificationMessage;
 import com.pricemanagement.entity.Price;
 import com.pricemanagement.entity.PriceDraftBatch;
 import com.pricemanagement.entity.PriceDraftItem;
@@ -42,7 +41,7 @@ class PricePublishServiceTests {
     @Mock
     private PriceService priceService;
     @Mock
-    private NotificationService notificationService;
+    private NotificationEventService notificationEventService;
 
     @InjectMocks
     private PricePublishService pricePublishService;
@@ -54,8 +53,6 @@ class PricePublishServiceTests {
         PriceDraftItem draftItem = createItem(2L, 102L, PriceDraftItem.ItemStatus.DRAFT, null);
         Price savedPrice = new Price();
         savedPrice.setId(9002L);
-        NotificationMessage notification = new NotificationMessage();
-        notification.setId(7001L);
 
         when(batchRepository.findByIdForUpdate(batch.getId())).thenReturn(Optional.of(batch));
         when(itemRepository.findByBatchIdOrderByIdAsc(batch.getId())).thenReturn(List.of(publishedItem, draftItem));
@@ -65,10 +62,6 @@ class PricePublishServiceTests {
             log.setId(6001L);
             return log;
         });
-        when(notificationService.createPricePublishedNotification(
-                any(), any(), any(), any(), any(), any(), any(), any()
-        )).thenReturn(notification);
-
         PricePublishResultDTO result = pricePublishService.publishBatch(
                 batch.getId(),
                 PricePublishLog.PublishType.MANUAL,
@@ -82,9 +75,9 @@ class PricePublishServiceTests {
         assertThat(result.getSuccessCount()).isEqualTo(1);
         assertThat(result.getFailCount()).isZero();
         assertThat(result.getBatchStatus()).isEqualTo(PriceDraftBatch.DraftStatus.PUBLISHED);
-        assertThat(result.getNotificationMessageId()).isEqualTo(notification.getId());
+        assertThat(result.getNotificationMessageId()).isNull();
 
-        verify(notificationService).createPricePublishedNotification(
+        verify(notificationEventService).pricePublished(
                 eq("价格已更新"),
                 eq("2026-06-03 价格已发布，共更新 2 个产品，请查看最新价格。"),
                 eq(6001L),
@@ -122,7 +115,7 @@ class PricePublishServiceTests {
         assertThat(result.getSuccessCount()).isZero();
         assertThat(result.getFailCount()).isEqualTo(1);
         assertThat(result.getNotificationMessageId()).isNull();
-        verify(notificationService, never()).createPricePublishedNotification(
+        verify(notificationEventService, never()).pricePublished(
                 any(), any(), any(), any(), any(), any(), any(), any()
         );
     }
@@ -134,8 +127,6 @@ class PricePublishServiceTests {
         PriceDraftItem draftItem = createItem(2L, 102L, PriceDraftItem.ItemStatus.DRAFT, null);
         Price savedPrice = new Price();
         savedPrice.setId(9002L);
-        NotificationMessage notification = new NotificationMessage();
-        notification.setId(7002L);
         ArgumentCaptor<PricePublishLog> logCaptor = ArgumentCaptor.forClass(PricePublishLog.class);
 
         when(batchRepository.findByIdForUpdate(batch.getId())).thenReturn(Optional.of(batch));
@@ -146,10 +137,6 @@ class PricePublishServiceTests {
             log.setId(6003L);
             return log;
         });
-        when(notificationService.createPricePublishedNotification(
-                any(), any(), any(), any(), any(), any(), any(), any()
-        )).thenReturn(notification);
-
         pricePublishService.publishBatch(batch.getId(), PricePublishLog.PublishType.MANUAL, 1L);
 
         PricePublishLog savedLog = logCaptor.getValue();

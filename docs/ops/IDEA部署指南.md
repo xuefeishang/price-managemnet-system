@@ -108,6 +108,7 @@ EXIT;
 > `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
 > `V22__personal_profile_management.sql` 会扩展 Refresh Token 设备信息，并新增登录历史与个人偏好表，用于个人中心账号运维。
 > `V23__price_draft_publish_notification.sql` 会新增价格草稿/发布日志、站内通知、通用定时任务表和相关字典项。默认价格自动发布任务为停用状态，升级后需管理员在“系统管理 -> 定时任务”确认后手动启用。
+> `V28__notification_phase3_frequency_rules.sql` 会新增通知聚合频控默认规则字典；`V29__notification_provider_health_status_dict.sql` 会新增 Provider 健康状态字典；`V30__notification_aggregate_event_count.sql` 会为通知消息增加聚合事件计数字段；`V31__notification_mini_program_subscription.sql` 会新增小程序订阅授权表和授权状态字典；`V35__notification_mini_program_resolution.sql` 会新增用户级订阅异常处理表；`V36__notification_operations_hardening.sql` 会增加测试投递隔离字段、异常处理乐观锁、细粒度权限并清理历史敏感操作参数；`V37__notification_mini_resolution_status_dict.sql` 会增加异常处理状态字典；`V38__notification_mini_program_eligibility.sql` 会增加小程序订阅用户资格查询快照及状态分页索引。升级后需完成 Flyway 校验并重新打包前端。
 > 字典管理分类页签、使用说明和效果展示升级仅涉及前端页面与静态分类元数据，不需要新增数据库迁移；升级时重新打包前端即可。
 > Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
 
@@ -210,6 +211,68 @@ $bytes = New-Object byte[] 32
 ```
 
 开发环境默认会从 `application-dev.yml` 使用开发兜底 key，允许本地直接创建 API Key；如需模拟生产密钥，可在 IDEA 的后端 Run Configuration 中覆盖 Environment variables，例如 `API_KEY_ENCRYPTION_KEY=...;API_KEY_ENCRYPTION_KEY_VERSION=v1`。启用后，外部系统只允许调用 `/api/external/v1/**`，内部后台页面仍使用 JWT。生产环境禁止使用 `application-dev.yml` / `application.yml.example` 中的示例 key。
+
+### 3.7 通知 Outbox 配置（可选）
+
+通知中心外部渠道通过 Outbox worker 异步投递。未接入外部 Provider 时，worker 会把对应投递日志记录为 `SKIPPED/PROVIDER_NOT_CONFIGURED`，不影响价格发布等业务事务。
+
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `NOTIFICATION_OUTBOX_ENABLED` | 是否启用通知 Outbox worker | `true` |
+| `NOTIFICATION_OUTBOX_BATCH_SIZE` | 每轮领取任务数量 | `20` |
+| `NOTIFICATION_OUTBOX_MAX_RETRIES` | 外部 Provider 失败最大重试次数 | `3` |
+| `NOTIFICATION_OUTBOX_LOCK_SECONDS` | 单条任务处理锁定秒数 | `120` |
+| `NOTIFICATION_OUTBOX_POLL_DELAY_MS` | worker 轮询间隔毫秒 | `30000` |
+
+Webhook Provider MVP 默认关闭；需要联调外部通知接收方时，在 IDEA 后端 Run Configuration 的 Environment variables 中追加：
+
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `NOTIFICATION_WEBHOOK_ENABLED` | 是否启用 Webhook Provider | `false` |
+| `NOTIFICATION_WEBHOOK_URL` | Webhook 接收地址 | 空 |
+| `NOTIFICATION_WEBHOOK_SECRET` | Webhook HMAC 签名密钥 | 空 |
+| `NOTIFICATION_WEBHOOK_TIMEOUT_MS` | Provider HTTP 超时毫秒 | `5000` |
+
+Provider 调用会使用 `delivery-{notification_delivery_log.id}` 作为幂等键；未配置时投递日志记录为 `SKIPPED/PROVIDER_NOT_CONFIGURED`，超时或非 2xx 记录为 `FAILED`，不会阻断价格发布、审批、导入导出等业务事务。
+
+微信小程序订阅消息 Provider 默认关闭。启用前必须完成小程序 AppID/AppSecret、订阅消息模板审核、用户微信登录 openid 绑定和小程序端授权入口联调。
+
+这些值需要从微信小程序官方后台获取，不由本系统生成：
+
+1. 登录微信公众平台 `https://mp.weixin.qq.com`，选择对应小程序。
+2. 在小程序后台的开发设置/开发者 ID 中获取 `AppID`；`AppSecret` 由具备权限的管理员生成或重置，生成后必须按密钥处理。
+3. 在小程序后台进入订阅消息，选择公共模板或申请模板，加入“我的模板”后获取模板 ID 和字段编号，例如 `phrase2`、`thing4`、`thing1`、`time2`。
+4. 将 AppID、AppSecret、模板 ID 和字段映射配置到后端环境变量中。PC `/notifications` 只能显示 Provider 是否启用、是否配置完整和投递健康状态，不会也不应明文展示 `AppSecret`。
+
+当前项目已按你提供的小程序信息预置非敏感默认值：AppID 为 `wx00c7266dd35d3ab7`，价格发布模板为报价变更通知模板，系统公告模板为基础信息模板。AppSecret 不会写入配置文件；对话中已暴露过的 AppSecret 必须在微信公众平台重置后，再通过 `WECHAT_MINI_APP_SECRET` 注入运行环境。
+
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `WECHAT_MINI_NOTIFY_ENABLED` | 是否启用小程序订阅消息 Provider | `false` |
+| `WECHAT_MINI_ELIGIBILITY_RECONCILE_CRON` | 小程序订阅资格快照每日校准 Cron | `0 30 3 * * ?` |
+| `WECHAT_MINI_APP_ID` | 微信小程序 AppID | `wx00c7266dd35d3ab7` |
+| `WECHAT_MINI_APP_SECRET` | 微信小程序 AppSecret | 空 |
+| `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 价格发布订阅模板 ID，报价变更通知 | `T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk` |
+| `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 系统公告订阅模板 ID，基础信息模板 | `RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo` |
+| `WECHAT_MINI_PRICE_FIELD_TYPE` | 价格发布模板“类型”字段 | `phrase2` |
+| `WECHAT_MINI_PRICE_FIELD_TIP` | 价格发布模板“温馨提示”字段 | `thing4` |
+| `WECHAT_MINI_NOTICE_FIELD_CREATOR` | 系统公告模板“创建人”字段 | `thing1` |
+| `WECHAT_MINI_NOTICE_FIELD_TIME` | 系统公告模板“创建时间”字段 | `time2` |
+| `WECHAT_MINI_PRICE_PAGE` | 价格发布订阅消息点击后的小程序页面 | `pages/home/index` |
+| `WECHAT_MINI_NOTICE_PAGE` | 系统公告订阅消息点击后的小程序页面 | `pages/notifications/index` |
+| `WECHAT_MINI_NOTIFY_TIMEOUT_MS` | 微信接口超时毫秒 | `5000` |
+
+推荐在 IDEA 后端 Run Configuration 的 Environment variables 中至少追加：
+
+```text
+WECHAT_MINI_NOTIFY_ENABLED=true;WECHAT_MINI_APP_SECRET=重置后的微信小程序密钥
+```
+
+如微信后台更换了模板或字段编号，再覆盖对应 `WECHAT_MINI_TEMPLATE_*`、`WECHAT_MINI_PRICE_FIELD_*`、`WECHAT_MINI_NOTICE_FIELD_*` 环境变量。不要把 `WECHAT_MINI_APP_SECRET` 写入 `application.yml`、前端代码、文档或普通日志。
+
+`MINI_PROGRAM` 投递依赖用户授权次数。未配置、未绑定 openid、未授权模板会记录为 `SKIPPED`；微信接口超时、HTTP 非 2xx 或微信错误码会记录为 `FAILED` 并走 Outbox 重试状态机。PC `/notifications` 仍是统一发布入口，小程序只负责授权和接收，站内通知始终兜底。
+
+通知三期新增 SSE 轻事件接口 `/api/notifications/events`。生产反向代理需要允许长连接和流式响应；若代理或浏览器断开连接，PC 前端会自动回退到轮询，不影响站内消息列表。
 
 ---
 
@@ -646,6 +709,14 @@ npm run build
 ```
 
 打包成功后，会在 `dist` 目录下生成生产环境的文件。
+
+如需打包 uni-app H5：
+
+```bash
+cd frontend-uniapp
+npm run typecheck
+npm run build:h5
+```
 
 #### 2. 部署到 Nginx
 

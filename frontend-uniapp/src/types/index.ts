@@ -123,6 +123,7 @@ export interface Product {
 // 价格类型
 export interface Price {
   id: number
+  version?: number
   productId: number
   product?: Product
   originalPrice?: number
@@ -135,6 +136,65 @@ export interface Price {
   priceSpec?: string
   createdBy?: number
   createdTime: string
+}
+
+export type PriceDraftStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'PUBLISHING' | 'PUBLISHED' | 'CANCELLED'
+export type PricePublishStatus = 'SUCCESS' | 'FAILED' | 'PARTIAL'
+
+export interface PriceDraftItem {
+  id?: number
+  batchId?: number
+  productId: number
+  basePriceId?: number
+  basePriceVersion?: number
+  originalPrice?: number
+  currentPrice: number
+  costPrice?: number
+  budgetPrice?: number
+  effectiveDate?: string
+  expiryDate?: string
+  unit?: string
+  priceSpec?: string
+  itemStatus?: string
+  lastModifiedBy?: number
+  publishedPriceId?: number
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface PriceDraftBatch {
+  id: number
+  version?: number
+  effectiveDate: string
+  status: PriceDraftStatus
+  sourceType?: 'MANUAL' | 'SCHEDULED'
+  itemCount?: number
+  savedItemCount?: number
+  lastModifiedBy?: number
+  publishedTime?: string
+  publishedBy?: number
+  createdBy?: number
+  createdTime?: string
+  updatedTime?: string
+  items: PriceDraftItem[]
+}
+
+export interface PriceDraftSaveRequest {
+  batchId?: number
+  batchVersion?: number
+  effectiveDate: string
+  items: PriceDraftItem[]
+}
+
+export interface PricePublishResult {
+  batchId: number
+  publishLogId?: number
+  status: PricePublishStatus
+  batchStatus: PriceDraftStatus
+  successCount: number
+  failCount: number
+  notificationMessageId?: number
+  message?: string
 }
 
 // 价格历史类型
@@ -208,6 +268,49 @@ export interface PageResponse<T> {
   size: number
   first: boolean
   last: boolean
+}
+
+export interface NotificationMessage {
+  id: number
+  messageId: number
+  type: string
+  title: string
+  summary?: string
+  content?: string
+  businessType?: string
+  businessId?: number
+  channels?: string
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+  linkType?: string
+  linkParams?: string
+  archived?: boolean
+  readStatus: 'UNREAD' | 'READ'
+  readTime?: string
+  createdTime?: string
+}
+
+export interface NotificationMiniProgramTemplateSubscription {
+  notificationType: string
+  templateId: string
+  status: string
+  availableCount: number
+  authorized: boolean
+  lastAuthorizedTime?: string
+}
+
+export interface NotificationMiniProgramSubscription {
+  enabled: boolean
+  configured: boolean
+  openidBound: boolean
+  templates: NotificationMiniProgramTemplateSubscription[]
+}
+
+export interface NotificationMiniProgramSubscriptionUpdateRequest {
+  results: Array<{
+    notificationType: string
+    templateId: string
+    result: string
+  }>
 }
 
 // ==================== 菜单/字典类型 ====================

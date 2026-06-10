@@ -30,6 +30,12 @@ spring:
   cache:
     type: redis
 
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
 # 安全配置（仅本地开发使用默认值）
 security:
   jwt-secret: ${JWT_SECRET:price-management-system-dev-secret-key-2024}
@@ -38,6 +44,11 @@ security:
 
 jwt:
   secret: ${JWT_SECRET:price-management-system-dev-secret-key-2024}
+
+logging:
+  level:
+    com.pricemanagement: debug
+    org.springframework.security: debug
 
 # 外部 API Key 本地开发兜底配置。
 # 生产环境必须通过 API_KEY_ENCRYPTION_KEY 注入独立随机值，不能使用该开发示例 key。

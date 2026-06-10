@@ -27,7 +27,7 @@
           @click="navigateTo(`/pages/products/detail?id=${product.id}`)"
         >
           <text class="product-name">{{ product.name }}</text>
-          <text class="product-price">¥{{ product.sellingPrice || '-' }}</text>
+          <text class="product-price">{{ formatPrice(product) }}</text>
         </view>
       </view>
       <view class="empty-state" v-else>
@@ -43,6 +43,7 @@ import { getHomeProducts } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import { getCustomers } from '@/api/customers'
 import type { Product } from '@/types'
+import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 
 const stats = ref({
   productCount: 0,
@@ -51,6 +52,9 @@ const stats = ref({
 })
 
 const recentProducts = ref<Product[]>([])
+
+const formatPrice = (product: Product) =>
+  product.sellingPrice == null ? '-' : `${getCurrencySymbol(product.currency)}${Number(product.sellingPrice).toFixed(2)}`
 
 const navigateTo = (url: string) => {
   if (url.includes('pages-sub')) {
@@ -92,7 +96,7 @@ const loadData = async () => {
 }
 
 onMounted(() => {
-  loadData()
+  Promise.all([loadAllDicts(), loadData()])
 })
 </script>
 
@@ -168,6 +172,8 @@ onMounted(() => {
 }
 
 .product-price {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 28rpx;
   font-weight: 600;
   color: #0D6E6E;

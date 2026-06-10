@@ -179,7 +179,7 @@ const logoUrl = computed(() => themeConfig.value.logoUrlLogin || themeConfig.val
 const logoSizeClass = computed(() => `logo-${themeConfig.value.logoSizeLogin || themeConfig.value.logoSize || 'medium'}`)
 
 // 网络选项配置
-const networkOptions = computed(() => [
+const networkOptions = computed<Array<{ value: NetworkMode; label: string; description: string }>>(() => [
   {
     value: 'auto',
     label: '自动检测',
@@ -231,7 +231,7 @@ const handleApplyNetwork = async () => {
   detecting.value = true
 
   try {
-    const baseUrl = await switchNetworkMode(selectedNetworkMode.value)
+    await switchNetworkMode(selectedNetworkMode.value)
     closeNetworkSettings()
     uni.showToast({
       title: `已切换到${currentNetworkLabel.value}`,

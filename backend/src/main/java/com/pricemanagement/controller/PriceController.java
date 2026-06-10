@@ -183,8 +183,9 @@ public class PriceController {
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<List<PriceTrendDTO>> getPriceTrend(
             @PathVariable Long productId,
-            @RequestParam(defaultValue = "30") int days) {
-        List<PriceTrendDTO> trendData = priceService.getPriceTrend(productId, days);
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<PriceTrendDTO> trendData = priceService.getPriceTrend(productId, days, endDate);
         return Result.success("获取价格走势成功", trendData);
     }
 }

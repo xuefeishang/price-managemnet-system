@@ -1,1611 +1,608 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { getProduct, getProductPriceHistory, getCurrentPrice, getPriceTrend, getPriceByDate } from '@/api/products'
-import type { PriceTrendPoint } from '@/api/products'
-import { usePermission, Permission } from '@/composables/usePermission'
+import {
+  getCurrentPrice,
+  getPriceByDate,
+  getPriceTrend,
+  getProduct,
+  type PriceTrendPoint
+} from '@/api/products'
+import { getCurrencySymbol, getCustomerName, getDictValue, getOriginName, getStatusLabel, loadAllDicts } from '@/composables/useDict'
+import { Permission, usePermission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
-import { useLayout } from '@/composables/useLayout'
-import { getOriginName, getCustomerName, loadAllDicts, getCurrencySymbol, getStatusLabel, getDictValue } from '@/composables/useDict'
 import { eventBus } from '@/utils/eventBus'
-import type { Product, PriceHistory, Price } from '@/types'
+import type { Price, Product } from '@/types'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
+use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
 const route = useRoute()
 const router = useRouter()
 const { hasPermission } = usePermission()
 const { themeConfig } = useTheme()
-const { isPCLayout } = useLayout()
 
 const product = ref<Product | null>(null)
 const currentPrice = ref<Price | null>(null)
-const priceHistory = ref<PriceHistory[]>([])
 const loading = ref(false)
-const error = ref<string | null>(null)
-
-const trendData30 = ref<PriceTrendPoint[]>([])
-const trendData180 = ref<PriceTrendPoint[]>([])
-const trendData365 = ref<PriceTrendPoint[]>([])
-const selectedTrendRange = ref<'30' | '180' | '365'>('30')
-
-const currentTrendData = computed(() => {
-  switch (selectedTrendRange.value) {
-    case '180': return trendData180.value
-    case '365': return trendData365.value
-    default: return trendData30.value
-  }
-})
-
-const historyQueryDate = ref('')
+const error = ref('')
+const today = new Date().toISOString().slice(0, 10)
+const routeQueryDate = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date)
+  ? route.query.date
+  : ''
+const historyQueryDate = ref(routeQueryDate || today)
 const historyQueryResult = ref<Price | null>(null)
+const historyQueryActive = ref(Boolean(routeQueryDate && routeQueryDate !== today))
 const historyQueryLoading = ref(false)
-
-const originName = computed(() => {
-  if (!product.value?.originIds) return '-'
-  try {
-    const keys = JSON.parse(product.value.originIds)
-    if (keys.length === 0) return '-'
-    return getOriginName(keys[0]) || keys[0]
-  } catch {
-    return '-'
-  }
+const selectedTrendRange = ref<'30' | '180' | '365'>('30')
+const trendData = ref<Record<'30' | '180' | '365', PriceTrendPoint[]>>({ '30': [], '180': [], '365': [] })
+const comparisonPrices = ref<Record<'yesterday' | 'lastWeek' | 'lastMonth' | 'lastYear', Price | null>>({
+  yesterday: null,
+  lastWeek: null,
+  lastMonth: null,
+  lastYear: null
 })
 
-const customerNames = computed(() => {
-  if (!product.value?.customerIds) return []
+const currencySymbol = computed(() => getCurrencySymbol(product.value?.currency))
+const displayPriceValue = computed(() => currentPrice.value?.currentPrice ?? product.value?.sellingPrice ?? null)
+const budgetPriceValue = computed(() => currentPrice.value?.budgetPrice ?? product.value?.budgetPrice ?? null)
+const selectedDisplayPrice = computed(() =>
+  historyQueryActive.value ? historyQueryResult.value?.currentPrice ?? null : displayPriceValue.value
+)
+const selectedBudgetPrice = computed(() =>
+  historyQueryActive.value ? historyQueryResult.value?.budgetPrice ?? null : budgetPriceValue.value
+)
+const isHistoricalSnapshot = computed(() => historyQueryActive.value)
+const budgetDifference = computed(() => {
+  if (selectedDisplayPrice.value == null || selectedBudgetPrice.value == null) return null
+  return selectedDisplayPrice.value - selectedBudgetPrice.value
+})
+const currentTrendData = computed(() => trendData.value[selectedTrendRange.value])
+const validThirtyDayPrices = computed(() => trendData.value['30'].filter(item => item.currentPrice != null))
+const thirtyDayChange = computed(() => {
+  const points = validThirtyDayPrices.value
+  if (points.length < 2) return null
+  return Number(points[points.length - 1].currentPrice) - Number(points[0].currentPrice)
+})
+const thirtyDayChangeRate = computed(() => {
+  const first = validThirtyDayPrices.value[0]?.currentPrice
+  if (first == null || first === 0 || thirtyDayChange.value == null) return null
+  return (thirtyDayChange.value / first) * 100
+})
+const validCurrentTrendPrices = computed(() =>
+  currentTrendData.value
+    .filter((item): item is PriceTrendPoint & { currentPrice: number } => item.currentPrice != null)
+    .map(item => Number(item.currentPrice))
+)
+const trendStats = computed(() => {
+  const prices = validCurrentTrendPrices.value
+  if (!prices.length) return { lowest: null, highest: null, average: null, latest: null }
+  return {
+    lowest: Math.min(...prices),
+    highest: Math.max(...prices),
+    average: prices.reduce((sum, price) => sum + price, 0) / prices.length,
+    latest: prices[prices.length - 1]
+  }
+})
+const completeness = computed(() => {
+  if (!product.value) return 0
+  const values = [
+    product.value.name,
+    product.value.code,
+    product.value.category?.name,
+    product.value.specs,
+    product.value.unit,
+    product.value.originIds,
+    product.value.customerIds,
+    product.value.description,
+    product.value.imageUrl,
+    product.value.currency
+  ]
+  return Math.round((values.filter(Boolean).length / values.length) * 100)
+})
+
+const parseDictIds = (value?: string) => {
+  if (!value) return []
   try {
-    const keys = JSON.parse(product.value.customerIds)
-    return keys.map((key: string) => getCustomerName(key)).filter(Boolean) as string[]
+    const result = JSON.parse(value)
+    return Array.isArray(result) ? result : []
   } catch {
     return []
   }
+}
+
+const originNames = computed(() => parseDictIds(product.value?.originIds).map(getOriginName).filter(Boolean).join('、') || '-')
+const customerNames = computed(() => parseDictIds(product.value?.customerIds).map(getCustomerName).filter(Boolean).join('、') || '-')
+const unitName = computed(() => product.value?.unit ? getDictValue('unit', product.value.unit) : '-')
+const currencyName = computed(() => product.value?.currency ? getDictValue('currency', product.value.currency) : '-')
+
+const formatPrice = (value?: number | null) => value == null ? '-' : `${currencySymbol.value}${Number(value).toFixed(2)}`
+const formatSignedPrice = (value?: number | null) => {
+  if (value == null) return '-'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${currencySymbol.value}${Number(value).toFixed(2)}`
+}
+const formatChartDate = (value: string) => {
+  const date = new Date(value)
+  return `${date.getMonth() + 1}/${String(date.getDate()).padStart(2, '0')}`
+}
+const parseLocalDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+const formatLocalDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const getRelativeDate = (days: number, years = 0) => {
+  const date = parseLocalDate(historyQueryDate.value)
+  if (years) date.setFullYear(date.getFullYear() - years)
+  if (days) date.setDate(date.getDate() - days)
+  return formatLocalDate(date)
+}
+const getChangeClass = (value?: number | null) => value == null || value === 0 ? 'flat' : value > 0 ? 'rise' : 'fall'
+const formatPercent = (value?: number | null) => value == null ? '--' : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+const trendRangeLabel = computed(() => selectedTrendRange.value === '30' ? '近 30 天' : selectedTrendRange.value === '180' ? '近 180 天' : '近 12 个月')
+const comparisonItems = computed(() => {
+  const current = selectedDisplayPrice.value
+  const build = (
+    key: keyof typeof comparisonPrices.value,
+    label: string,
+    periodLabel: string,
+    date: string
+  ) => {
+    const comparePrice = comparisonPrices.value[key]?.currentPrice ?? null
+    const value = current == null || comparePrice == null ? null : Number(current) - Number(comparePrice)
+    const percent = value == null || comparePrice === 0 ? null : (value / Number(comparePrice)) * 100
+    return { key, label, periodLabel, date, value, percent }
+  }
+  return [
+    build('yesterday', '较昨日', '日环比', getRelativeDate(1)),
+    build('lastWeek', '较上周', '周环比', getRelativeDate(7)),
+    build('lastMonth', '较上月', '月环比', getRelativeDate(30)),
+    build('lastYear', '较去年同期', '同比', getRelativeDate(0, 1))
+  ]
 })
 
-const maxDate = new Date().toISOString().split('T')[0]
-
-const formatTrendDate = (dateStr: string): string => {
-  const d = new Date(dateStr)
-  return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
-}
-
-const formatFullDate = (dateStr: string): string => {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-const buildTrendChartOption = (trendData: PriceTrendPoint[]) => {
-  if (trendData.length === 0) return null
-
-  const dates = trendData.map(d => formatTrendDate(d.date))
-  const fullDates = trendData.map(d => formatFullDate(d.date))
-  const currentPrices = trendData.map(d => d.currentPrice)
-  const budgetPrices = trendData.map(d => d.budgetPrice)
-  const hasBudget = budgetPrices.some(v => v != null)
-
-  const chartPrimaryColor = themeConfig.value.chartPrimaryColor
-  const chartColors = themeConfig.value.chartColors
-
-  const series: any[] = [{
-    name: '售价',
-    type: 'line',
-    data: currentPrices,
-    smooth: true,
-    symbol: 'none',
-    lineStyle: { color: chartPrimaryColor, width: 2 },
-    itemStyle: { color: chartPrimaryColor },
-    areaStyle: {
-      color: {
-        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-        colorStops: [
-          { offset: 0, color: chartPrimaryColor + '33' },
-          { offset: 1, color: chartPrimaryColor + '05' }
-        ]
-      }
-    }
-  }]
-
-  if (hasBudget) {
-    series.push({
-      name: '预算价格',
-      type: 'line',
-      data: budgetPrices,
-      smooth: true,
-      symbol: 'none',
-      lineStyle: { color: chartColors[2] || '#F59E0B', width: 1.5, type: 'dashed' },
-      itemStyle: { color: chartColors[2] || '#F59E0B' }
-    })
-  }
-
-  const option: any = {
+const chartOption = computed(() => {
+  const data = currentTrendData.value
+  const budgetColor = '#E07B54'
+  return {
+    color: [themeConfig.value.chartPrimaryColor, budgetColor],
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        let html = `${fullDates[params[0].dataIndex]}<br/>`
-        for (const p of params) {
-          if (p.value != null) {
-            html += `${p.marker} ${p.seriesName}: ${getCurrencySymbol(product.value?.currency)}${Number(p.value).toFixed(2)}<br/>`
-          }
-        }
-        return html
-      }
+      valueFormatter: (value: number | null) => formatPrice(value)
     },
-    legend: hasBudget ? { data: ['售价', '预算价格'], bottom: 0, textStyle: { fontSize: 11 } } : undefined,
-    grid: { left: '3%', right: '4%', bottom: hasBudget ? '14%' : '3%', top: '8%', containLabel: true },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 18,
+      itemHeight: 3,
+      textStyle: { color: '#667085', fontSize: 11 }
+    },
+    grid: { left: 16, right: 10, top: 38, bottom: 8, containLabel: true },
     xAxis: {
       type: 'category',
-      data: dates,
       boundaryGap: false,
-      axisLabel: { fontSize: 11, color: '#666', rotate: trendData.length > 30 ? 45 : 0, interval: 'auto' }
+      data: data.map(item => formatChartDate(item.date)),
+      axisLine: { lineStyle: { color: '#98A2B3' } },
+      axisTick: { show: false },
+      axisLabel: { color: '#98A2B3', fontSize: 10 }
     },
     yAxis: {
       type: 'value',
       name: '价格',
-      nameTextStyle: { fontSize: 11, color: '#666' },
-      axisLabel: { fontSize: 11, color: '#666' },
-      splitLine: { lineStyle: { color: '#eee', type: 'dashed' } }
+      nameTextStyle: { color: '#98A2B3', fontSize: 10 },
+      axisLine: { show: true, lineStyle: { color: '#98A2B3' } },
+      axisLabel: { color: '#98A2B3', fontSize: 10, formatter: (value: number) => `${currencySymbol.value}${value}` },
+      splitLine: { lineStyle: { color: '#EAECF0' } }
     },
-    series
+    series: [
+      {
+        name: '售价',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: data.map(item => item.currentPrice),
+        lineStyle: { width: 2.5, color: themeConfig.value.chartPrimaryColor }
+      },
+      {
+        name: '预算',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: data.map(() => selectedBudgetPrice.value),
+        lineStyle: { width: 2, color: budgetColor, type: 'dashed' }
+      }
+    ]
   }
+})
 
-  if (trendData.length > 30) {
-    option.dataZoom = [{
-      type: 'inside',
-      start: Math.max(0, 100 - (30 / trendData.length) * 100),
-      end: 100
-    }]
+const loadTrendData = async (id: number) => {
+  const endDate = historyQueryActive.value ? historyQueryDate.value : undefined
+  const [trend30Res, trend180Res, trend365Res] = await Promise.all([
+    getPriceTrend(id, 30, endDate),
+    getPriceTrend(id, 180, endDate),
+    getPriceTrend(id, 365, endDate)
+  ])
+  trendData.value = {
+    '30': trend30Res.data ?? [],
+    '180': trend180Res.data ?? [],
+    '365': trend365Res.data ?? []
   }
-
-  return option
 }
 
-const trendChartConfig = computed(() => buildTrendChartOption(currentTrendData.value))
-
 const loadProduct = async () => {
-  const id = route.params.id as string
-  if (!id) {
-    router.push('/home')
-    return
-  }
-
+  const id = Number(route.params.id)
+  if (!id) return router.push('/products')
   loading.value = true
-  error.value = null
+  error.value = ''
   try {
-    const productResponse = await getProduct(parseInt(id))
-    product.value = productResponse.data
-
-    const [priceResponse, historyResponse, trend30Res, trend180Res, trend365Res] = await Promise.all([
-      getCurrentPrice(parseInt(id)),
-      getProductPriceHistory(parseInt(id)),
-      getPriceTrend(parseInt(id), 30),
-      getPriceTrend(parseInt(id), 180),
-      getPriceTrend(parseInt(id), 365)
+    const [productRes, currentRes] = await Promise.all([
+      getProduct(id),
+      getCurrentPrice(id)
     ])
-
-    currentPrice.value = priceResponse.data || null
-    priceHistory.value = historyResponse.data || []
-    trendData30.value = trend30Res.data || []
-    trendData180.value = trend180Res.data || []
-    trendData365.value = trend365Res.data || []
+    product.value = productRes.data
+    currentPrice.value = currentRes.data ?? null
+    await loadTrendData(id)
+    if (historyQueryActive.value) {
+      const historyResponse = await getPriceByDate(id, historyQueryDate.value)
+      historyQueryResult.value = historyResponse.data ?? null
+    }
+    await loadComparisonPrices()
   } catch (err: any) {
-    error.value = err?.message || '加载数据失败，请重试'
-    console.error('Failed to load product:', err)
+    error.value = err?.message || '加载产品详情失败'
   } finally {
     loading.value = false
   }
 }
 
-const onRefresh = () => loadProduct()
-
-const editProduct = () => router.push(`/product-edit/${product.value?.id}`)
-const goBack = () => router.push('/home')
-
-const activeTab = ref('products')
-
-const switchTab = (tab: string) => {
-  activeTab.value = tab
-  switch (tab) {
-    case 'home': router.push('/home'); break
-    case 'products': router.push('/products'); break
-    case 'import': router.push('/import'); break
-    case 'profile': router.push('/profile'); break
-  }
-}
-
-onMounted(() => {
-  loadAllDicts()
-  loadProduct()
-  eventBus.on('product-updated', handleProductUpdated)
-})
-
-onUnmounted(() => {
-  eventBus.off('product-updated', handleProductUpdated)
-})
-
-const handleProductUpdated = (updatedId: number | null) => {
-  if (!updatedId || updatedId === parseInt(route.params.id as string)) {
-    loadProduct()
+const loadComparisonPrices = async () => {
+  if (!product.value) return
+  const id = product.value.id
+  try {
+    const [yesterday, lastWeek, lastMonth, lastYear] = await Promise.all([
+      getPriceByDate(id, getRelativeDate(1)),
+      getPriceByDate(id, getRelativeDate(7)),
+      getPriceByDate(id, getRelativeDate(30)),
+      getPriceByDate(id, getRelativeDate(0, 1))
+    ])
+    comparisonPrices.value = {
+      yesterday: yesterday.data ?? null,
+      lastWeek: lastWeek.data ?? null,
+      lastMonth: lastMonth.data ?? null,
+      lastYear: lastYear.data ?? null
+    }
+  } catch (err) {
+    console.error('Failed to load comparison prices:', err)
   }
 }
 
 const queryHistoryPrice = async () => {
-  if (!historyQueryDate.value || !product.value) return
-
+  if (!product.value || !historyQueryDate.value) return
   historyQueryLoading.value = true
+  historyQueryActive.value = true
   try {
-    const res = await getPriceByDate(product.value.id, historyQueryDate.value)
-    historyQueryResult.value = res.data || null
-  } catch (error) {
-    console.error('Failed to query history price:', error)
+    const response = await getPriceByDate(product.value.id, historyQueryDate.value)
+    historyQueryResult.value = response.data ?? null
+    await Promise.all([loadTrendData(product.value.id), loadComparisonPrices()])
+  } catch (err) {
     historyQueryResult.value = null
+    console.error('Failed to query history price:', err)
   } finally {
     historyQueryLoading.value = false
   }
 }
 
-const clearHistoryQuery = () => {
-  historyQueryDate.value = ''
+const showCurrentPrice = async () => {
+  historyQueryDate.value = today
   historyQueryResult.value = null
+  historyQueryActive.value = false
+  if (product.value) await Promise.all([loadTrendData(product.value.id), loadComparisonPrices()])
 }
 
-const getChangeTypeClass = (changeType: string) => {
-  switch (changeType?.toUpperCase()) {
-    case 'CREATE': return 'create'
-    case 'UPDATE': return 'update'
-    case 'DELETE': return 'delete'
-    default: return ''
-  }
+const editProduct = () => router.push(`/product-edit/${product.value?.id}`)
+const handleProductUpdated = (id: number | null) => {
+  if (!id || id === Number(route.params.id)) loadProduct()
 }
+
+onMounted(async () => {
+  await loadAllDicts()
+  await loadProduct()
+  eventBus.on('product-updated', handleProductUpdated)
+})
+onUnmounted(() => eventBus.off('product-updated', handleProductUpdated))
 </script>
 
 <template>
-  <div class="product-detail-page">
-    <!-- ==================== PC布局 ==================== -->
-    <template v-if="isPCLayout">
-      <div class="pc-detail" v-if="!loading && product">
-        <div class="page-header-pc">
-          <div class="header-left-pc">
-            <button class="back-btn-pc" @click="goBack">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
-              返回
-            </button>
-            <h1 class="page-title-pc">产品详情</h1>
-          </div>
-          <div class="header-actions-pc">
-            <button class="btn-icon-pc" @click="onRefresh" :disabled="loading" title="刷新">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: loading }">
-                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-              </svg>
-            </button>
-            <button class="btn-edit-pc" @click="editProduct" v-if="hasPermission(Permission.PRODUCT_EDIT)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-              编辑产品
-            </button>
-          </div>
-        </div>
+  <main class="detail-page">
+    <div v-if="loading" class="state-panel">
+      <span class="spinner"></span>
+      <span>正在加载产品详情</span>
+    </div>
 
-        <!-- 错误提示 -->
-        <div v-if="error" class="alert-error">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          {{ error }}
-          <button @click="onRefresh">重试</button>
-        </div>
+    <div v-else-if="error || !product" class="state-panel error">
+      <strong>{{ error || '未找到产品' }}</strong>
+      <button @click="loadProduct">重新加载</button>
+    </div>
 
-        <!-- 价格走势区域 -->
-        <div class="trend-section-pc" v-if="trendData30.length > 1 || trendData180.length > 1 || trendData365.length > 1">
-          <div class="trend-header-pc">
-            <h3 class="trend-main-title-pc">
-              <svg class="trend-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              价格走势
-            </h3>
-            <div class="trend-range-tabs">
-              <button class="trend-tab" :class="{ active: selectedTrendRange === '30' }" @click="selectedTrendRange = '30'" :disabled="trendData30.length <= 1">近30天</button>
-              <button class="trend-tab" :class="{ active: selectedTrendRange === '180' }" @click="selectedTrendRange = '180'" :disabled="trendData180.length <= 1">近180天</button>
-              <button class="trend-tab" :class="{ active: selectedTrendRange === '365' }" @click="selectedTrendRange = '365'" :disabled="trendData365.length <= 1">近12个月</button>
-            </div>
-          </div>
-          <v-chart class="price-chart-pc" :option="trendChartConfig" />
-          <div class="trend-hint" v-if="currentTrendData.length > 30">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            可拖动查看详细数据
-          </div>
-        </div>
-
-        <div class="empty-trend-pc" v-if="trendData30.length <= 1 && trendData180.length <= 1 && trendData365.length <= 1 && !loading">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <span>暂无足够的价格走势数据</span>
-        </div>
-
-        <!-- 第二行：左侧产品信息 + 右侧历史记录 -->
-        <div class="detail-grid-pc">
-          <div class="detail-main-pc">
-            <div class="info-card-pc">
-              <div class="section-title-pc">产品信息</div>
-              <div class="info-grid-pc">
-                <div class="info-row-pc">
-                  <span class="info-key">产品名称</span>
-                  <span class="info-value">{{ product.name }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">产品分类</span>
-                  <span class="info-value">{{ product.category?.name || '未分类' }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">产品规格</span>
-                  <span class="info-value">{{ product.specs || '-' }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">计量单位</span>
-                  <span class="info-value">{{ product.unit || '-' }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">产地</span>
-                  <span class="info-value">{{ originName }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">显示状态</span>
-                  <span class="info-value">
-                    <span class="status-badge" :class="product.status?.toLowerCase()">
-                      {{ getStatusLabel(product.status) }}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="info-card-pc">
-              <div class="section-title-pc">价格信息</div>
-              <div class="info-grid-pc">
-                <div class="info-row-pc">
-                  <span class="info-key">当前售价</span>
-                  <span class="info-value price-highlight">{{ currentPrice?.currentPrice != null ? getCurrencySymbol(product.currency) + Number(currentPrice.currentPrice).toFixed(2) : (product.sellingPrice != null ? getCurrencySymbol(product.currency) + product.sellingPrice.toFixed(2) : '-') }}</span>
-                </div>
-                <div class="info-row-pc">
-                  <span class="info-key">预算价格</span>
-                  <span class="info-value price-highlight">{{ currentPrice?.budgetPrice != null ? getCurrencySymbol(product.currency) + currentPrice.budgetPrice.toFixed(2) : (product.budgetPrice != null ? getCurrencySymbol(product.currency) + product.budgetPrice.toFixed(2) : '-') }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="info-card-pc">
-              <div class="section-title-pc">客户与描述</div>
-              <div class="info-grid-pc">
-                <div class="info-row-pc full-row">
-                  <span class="info-key">客户信息</span>
-                  <span class="info-value">{{ customerNames.length > 0 ? customerNames.join('、') : '-' }}</span>
-                </div>
-                <div class="info-row-pc full-row" v-if="product.description">
-                  <span class="info-key">产品描述</span>
-                  <span class="info-value desc">{{ product.description }}</span>
-                </div>
-                <div class="info-row-pc full-row" v-if="product.remark">
-                  <span class="info-key">备注说明</span>
-                  <span class="info-value desc">{{ product.remark }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="detail-sidebar-pc">
-            <div class="history-query-card-pc">
-              <h3 class="history-title-pc">历史价格查询</h3>
-              <div class="query-form-pc">
-                <input type="date" v-model="historyQueryDate" class="query-input-pc" :max="maxDate" />
-                <button class="query-btn-pc" @click="queryHistoryPrice" :disabled="!historyQueryDate || historyQueryLoading">
-                  <span v-if="historyQueryLoading">查询中...</span>
-                  <span v-else>查询</span>
-                </button>
-                <button class="query-clear-btn-pc" @click="clearHistoryQuery" v-if="historyQueryResult" title="清除">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-              <div class="query-result-pc" v-if="historyQueryResult">
-                <div class="result-date-pc">{{ historyQueryDate }}</div>
-                <div class="result-row-pc">
-                  <span class="result-label">售价</span>
-                  <span class="result-value">{{ historyQueryResult.currentPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.currentPrice).toFixed(2) : '-' }}</span>
-                </div>
-                <div class="result-row-pc">
-                  <span class="result-label">预算价</span>
-                  <span class="result-value">{{ historyQueryResult.budgetPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.budgetPrice).toFixed(2) : '-' }}</span>
-                </div>
-              </div>
-              <div class="query-empty-pc" v-else-if="!historyQueryLoading && historyQueryDate">
-                <span>该日期无价格记录</span>
-              </div>
-              <div class="query-hint-pc" v-else>
-                <span>选择日期查询历史价格</span>
-              </div>
-            </div>
-
-            <div class="history-card-pc" v-if="priceHistory.length > 0">
-              <h3 class="history-title-pc">近期价格变动</h3>
-              <div class="history-list-pc">
-                <div v-for="history in priceHistory.slice().reverse().slice(0, 10)" :key="history.id" class="history-item-pc">
-                  <div class="history-header">
-                    <span class="history-type" :class="getChangeTypeClass(history.changeType)">
-                      {{ getDictValue('change_type', history.changeType) }}
-                    </span>
-                    <span class="history-time">{{ new Date(history.changedTime).toLocaleString() }}</span>
-                  </div>
-                  <div class="history-price" v-if="history.newPrice">
-                    <span v-if="history.oldPrice" class="old-price">{{ getCurrencySymbol(product.currency) }}{{ history.oldPrice }}</span>
-                    <span class="arrow">→</span>
-                    <span class="new-price">{{ getCurrencySymbol(product.currency) }}{{ history.newPrice }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="history-card-pc empty" v-else-if="!loading">
-              <div class="empty-history">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
-                </svg>
-                <span>暂无价格变动记录</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 加载状态 -->
-      <div class="loading-state-pc" v-else-if="loading">
-        <div class="loading-spinner"></div>
-      </div>
-
-      <!-- 错误状态 -->
-      <div class="error-state-pc" v-else-if="error">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <p>{{ error }}</p>
-        <button class="btn-retry-pc" @click="onRefresh">重试</button>
-      </div>
-    </template>
-
-    <!-- ==================== 移动端布局 ==================== -->
     <template v-else>
-      <header class="navbar">
-        <div class="navbar-left">
-          <button class="back-btn" @click="goBack">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
-          <h1 class="navbar-title">产品详情</h1>
+      <header class="page-header">
+        <div class="title-block">
+          <button class="breadcrumb" @click="router.push('/products')">产品管理</button>
+          <span>/</span>
+          <span>产品详情</span>
+          <h1>产品详情</h1>
         </div>
-        <div class="navbar-right">
-          <button class="btn-icon-mobile" @click="onRefresh" :disabled="loading" title="刷新">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: loading }">
-              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-            </svg>
+        <div class="header-actions">
+          <button class="icon-button" title="刷新" @click="loadProduct">
+            <svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2m.5 5v-5h-5"/></svg>
           </button>
-          <button class="nav-icon-btn" @click="editProduct" v-if="hasPermission(Permission.PRODUCT_EDIT)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
+          <label class="date-button" :class="{ loading: historyQueryLoading }" title="查看指定日期价格">
+            <svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg>
+            <input v-model="historyQueryDate" type="date" :disabled="historyQueryLoading" :max="new Date().toISOString().slice(0, 10)" @change="queryHistoryPrice">
+          </label>
+          <button v-if="isHistoricalSnapshot" class="snapshot-button" :disabled="historyQueryLoading" @click="showCurrentPrice">
+            返回当前
+          </button>
+          <button v-if="hasPermission(Permission.PRODUCT_EDIT)" class="primary-button" @click="editProduct">
+            <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+            编辑产品
           </button>
         </div>
       </header>
 
-      <main class="content" v-if="!loading && product">
-        <div v-if="error" class="alert-error-mobile">
-          <span>{{ error }}</span>
-          <button @click="onRefresh">重试</button>
+      <section class="product-hero">
+        <div class="identity">
+          <div class="tags">
+            <span class="status-tag" :class="{ inactive: product.status === 'INACTIVE' }">{{ getStatusLabel(product.status) }}</span>
+            <span v-if="product.showOnHome" class="soft-tag">首页展示</span>
+            <span v-if="isHistoricalSnapshot" class="snapshot-tag">
+              {{ historyQueryDate }} {{ historyQueryResult ? '历史快照' : '无价格记录' }}
+            </span>
+          </div>
+          <h2>{{ product.name }}</h2>
+          <p class="meta">{{ product.code || '-' }} · {{ product.category?.name || '-' }} · {{ product.specs || '-' }} / {{ unitName }} · {{ originNames }}</p>
+          <p class="description">{{ product.description || product.remark || '暂无产品描述' }}</p>
         </div>
-
-        <div class="info-card trend-section" v-if="trendData30.length > 1 || trendData180.length > 1 || trendData365.length > 1">
-          <div class="card-label">价格走势</div>
-          <div class="trend-range-tabs-mobile">
-            <button class="trend-tab-mobile" :class="{ active: selectedTrendRange === '30' }" @click="selectedTrendRange = '30'" :disabled="trendData30.length <= 1">近30天</button>
-            <button class="trend-tab-mobile" :class="{ active: selectedTrendRange === '180' }" @click="selectedTrendRange = '180'" :disabled="trendData180.length <= 1">近180天</button>
-            <button class="trend-tab-mobile" :class="{ active: selectedTrendRange === '365' }" @click="selectedTrendRange = '365'" :disabled="trendData365.length <= 1">近12个月</button>
-          </div>
-          <v-chart class="price-chart-mobile" :option="trendChartConfig" />
-          <div class="trend-hint-mobile" v-if="currentTrendData.length > 30">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            拖动查看详细
-          </div>
+        <div class="price-metrics">
+          <article>
+            <span>{{ isHistoricalSnapshot ? '基准日售价' : '当前售价' }}</span>
+            <strong>{{ formatPrice(selectedDisplayPrice) }}</strong>
+            <small>{{ isHistoricalSnapshot ? (historyQueryResult ? `${historyQueryDate} 快照` : '该日期暂无有效价格') : '当前有效价格' }}</small>
+          </article>
+          <article>
+            <span>预算价格</span>
+            <strong>{{ formatPrice(selectedBudgetPrice) }}</strong>
+            <small>差额 {{ formatSignedPrice(budgetDifference) }}</small>
+          </article>
+          <article>
+            <span>近 30 日变化</span>
+            <strong :class="{ negative: (thirtyDayChange ?? 0) < 0 }">{{ formatSignedPrice(thirtyDayChange) }}</strong>
+            <small>{{ thirtyDayChangeRate == null ? '数据不足' : `${thirtyDayChangeRate >= 0 ? '+' : ''}${thirtyDayChangeRate.toFixed(1)}%` }}</small>
+          </article>
         </div>
+      </section>
 
-        <div class="info-card">
-          <div class="card-label">历史价格查询</div>
-          <div class="query-form-mobile">
-            <input type="date" v-model="historyQueryDate" class="query-input-mobile" :max="maxDate" />
-            <button class="query-btn-mobile" @click="queryHistoryPrice" :disabled="!historyQueryDate || historyQueryLoading">
-              {{ historyQueryLoading ? '查询中...' : '查询' }}
-            </button>
-            <button class="query-clear-btn-mobile" @click="clearHistoryQuery" v-if="historyQueryResult" title="清除">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <div class="query-result-mobile" v-if="historyQueryResult">
-            <div class="result-date">{{ historyQueryDate }}</div>
-            <div class="result-row">
-              <span class="result-label">售价</span>
-              <span class="result-value">{{ historyQueryResult.currentPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.currentPrice).toFixed(2) : '-' }}</span>
+      <section class="detail-body">
+        <article class="card trend-card">
+          <div class="card-header">
+            <div>
+              <h3>价格走势</h3>
+              <p>售价与预算价格对比</p>
             </div>
-            <div class="result-row">
-              <span class="result-label">预算价</span>
-              <span class="result-value">{{ historyQueryResult.budgetPrice != null ? getCurrencySymbol(product.currency) + Number(historyQueryResult.budgetPrice).toFixed(2) : '-' }}</span>
+            <div class="range-tabs">
+              <button v-for="range in ['30', '180', '365'] as const" :key="range" :class="{ active: selectedTrendRange === range }" @click="selectedTrendRange = range">
+                {{ range === '30' ? '近30天' : range === '180' ? '近180天' : '近12个月' }}
+              </button>
             </div>
           </div>
-          <div class="query-empty-mobile" v-else-if="!historyQueryLoading && historyQueryDate">
-            <span>该日期无价格记录</span>
-          </div>
-        </div>
+          <v-chart v-if="currentTrendData.length > 1" class="price-chart" :option="chartOption" autoresize />
+          <div v-else class="empty-content">暂无足够的价格走势数据</div>
+        </article>
 
-        <div class="info-card">
-          <div class="card-label">产品信息</div>
-          <div class="info-grid">
-            <div class="info-row">
-              <span class="info-label">产品名称</span>
-              <span class="info-value">{{ product.name }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">产品分类</span>
-              <span class="info-value">{{ product.category?.name || '未分类' }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">产品规格</span>
-              <span class="info-value">{{ product.specs || '-' }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">计量单位</span>
-              <span class="info-value">{{ product.unit || '-' }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">产地</span>
-              <span class="info-value">{{ originName }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">显示状态</span>
-              <span class="info-value">
-                <span class="status-badge" :class="product.status?.toLowerCase()">
-                  {{ getStatusLabel(product.status) }}
-                </span>
-              </span>
-            </div>
+        <aside class="info-column">
+          <article class="card info-card">
+            <h3>基础资料</h3>
+            <dl>
+              <div><dt>分类</dt><dd>{{ product.category?.name || '-' }}</dd></div>
+              <div><dt>规格</dt><dd>{{ product.specs || '-' }}</dd></div>
+              <div><dt>计量单位</dt><dd>{{ unitName }}</dd></div>
+              <div><dt>产地</dt><dd>{{ originNames }}</dd></div>
+              <div><dt>适用客户</dt><dd>{{ customerNames }}</dd></div>
+              <div><dt>币种</dt><dd>{{ currencyName }}</dd></div>
+            </dl>
+          </article>
+          <article class="card completeness-card">
+            <div><h3>资料完整度</h3><strong>{{ completeness }}%</strong></div>
+            <span class="progress"><i :style="{ width: `${completeness}%` }"></i></span>
+            <small>{{ completeness === 100 ? '产品资料已完整' : '继续完善产品资料可提升可读性' }}</small>
+          </article>
+        </aside>
+      </section>
+
+      <section class="card analytics-card">
+        <div class="card-header">
+          <div>
+            <h3>价格统计与对比分析</h3>
+            <p>统计范围：{{ trendRangeLabel }}；对比基准日：{{ historyQueryDate }}</p>
           </div>
         </div>
-
-        <div class="info-card">
-          <div class="card-label">价格信息</div>
-          <div class="info-grid">
-            <div class="info-row">
-              <span class="info-label">当前售价</span>
-              <span class="info-value price-highlight">{{ currentPrice?.currentPrice != null ? getCurrencySymbol(product.currency) + Number(currentPrice.currentPrice).toFixed(2) : (product.sellingPrice != null ? getCurrencySymbol(product.currency) + product.sellingPrice.toFixed(2) : '-') }}</span>
+        <div class="stat-grid">
+          <article>
+            <span>最低价</span>
+            <strong>{{ formatPrice(trendStats.lowest) }}</strong>
+          </article>
+          <article>
+            <span>最高价</span>
+            <strong>{{ formatPrice(trendStats.highest) }}</strong>
+          </article>
+          <article>
+            <span>平均价</span>
+            <strong>{{ formatPrice(trendStats.average) }}</strong>
+          </article>
+          <article class="budget-stat">
+            <span>预算价</span>
+            <strong>{{ formatPrice(selectedBudgetPrice) }}</strong>
+          </article>
+          <article class="latest-stat">
+            <span>{{ isHistoricalSnapshot ? '基准日价格' : '最新价' }}</span>
+            <strong>{{ formatPrice(isHistoricalSnapshot ? selectedDisplayPrice : selectedDisplayPrice ?? trendStats.latest) }}</strong>
+          </article>
+        </div>
+        <div class="comparison-grid">
+          <article v-for="item in comparisonItems" :key="item.key" :class="getChangeClass(item.value)">
+            <div class="comparison-title">
+              <span>{{ item.label }}</span>
+              <em>{{ item.periodLabel }}</em>
             </div>
-            <div class="info-row">
-              <span class="info-label">预算价格</span>
-              <span class="info-value price-highlight">{{ currentPrice?.budgetPrice != null ? getCurrencySymbol(product.currency) + currentPrice.budgetPrice.toFixed(2) : (product.budgetPrice != null ? getCurrencySymbol(product.currency) + product.budgetPrice.toFixed(2) : '-') }}</span>
-            </div>
-          </div>
+            <strong>{{ item.value == null ? '--' : formatSignedPrice(item.value) }}</strong>
+            <small>{{ item.percent == null ? '--' : formatPercent(item.percent) }}</small>
+            <p>较 {{ item.date }} 的价格变化</p>
+          </article>
         </div>
+      </section>
 
-        <div class="info-card">
-          <div class="card-label">客户与描述</div>
-          <div class="info-row full-width">
-            <span class="info-label">客户信息</span>
-            <span class="info-value">{{ customerNames.length > 0 ? customerNames.join('、') : '-' }}</span>
-          </div>
-          <div class="info-row full-width" v-if="product.description">
-            <span class="info-label">产品描述</span>
-            <span class="info-value desc">{{ product.description }}</span>
-          </div>
-          <div class="info-row full-width" v-if="product.remark">
-            <span class="info-label">备注说明</span>
-            <span class="info-value desc">{{ product.remark }}</span>
-          </div>
-        </div>
-
-        <div class="info-card" v-if="priceHistory.length > 0">
-          <div class="card-label">近期价格变动</div>
-          <div class="history-list">
-            <div v-for="history in priceHistory.slice().reverse().slice(0, 10)" :key="history.id" class="history-item">
-              <div class="history-main">
-                <span class="history-type" :class="getChangeTypeClass(history.changeType)">
-                  {{ getDictValue('change_type', history.changeType) }}
-                </span>
-                <span class="history-time">{{ new Date(history.changedTime).toLocaleString() }}</span>
-              </div>
-              <div class="history-price" v-if="history.newPrice">
-                <span v-if="history.oldPrice" class="old-price">{{ getCurrencySymbol(product.currency) }}{{ history.oldPrice }}</span>
-                <span class="arrow">→</span>
-                <span class="new-price">{{ getCurrencySymbol(product.currency) }}{{ history.newPrice }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="info-card empty" v-else-if="!loading && !error">
-          <div class="empty-history">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
-            </svg>
-            <span>暂无价格变动记录</span>
-          </div>
-        </div>
-      </main>
-
-      <div class="loading-state" v-else-if="loading">
-        <div class="loading-spinner"></div>
-      </div>
-
-      <div class="error-state" v-else-if="error">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <p>{{ error }}</p>
-        <button class="btn-retry" @click="onRefresh">重试</button>
-      </div>
-
-      <footer class="tab-bar">
-        <button class="tab-item" @click="switchTab('home')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          </svg>
-          <span class="tab-label">首页</span>
-        </button>
-        <button class="tab-item" :class="{ active: activeTab === 'products' }" @click="switchTab('products')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8l-7-4-7 4v8l7 4 7-4z"/>
-          </svg>
-          <span class="tab-label">产品</span>
-        </button>
-        <button class="tab-item" @click="switchTab('import')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span class="tab-label">导入</span>
-        </button>
-        <button class="tab-item" @click="switchTab('profile')">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-          </svg>
-          <span class="tab-label">我的</span>
-        </button>
-      </footer>
     </template>
-  </div>
+  </main>
 </template>
 
 <style scoped>
-.product-detail-page {
-  
-  background-color: var(--bg-page);
+.detail-page {
+  --detail-primary: var(--primary-color, #0D6E6E);
+  --detail-deep: #0A5555;
+  --detail-orange: #E07B54;
+  min-height: 100%;
+  padding: 24px;
+  background: var(--bg-main, #F4F6F8);
+  color: var(--text-primary, #1A1A1A);
 }
 
-/* ==================== PC布局 ==================== */
-.pc-detail {
-  padding: var(--spacing-xl);
-  max-width: 1400px;
-  margin: 0 auto;
-}
+button, input { font: inherit; }
+button { cursor: pointer; }
+svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-.page-header-pc {
+.page-header, .header-actions, .product-hero, .price-metrics, .detail-body, .card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xl);
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
 }
+.page-header { min-height: 64px; align-items: center; justify-content: space-between; gap: 20px; }
+.title-block { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: #98A2B3; font-size: 11px; }
+.title-block h1 { width: 100%; margin: 0; color: #1A1A1A; font-size: 26px; line-height: 1.1; }
+.breadcrumb { padding: 0; border: 0; background: none; color: var(--detail-primary); font-weight: 700; }
+.header-actions { align-items: center; gap: 8px; }
+.icon-button, .date-button, .snapshot-button, .primary-button { height: 36px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.icon-button { width: 36px; border: 1px solid #D0D5DD; background: #FFF; color: #667085; }
+.date-button { padding: 0 12px; border: 1px solid #D0D5DD; background: #FFF; color: var(--detail-primary); }
+.date-button.loading { opacity: .65; }
+.date-button input { width: 108px; border: 0; outline: 0; color: #344054; background: transparent; font-family: var(--font-mono); font-size: 11px; }
+.snapshot-button { padding: 0 12px; border: 1px solid #D0D5DD; background: #FFF; color: #344054; font-size: 11px; font-weight: 700; }
+.snapshot-button:disabled { cursor: wait; opacity: .55; }
+.primary-button { padding: 0 14px; border: 0; background: var(--detail-primary); color: #FFF; font-size: 12px; font-weight: 700; }
 
-.header-left-pc {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-}
+.product-hero { min-height: 170px; margin-top: 16px; padding: 20px; align-items: stretch; gap: 18px; border-radius: 6px; background: var(--detail-deep); }
+.identity { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 9px; min-width: 0; }
+.tags { display: flex; gap: 7px; }
+.tags span { padding: 5px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; }
+.status-tag { background: #E7F3F3; color: var(--detail-primary); }
+.status-tag.inactive { background: #FDECEC; color: #C7524A; }
+.soft-tag { background: #FFFFFF22; color: #FFF; }
+.snapshot-tag { background: #FFF1E8; color: #9A3412; }
+.identity h2 { margin: 0; color: #FFF; font-size: 28px; }
+.identity p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { color: #D0D5DD; font-family: var(--font-mono); font-size: 11px; }
+.description { color: #B8D8D8; font-size: 11px; }
+.price-metrics { width: 430px; gap: 8px; }
+.price-metrics article { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 5px; border-radius: 6px; background: #FFF; }
+.price-metrics article { padding: 12px; }
+.price-metrics span { color: #667085; font-size: 10px; font-weight: 600; }
+.price-metrics strong { font-family: var(--font-mono); font-size: 20px; }
+.price-metrics small { color: #98A2B3; font-size: 9px; }
+.price-metrics article:last-child strong { color: var(--detail-primary); }
+.negative { color: #C7524A !important; }
 
-.header-actions-pc {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
+.detail-body { height: 424px; margin-top: 16px; gap: 16px; }
+.card { border: 1px solid #E4E7EC; border-radius: 6px; background: #FFF; }
+.trend-card { flex: 1; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.card-header { align-items: center; justify-content: space-between; gap: 16px; }
+.card h3, .card-header h3 { margin: 0; font-size: 14px; }
+.card-header p { margin: 3px 0 0; color: #98A2B3; font-size: 10px; }
+.range-tabs { display: flex; gap: 4px; }
+.range-tabs button { height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: #F7F8FA; color: #667085; font-size: 10px; font-weight: 700; }
+.range-tabs button.active { background: var(--detail-primary); color: #FFF; }
+.price-chart { flex: 1; min-height: 0; width: 100%; }
+.info-column { width: 330px; display: flex; flex-direction: column; gap: 12px; }
+.info-card { flex: 1; padding: 14px; overflow: hidden; }
+.info-card dl { margin: 8px 0 0; }
+.info-card dl div { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #EAECF0; }
+.info-card dt { color: #667085; font-size: 11px; }
+.info-card dd { margin: 0; max-width: 65%; overflow: hidden; color: #1A1A1A; font-size: 11px; font-weight: 700; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.completeness-card { height: 110px; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+.completeness-card > div { display: flex; align-items: center; justify-content: space-between; }
+.completeness-card strong { color: var(--detail-primary); font-family: var(--font-mono); }
+.completeness-card small { color: #667085; font-size: 10px; }
+.progress { height: 7px; overflow: hidden; border-radius: 6px; background: #EAECF0; }
+.progress i { display: block; height: 100%; border-radius: inherit; background: var(--detail-primary); }
 
-.back-btn-pc {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
+.analytics-card { margin-top: 16px; padding: 16px; }
+.stat-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.stat-grid article { min-height: 74px; padding: 12px; display: flex; flex-direction: column; justify-content: center; gap: 7px; border-radius: 6px; background: #F7F8FA; border-top: 3px solid #DDEEEE; }
+.stat-grid span { color: #667085; font-size: 10px; font-weight: 600; }
+.stat-grid strong { font-family: var(--font-mono); font-size: 18px; }
+.stat-grid .budget-stat { border-top-color: var(--detail-orange); }
+.stat-grid .budget-stat strong { color: var(--detail-orange); }
+.stat-grid .latest-stat { border-top-color: var(--detail-primary); background: #F2F8F8; }
+.stat-grid .latest-stat strong { color: var(--detail-primary); }
+.comparison-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.comparison-grid article { min-height: 104px; padding: 12px; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 5px 10px; border: 1px solid #EAECF0; border-radius: 6px; background: #FFF; }
+.comparison-title { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.comparison-title span { color: #344054; font-size: 11px; font-weight: 700; }
+.comparison-title em { padding: 3px 6px; border-radius: 6px; background: #F2F4F7; color: #667085; font-size: 9px; font-style: normal; }
+.comparison-grid strong { font-family: var(--font-mono); font-size: 16px; }
+.comparison-grid small { align-self: center; color: #667085; font-family: var(--font-mono); font-size: 10px; text-align: right; }
+.comparison-grid p { grid-column: 1 / -1; margin: 0; color: #98A2B3; font-size: 9px; }
+.comparison-grid article.rise { border-left: 3px solid var(--detail-primary); }
+.comparison-grid article.rise strong { color: var(--detail-primary); }
+.comparison-grid article.fall { border-left: 3px solid #C7524A; }
+.comparison-grid article.fall strong { color: #C7524A; }
+.comparison-grid article.flat { border-left: 3px solid #D0D5DD; }
 
-.back-btn-pc:hover {
-  background: var(--gray-100);
-}
+.empty-content { flex: 1; display: grid; place-items: center; color: #98A2B3; font-size: 12px; }
 
-.page-title-pc {
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.btn-icon-pc {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-}
-
-.btn-icon-pc:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.btn-icon-pc:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-edit-pc {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--gradient-primary);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow);
-}
-
-.btn-edit-pc:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
+.state-panel { min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #667085; }
+.state-panel button { padding: 8px 14px; border: 0; border-radius: 6px; background: var(--detail-primary); color: #FFF; }
+.spinner { width: 30px; height: 30px; border: 3px solid #DDEEEE; border-top-color: var(--detail-primary); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.spinning { animation: spin 1s linear infinite; }
 
-.alert-error {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  background: var(--error-bg);
-  color: var(--error-color);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
-  margin-bottom: var(--spacing-lg);
-}
-
-.alert-error button {
-  margin-left: auto;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--error-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 0.75rem;
-}
-
-/* 价格走势区域 */
-.trend-section-pc {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--border-color);
-  margin-bottom: var(--spacing-xl);
-}
-
-.trend-header-pc {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-lg);
-}
-
-.trend-main-title-pc {
-  font-family: var(--font-body);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.trend-icon {
-  color: var(--primary-color);
-}
-
-.trend-range-tabs {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.trend-tab {
-  padding: 6px 16px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.trend-tab:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.trend-tab.active {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: #FFFFFF;
-}
-
-.trend-tab:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.price-chart-pc {
-  width: 100%;
-  height: 320px;
-}
-
-.trend-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: var(--spacing-sm);
-  justify-content: center;
-}
-
-.empty-trend-pc {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-2xl);
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  margin-bottom: var(--spacing-xl);
-}
-
-.detail-grid-pc {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  gap: var(--spacing-xl);
-  align-items: stretch;
-}
-
-.detail-main-pc {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
-.detail-sidebar-pc {
-  position: sticky;
-  top: calc(56px + var(--spacing-lg));
-  align-self: flex-start;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
-.info-card-pc {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--border-color);
-}
-
-.section-title-pc {
-  font-family: var(--font-body);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
-  padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.info-grid-pc {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 var(--spacing-xl);
-}
-
-.info-row-pc {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.info-row-pc:last-child { border-bottom: none; }
-.info-row-pc.full-row { grid-column: 1 / -1; }
-
-.info-key {
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.info-value {
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.info-value.desc {
-  white-space: normal;
-  word-break: break-all;
-  text-align: left;
-  line-height: 1.5;
-}
-
-.info-value.price-highlight {
-  color: var(--primary-color);
-  font-weight: 600;
-  font-family: var(--font-mono);
-  font-size: 0.9375rem;
-}
-
-/* 历史价格查询卡片 */
-.history-query-card-pc {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--border-color);
-}
-
-.history-card-pc {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--border-color);
-}
-
-.history-card-pc.empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 120px;
-}
-
-.history-title-pc {
-  font-family: var(--font-body);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--spacing-md) 0;
-  padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.empty-history {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-sm);
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-}
-
-.empty-history svg { color: var(--gray-300); }
-
-.query-form-pc {
-  display: flex;
-  gap: var(--spacing-sm);
-  align-items: center;
-  margin-bottom: var(--spacing-md);
-}
-
-.query-input-pc {
-  flex: 1;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  background: var(--gray-100);
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.query-input-pc:focus { border-color: var(--primary-color); }
-
-.query-btn-pc {
-  padding: 10px 16px;
-  background: var(--primary-color);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.query-btn-pc:hover:not(:disabled) { background: var(--primary-light); }
-.query-btn-pc:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.query-clear-btn-pc {
-  padding: 8px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-}
-
-.query-clear-btn-pc:hover {
-  border-color: var(--error-color);
-  color: var(--error-color);
-}
-
-.query-result-pc {
-  background: var(--gray-100);
-  border-radius: var(--radius);
-  padding: var(--spacing-md);
-}
-
-.result-date-pc {
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-sm);
-  padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.result-row-pc {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 0;
-}
-
-.result-label {
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-}
-
-.result-value {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  color: var(--primary-color);
-  font-weight: 600;
-}
-
-.query-empty-pc,
-.query-hint-pc {
-  text-align: center;
-  padding: var(--spacing-md);
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-}
-
-.history-list-pc {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  overflow-y: auto;
-  max-height: 280px;
-}
-
-.history-item-pc {
-  padding: 12px;
-  background: var(--gray-100);
-  border-radius: var(--radius);
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xs);
-}
-
-.history-type {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-.history-type.create { background: color-mix(in srgb, var(--success-color) 15%, transparent); color: var(--success-color); }
-.history-type.update { background: color-mix(in srgb, var(--warning-color) 15%, transparent); color: var(--warning-color); }
-.history-type.delete { background: color-mix(in srgb, var(--error-color) 15%, transparent); color: var(--error-color); }
-
-.history-time { font-size: 0.75rem; color: var(--text-muted); }
-
-.history-price {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 0.875rem;
-}
-
-.old-price { color: var(--text-muted); text-decoration: line-through; }
-.arrow { color: var(--text-muted); }
-.new-price { color: var(--primary-color); font-weight: 600; }
-
-/* 加载/错误状态 */
-.loading-state-pc,
-.error-state-pc {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-2xl);
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  gap: var(--spacing-md);
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--gray-200);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.btn-retry-pc {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--primary-color);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-/* ==================== 移动端布局 ==================== */
-.navbar {
-  height: 56px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--spacing-md);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.navbar-left { display: flex; align-items: center; gap: var(--spacing-sm); }
-
-.back-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
-  transition: background var(--transition-fast);
-}
-
-.back-btn:hover { background: var(--gray-100); }
-
-.navbar-title {
-  font-family: var(--font-heading);
-  font-size: 1.25rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.navbar-right { display: flex; align-items: center; gap: var(--spacing-xs); }
-
-.btn-icon-mobile {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: var(--text-secondary);
-  border-radius: var(--radius);
-  transition: background var(--transition-fast);
-}
-
-.btn-icon-mobile:hover:not(:disabled) { background: var(--gray-100); }
-.btn-icon-mobile:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.nav-icon-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--primary-color);
-  cursor: pointer;
-  border-radius: var(--radius);
-}
-
-.content {
-  flex: 1;
-  padding: var(--spacing-lg);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  padding-bottom: calc(64px + var(--spacing-lg));
-}
-
-.alert-error-mobile {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--error-bg);
-  color: var(--error-color);
-  border-radius: var(--radius);
-  font-size: 0.8125rem;
-}
-
-.alert-error-mobile button {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--error-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 0.75rem;
-}
-
-.info-card,
-.history-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-}
-
-.info-card.empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100px;
-}
-
-.trend-section { padding: var(--spacing-md); }
-
-.card-label {
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-sm);
-  padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.trend-range-tabs-mobile {
-  display: flex;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
-}
-
-.trend-tab-mobile {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.trend-tab-mobile:hover:not(:disabled) { border-color: var(--primary-color); color: var(--primary-color); }
-.trend-tab-mobile.active { background: var(--primary-color); border-color: var(--primary-color); color: #FFFFFF; }
-.trend-tab-mobile:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.price-chart-mobile { width: 100%; height: 220px; }
-
-.trend-hint-mobile {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  margin-top: var(--spacing-sm);
-  justify-content: center;
-}
-
-.query-form-mobile {
-  display: flex;
-  gap: var(--spacing-sm);
-  align-items: center;
-  margin-bottom: var(--spacing-sm);
-}
-
-.query-input-mobile {
-  flex: 1;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  background: var(--gray-100);
-  outline: none;
-}
-
-.query-input-mobile:focus { border-color: var(--primary-color); }
-
-.query-btn-mobile {
-  padding: 10px 16px;
-  background: var(--primary-color);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-
-.query-btn-mobile:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.query-clear-btn-mobile {
-  padding: 8px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.query-result-mobile {
-  background: var(--gray-100);
-  border-radius: var(--radius);
-  padding: 12px;
-}
-
-.result-date {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-xs);
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.result-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 0;
-}
-
-.query-empty-mobile {
-  text-align: center;
-  padding: 12px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 var(--spacing-md);
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.info-row:last-child { border-bottom: none; }
-.info-row.full-width { grid-column: 1 / -1; }
-
-.info-label {
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.info-value {
-  font-size: 0.8125rem;
-  color: var(--text-primary);
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.info-value.desc {
-  white-space: normal;
-  word-break: break-all;
-  text-align: left;
-  line-height: 1.4;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-badge.active { background: color-mix(in srgb, var(--success-color) 15%, transparent); color: var(--success-color); }
-.status-badge.inactive { background: color-mix(in srgb, var(--error-color) 15%, transparent); color: var(--error-color); }
-
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.history-item {
-  padding: 12px;
-  background: var(--gray-100);
-  border-radius: var(--radius);
-}
-
-.history-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xs);
-}
-
-.history-time { font-size: 0.75rem; color: var(--text-muted); }
-
-.history-price {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 0.875rem;
-}
-
-.old-price { color: var(--text-muted); text-decoration: line-through; }
-.new-price { color: var(--primary-color); font-weight: 600; }
-
-.loading-state,
-.error-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-2xl);
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  gap: var(--spacing-md);
-}
-
-.btn-retry {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--primary-color);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius);
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-/* 底部标签栏 */
-.tab-bar {
-  height: 64px;
-  background: var(--bg-card);
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 var(--spacing-md);
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  z-index: 100;
-}
-
-.tab-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-radius: var(--radius);
-  color: var(--gray-400);
-  transition: color var(--transition-fast);
-}
-
-.tab-item.active { color: var(--primary-color); }
-.tab-item:hover:not(.active) { color: var(--text-secondary); }
-
-.tab-label {
-  font-family: var(--font-body);
-  font-size: 0.625rem;
-  font-weight: 500;
-}
-
-/* ==================== 响应式 ==================== */
 @media (max-width: 1023px) {
-  .pc-detail { display: none; }
+  .detail-page { padding: 0 16px 20px; }
+  .page-header { min-height: 64px; position: sticky; top: 0; z-index: 5; background: var(--bg-main, #F4F6F8); }
+  .title-block { flex: 1; }
+  .title-block > span, .breadcrumb { display: none; }
+  .title-block h1 { font-size: 18px; }
+  .icon-button { display: none; }
+  .date-button { width: 36px; padding: 0; }
+  .date-button input { position: absolute; width: 36px; opacity: 0; }
+  .snapshot-button { height: 32px; padding: 0 9px; font-size: 9px; }
+  .primary-button { width: 36px; padding: 0; font-size: 0; }
+  .product-hero { min-height: 188px; margin-top: 0; padding: 14px; flex-direction: column; gap: 10px; }
+  .identity { justify-content: flex-start; }
+  .identity h2 { font-size: 22px; }
+  .description { display: none; }
+  .price-metrics { width: 100%; min-height: 66px; }
+  .price-metrics article { padding: 9px; }
+  .price-metrics strong { font-size: 14px; }
+  .detail-body { height: auto; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .trend-card { height: 270px; flex: none; padding: 12px; }
+  .card-header { align-items: flex-start; }
+  .range-tabs button { padding: 0 7px; font-size: 8px; }
+  .info-column { width: 100%; }
+  .info-card { flex: none; padding: 12px; }
+  .completeness-card { display: none; }
+  .analytics-card { margin-top: 12px; padding: 12px; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-grid .latest-stat { grid-column: 1 / -1; }
+  .comparison-grid { grid-template-columns: 1fr; }
 }
 </style>

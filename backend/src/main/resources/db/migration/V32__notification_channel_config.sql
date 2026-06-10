@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS notification_channel_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知渠道配置ID',
+    channel VARCHAR(50) NOT NULL COMMENT '通知渠道',
+    enabled BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否启用',
+    app_id VARCHAR(100) COMMENT '非敏感应用标识',
+    endpoint_url VARCHAR(500) COMMENT '接口地址',
+    secret_cipher TEXT COMMENT '敏感密钥密文',
+    secret_key_version VARCHAR(20) COMMENT '密钥加密版本',
+    secret_fingerprint VARCHAR(64) COMMENT '密钥指纹',
+    timeout_ms INT COMMENT '接口超时时间毫秒',
+    default_page VARCHAR(200) COMMENT '默认跳转页',
+    config_json TEXT COMMENT '渠道扩展配置JSON',
+    created_by BIGINT COMMENT '创建人',
+    updated_by BIGINT COMMENT '更新人',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    CONSTRAINT uk_notification_channel_config_channel UNIQUE (channel),
+    INDEX idx_notification_channel_config_channel (channel),
+    INDEX idx_notification_channel_config_status (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知渠道运行配置表';

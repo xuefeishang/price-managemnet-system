@@ -35,6 +35,7 @@ public class ApprovalService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final SysRoleRepository sysRoleRepository;
+    private final NotificationEventService notificationEventService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -225,6 +226,7 @@ public class ApprovalService {
         ApprovalRequest saved = requestRepository.save(request);
         log.info("Created approval request: id={}, type={}, firstNode={}",
                 saved.getId(), saved.getBusinessType(), firstNode.getNodeOrder());
+        notificationEventService.approvalPending(saved.getId(), firstNode.getApproverRole(), saved.getApplicantId());
 
         return saved;
     }
@@ -276,6 +278,7 @@ public class ApprovalService {
             // 进入下一节点
             request.setCurrentNodeId(nextNode.getId());
             log.info("Approval request {} moved to next node: {}", requestId, nextNode.getNodeOrder());
+            notificationEventService.approvalPending(request.getId(), nextNode.getApproverRole(), request.getApplicantId());
         }
 
         return requestRepository.save(request);

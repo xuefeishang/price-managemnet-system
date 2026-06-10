@@ -73,12 +73,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Long userId = jwtUtil.getUserIdFromToken(token);
                 String username = jwtUtil.getUsernameFromToken(token);
                 List<String> roles = jwtUtil.getRolesFromToken(token);
+                List<String> permissions = jwtUtil.getPermissionsFromToken(token);
 
                 if (username != null && !roles.isEmpty()) {
-                    // 将所有角色转换为权限
+                    // 将所有角色和权限码转换为 Spring Security authorities
                     List<SimpleGrantedAuthority> authorities = roles.stream()
                             .map(role -> new SimpleGrantedAuthority(SystemConstants.ROLE_PREFIX + role))
                             .collect(Collectors.toList());
+                    authorities.addAll(permissions.stream()
+                            .map(SimpleGrantedAuthority::new)
+                            .toList());
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(username, null, authorities);
                     authentication.setDetails(userId);

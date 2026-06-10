@@ -54,6 +54,17 @@ export const Permission = {
 
   // 系统相关
   SYSTEM_SETTING: 'system:setting',
+
+  // 通知相关
+  NOTIFICATION_VIEW: 'notification:view',
+  NOTIFICATION_RETRY: 'notification:retry',
+  NOTIFICATION_SUBSCRIPTION_VIEW: 'notification:subscription:view',
+  NOTIFICATION_SUBSCRIPTION_GUIDE: 'notification:subscription:guide',
+  NOTIFICATION_SUBSCRIPTION_RESOLVE: 'notification:subscription:resolve',
+  NOTIFICATION_TEST_TOKEN: 'notification:test-token',
+  NOTIFICATION_TEST_DELIVERY: 'notification:test-delivery',
+  SYSTEM_NOTICE_CREATE: 'system-notice:create',
+  SYSTEM_NOTICE_CANCEL: 'system-notice:cancel',
 } as const
 
 export type PermissionKey = keyof typeof Permission

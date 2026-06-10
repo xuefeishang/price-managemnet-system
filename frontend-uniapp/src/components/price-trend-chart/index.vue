@@ -25,6 +25,17 @@
       </view>
     </view>
 
+    <view class="chart-legend">
+      <view class="legend-item">
+        <view class="legend-line selling" />
+        <text>价格</text>
+      </view>
+      <view v-if="hasBudgetPrice" class="legend-item">
+        <view class="legend-line budget" />
+        <text>预算</text>
+      </view>
+    </view>
+
     <!-- 图表区域 -->
     <view class="chart-container">
       <canvas
@@ -49,19 +60,19 @@
     <view class="stats-row" v-if="!loading && priceData.length > 0">
       <view class="stat-item">
         <text class="stat-label">最高</text>
-        <text class="stat-value high">¥{{ formatPrice(maxPrice) }}</text>
+        <text class="stat-value high">{{ formatPrice(maxPrice) }}</text>
       </view>
       <view class="stat-item">
         <text class="stat-label">最低</text>
-        <text class="stat-value low">¥{{ formatPrice(minPrice) }}</text>
+        <text class="stat-value low">{{ formatPrice(minPrice) }}</text>
       </view>
       <view class="stat-item">
         <text class="stat-label">平均</text>
-        <text class="stat-value">¥{{ formatPrice(avgPrice) }}</text>
+        <text class="stat-value">{{ formatPrice(avgPrice) }}</text>
       </view>
       <view class="stat-item">
         <text class="stat-label">最新</text>
-        <text class="stat-value current">¥{{ formatPrice(lastPrice) }}</text>
+        <text class="stat-value current">{{ formatPrice(lastPrice) }}</text>
       </view>
     </view>
   </view>
@@ -73,6 +84,8 @@ import { get } from '@/api/request'
 
 const props = defineProps<{
   productId: number
+  currencySymbol?: string
+  budgetPrice?: number | null
 }>()
 
 const instance = getCurrentInstance()
@@ -83,21 +96,26 @@ const yAxisWidth = 50
 const xAxisHeight = 20
 const padding = 10
 const lineColor = '#0D6E6E'
+const budgetColor = '#E07B54'
 
 const selectedPeriod = ref(30)
 const loading = ref(false)
 const priceData = ref<{ date: string; price: number }[]>([])
 
 const prices = computed(() => priceData.value.map(d => d.price))
+const hasBudgetPrice = computed(() => props.budgetPrice != null && Number.isFinite(Number(props.budgetPrice)))
+const chartPrices = computed(() =>
+  hasBudgetPrice.value ? [...prices.value, Number(props.budgetPrice)] : prices.value
+)
 
 const minPrice = computed(() => {
-  const arr = prices.value
+  const arr = chartPrices.value
   if (arr.length === 0) return 0
   return Math.min(...arr)
 })
 
 const maxPrice = computed(() => {
-  const arr = prices.value
+  const arr = chartPrices.value
   if (arr.length === 0) return 0
   return Math.max(...arr)
 })
@@ -111,17 +129,7 @@ const avgPrice = computed(() => {
 const lastPrice = computed(() => prices.value[prices.value.length - 1] || 0)
 
 const formatPrice = (price: number) => {
-  return price.toFixed(2)
-}
-
-// HEX转RGB
-const hexToRgb = (hex: string) => {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : { r: 13, g: 110, b: 110 }
+  return `${props.currencySymbol || ''}${price.toFixed(2)}`
 }
 
 const drawChart = () => {
@@ -188,7 +196,7 @@ const drawChartContent = (ctx: any, width: number, height: number) => {
   for (let i = 0; i <= 4; i++) {
     const val = min + step * i
     const y = padding + plotHeight * (4 - i) / 5 + 4
-    ctx.fillText(val.toFixed(2), yAxisWidth - 8, y)
+    ctx.fillText(`${props.currencySymbol || ''}${val.toFixed(2)}`, yAxisWidth - 8, y)
   }
 
   // 计算曲线点
@@ -198,43 +206,37 @@ const drawChartContent = (ctx: any, width: number, height: number) => {
     return { x, y }
   })
 
-  // 填充区域
+  // 与 PC 端一致：价格使用无数据点的青绿平滑实线。
   ctx.beginPath()
-  ctx.moveTo(points[0].x, height - xAxisHeight)
-  points.forEach(p => ctx.lineTo(p.x, p.y))
-  ctx.lineTo(points[points.length - 1].x, height - xAxisHeight)
-  ctx.closePath()
-
-  const gradient = ctx.createLinearGradient(0, padding, 0, height - xAxisHeight)
-  const rgb = hexToRgb(lineColor)
-  gradient.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.20)`)
-  gradient.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0.02)`)
-  ctx.fillStyle = gradient
-  ctx.fill()
-
-  // 绘制曲线
-  ctx.beginPath()
-  points.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y)
-    else ctx.lineTo(p.x, p.y)
-  })
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1]
+    const current = points[i]
+    const middleX = (previous.x + current.x) / 2
+    ctx.quadraticCurveTo(previous.x, previous.y, middleX, (previous.y + current.y) / 2)
+  }
+  const lastPoint = points[points.length - 1]
+  ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y)
   ctx.strokeStyle = lineColor
-  ctx.lineWidth = 1
+  ctx.lineWidth = 2.5
   ctx.stroke()
 
-  // 绘制数据点
-  const visibleCount = Math.min(10, points.length)
-  const stepIndex = Math.max(1, Math.floor(points.length / visibleCount))
-  ctx.fillStyle = lineColor
-  for (let i = 0; i < points.length; i += stepIndex) {
+  // 与 PC 端一致：当前预算价作为贯穿所选时间范围的橙色虚线。
+  if (hasBudgetPrice.value) {
+    const budget = Number(props.budgetPrice)
+    const budgetY = padding + (1 - (budget - min) / range) * plotHeight
+    ctx.save?.()
     ctx.beginPath()
-    ctx.arc(points[i].x, points[i].y, 1, 0, 2 * Math.PI)
-    ctx.fill()
+    ctx.setLineDash?.([6, 4])
+    ctx.moveTo(yAxisWidth, budgetY)
+    ctx.lineTo(width - padding, budgetY)
+    ctx.strokeStyle = budgetColor
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.setLineDash?.([])
+    ctx.restore?.()
   }
-  const lastPt = points[points.length - 1]
-  ctx.beginPath()
-  ctx.arc(lastPt.x, lastPt.y, 1, 0, 2 * Math.PI)
-  ctx.fill()
+
 }
 
 const selectPeriod = (days: number) => {
@@ -271,6 +273,10 @@ const loadTrendData = async () => {
 watch(() => props.productId, () => {
   loadTrendData()
 }, { immediate: true })
+
+watch(() => props.budgetPrice, () => {
+  if (priceData.value.length > 0) nextTick(drawChart)
+})
 </script>
 
 <style scoped>
@@ -284,6 +290,36 @@ watch(() => props.productId, () => {
   display: flex;
   gap: 16rpx;
   margin-bottom: 24rpx;
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 24rpx;
+  margin: -4rpx 0 10rpx;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #667085;
+  font-size: 22rpx;
+}
+
+.legend-line {
+  width: 34rpx;
+  height: 4rpx;
+  border-radius: 999rpx;
+}
+
+.legend-line.selling {
+  background: #0D6E6E;
+}
+
+.legend-line.budget {
+  height: 0;
+  border-top: 4rpx dashed #E07B54;
 }
 
 .period-tab {
@@ -359,6 +395,8 @@ watch(() => props.productId, () => {
 }
 
 .stat-value {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   display: block;
   font-size: 26rpx;
   font-weight: 500;

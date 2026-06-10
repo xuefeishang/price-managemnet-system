@@ -18,7 +18,7 @@
 - **用户认证与权限管理**
   - JWT Token 认证（双 Token 机制：Access Token 24h + Refresh Token 7d）
   - 三种角色：管理员（ADMIN）、编辑者（EDITOR）、查看者（VIEWER）
-  - 动态权限系统（32个权限码，登录时获取用户权限列表，刷新个人资料时同步权限缓存）
+  - 动态权限系统（36个权限码，登录时获取用户权限列表，刷新个人资料时同步权限缓存）
   - 管理员用户管理：新增、编辑资料、锁定/解锁、删除、导入导出、独立多角色分配；编辑用户时可设置新密码，留空则不修改
   - 个人中心与账号运维：资料维护、密码修改、账号安全、登录历史、会话管理、个人操作记录和个人偏好
   - API 限流保护（登录 5次/分钟/IP）
@@ -43,8 +43,10 @@
   - 首页日期选择，查看历史价格
   - 产品分类管理
   - 产品与价格 CRUD
+  - 产品管理升级为响应式工作台：PC 端使用自适应分页产品列表联动资料/价格侧栏，移动端使用单列产品卡片；支持名称、编码、规格搜索及分类、状态、排序筛选，管理入口按权限展示
+  - 产品详情升级为响应式价格决策页：产品身份与当前价格优先展示，页头支持历史日期快照查询，价格走势展示售价曲线、预算水平基准线及坐标轴；统计区展示最低/最高/平均/预算/最新价和日、周、月环比及同比，价格变动区提供动态摘要与审计时间线
   - 价格维护页对齐首页产品列表工作台，支持搜索、产品类别过滤、分页、拖拽调整产品顺序并同步首页排序，同时录入当日售价并保留昨日售价、价格变化、月均价对照
-  - 价格维护支持“保存草稿 / 发布”双阶段：保存只写入草稿，发布后才写入正式价格、价格历史并向用户生成站内通知；发布重试跳过已发布明细，通知按草稿批次去重；PC 左侧用户卡片更多菜单提供消息入口，未读时三点按钮切换为红色数字角标，通知抽屉支持未读筛选、全部已读和价格查询结构化跳转；预留 `PRICE_PUBLISH` 审批扩展点但默认不启用
+  - 价格维护支持“保存草稿 / 发布”双阶段：保存只写入草稿，发布后才写入正式价格、价格历史并向用户生成站内通知；发布重试跳过已发布明细，通知按草稿批次去重；PC 左侧用户卡片更多菜单提供消息入口，未读时三点按钮切换为红色数字角标，通知抽屉支持未读筛选、全部已读、归档和价格查询结构化跳转；预留 `PRICE_PUBLISH` 审批扩展点但默认不启用
   - 价格查询页面向普通用户开放，只读查询每日价格，支持按日期、关键字、分类分页筛选；列表展示产品名称（内含产地胶囊与规格）、当日/昨日售价和“较昨日”，行选中联动右侧 7日/30日/90日/年度趋势和价格摘要
   - 价格历史记录 + ECharts 折线图可视化
   - 首页图表在浏览器最小化或页面隐藏时暂停自动 resize，避免窗口尺寸异常导致图表错位或浏览器窗口被恢复
@@ -75,7 +77,7 @@
   - 统计分析（趋势图、饼图、柱状图）
   - 月度报表、年度报表 + 用户排行
   - 通用定时任务管理：支持价格自动发布任务配置、启停、手动执行和执行日志查看；默认任务初始化为停用，需管理员确认后启用
-  - 站内通知基础能力：价格发布后生成用户通知；PC 端通过带抖动和失败退避的轮询获取未读数，用户卡片更多按钮以红色数字提示未读消息，App/小程序外部推送 Provider 预留，未配置时记录为跳过且不影响发布
+  - 通知管理平台：价格发布、审批待办、定时任务失败、外部 API 告警、导入导出完成和系统公告均通过统一 `NotificationCreateCommand` 接入；PC 端通过 SSE 轻事件 + 带抖动和失败退避的轮询降级获取未读数，用户卡片更多按钮以红色数字提示未读消息；外部渠道通过 `notification_outbox` 异步投递，Webhook Provider 支持幂等键、超时和失败落库；ADMIN 可在“系统管理 / 通知管理”查询消息、收件人、投递日志、失败重试、指标看板、Provider 健康状态和聚合频控规则，并创建、发布、撤回系统公告；PC `/notifications` 支持选择 `MINI_PROGRAM` 作为小程序订阅消息渠道，渠道配置页可维护小程序 AppID、启用状态、模板映射、跳转页和 AppSecret 密钥托管状态，并提供本地诊断、远程 token 校验、受控测试投递与最近失败跳转；订阅授权详情抽屉展示模板、最近投递、失败原因、用户偏好和异常处理记录，站内通知始终兜底，uni-app 我的页提供消息入口、未读角标、通知列表、全部已读、归档、价格查询跳转和小程序订阅授权入口
 
 - **审批流程管理**
   - 审批工作流配置（创建、编辑、删除、激活/停用）
@@ -172,6 +174,18 @@ npm run dev
 | `backend/src/main/resources/db/migration/V17__external_api_auth_phase1.sql` | 外部 API 授权管理一期表、字典、菜单和端点权限 |
 | `backend/src/main/resources/db/migration/V19__external_api_endpoint_code_examples.sql` | 外部 API 端点结构化示例、参数 schema 和可复制代码元数据 |
 | `backend/src/main/resources/db/migration/V22__personal_profile_management.sql` | 个人中心会话设备、登录历史和个人偏好 |
+| `backend/src/main/resources/db/migration/V25__notification_outbox_and_preferences.sql` | 通知 Outbox、用户通知偏好和外部渠道字典 |
+| `backend/src/main/resources/db/migration/V26__notification_management_phase2.sql` | 通知管理二期：系统公告表、Webhook/公告字典、通知管理菜单和权限 |
+| `backend/src/main/resources/db/migration/V27__system_notice_field_capacity_alignment.sql` | 系统公告字段容量与数据字典/设计文档对齐 |
+| `backend/src/main/resources/db/migration/V28__notification_phase3_frequency_rules.sql` | 通知三期聚合频控默认规则字典 |
+| `backend/src/main/resources/db/migration/V30__notification_aggregate_event_count.sql` | 通知聚合消息真实事件计数字段 |
+| `backend/src/main/resources/db/migration/V29__notification_provider_health_status_dict.sql` | Provider 健康状态字典 |
+| `backend/src/main/resources/db/migration/V31__notification_mini_program_subscription.sql` | 小程序订阅授权表和授权状态字典 |
+| `backend/src/main/resources/db/migration/V35__notification_mini_program_resolution.sql` | 小程序订阅异常处理用户级记录表 |
+| `backend/src/main/resources/db/migration/V36__notification_operations_hardening.sql` | 测试投递隔离、订阅处理乐观锁、细粒度权限与历史敏感操作参数清理 |
+| `backend/src/main/resources/db/migration/V37__notification_mini_resolution_status_dict.sql` | 小程序订阅异常处理状态字典 |
+| `backend/src/main/resources/db/migration/V38__notification_mini_program_eligibility.sql` | 小程序订阅用户资格查询快照与聚合行状态数据库分页索引 |
+| `backend/src/main/resources/db/migration/V32__notification_channel_config.sql` | 通知渠道运行配置表，支持小程序订阅消息 PC 运维配置和密钥托管 |
 
 ## 项目文档
 
@@ -202,6 +216,8 @@ npm run dev
 ### 其他文档
 | 文档 | 说明 |
 |------|------|
+| [docs/plan/notification-management-platform-closure-feature.md](docs/plan/notification-management-platform-closure-feature.md) | 通知管理平台剩余闭环工作实施计划 |
+| [docs/plan/通知管理平台当前实现状态.md](docs/plan/通知管理平台当前实现状态.md) | 通知管理平台当前代码事实、验收状态和剩余缺口的唯一事实源 |
 | [CLAUDE.md](CLAUDE.md) | 项目规范（AI助手指导） |
 | [docs/plan/multi-platform-adaptation.md](docs/plan/multi-platform-adaptation.md) | 多端适配方案 |
 | [frontend-uniapp/README.md](frontend-uniapp/README.md) | 多端前端项目说明 |

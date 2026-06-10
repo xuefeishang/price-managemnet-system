@@ -80,9 +80,9 @@
               <text class="product-specs" v-if="product.specs">{{ product.specs }}</text>
             </view>
             <view class="featured-price">
-              <text class="price-large">{{ formatPriceValue(getCurrentPrice(product.id)) }}</text>
+              <text class="price-large">{{ formatPriceValue(product, getCurrentPrice(product.id)) }}</text>
               <view class="trend-badge" :class="getDiffClass(product.id)">
-                <text>{{ getDiffText(product.id) }}</text>
+                <text>{{ getDiffText(product) }}</text>
               </view>
             </view>
           </view>
@@ -132,15 +132,15 @@
             <view class="price-columns">
               <view class="price-col current">
                 <text class="price-label">当日</text>
-                <text class="price-value">{{ formatPriceValue(getCurrentPrice(product.id)) }}</text>
+                <text class="price-value">{{ formatPriceValue(product, getCurrentPrice(product.id)) }}</text>
               </view>
               <view class="price-col">
                 <text class="price-label">昨日</text>
-                <text class="price-sub">{{ formatPriceValue(getYesterdayPrice(product.id)) }}</text>
+                <text class="price-sub">{{ formatPriceValue(product, getYesterdayPrice(product.id)) }}</text>
               </view>
               <view class="price-col diff" :class="getDiffClass(product.id)">
                 <text class="price-label">较昨日</text>
-                <text class="price-sub">{{ getDiffText(product.id) }}</text>
+                <text class="price-sub">{{ getDiffText(product) }}</text>
               </view>
             </view>
           </view>
@@ -171,6 +171,8 @@ import type { HomeSummary, PriceAlert } from '@/api/home'
 import SummarySection from '@/components/home/SummarySection.vue'
 import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
+import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+import { getProductCategoryId, sortProductsByHomeOrder } from '@/utils/productOrder'
 
 const userStore = useUserStore()
 
@@ -193,19 +195,25 @@ const alertsLoading = ref(false)
 
 // 计算属性
 const homeProducts = computed(() => {
-  let result = products.value.filter(p => p.showOnHome && p.status === 'ACTIVE')
+  let result = sortProductsByHomeOrder(
+    products.value.filter(p => p.showOnHome && p.status === 'ACTIVE'),
+    categories.value
+  )
   if (selectedCategoryId.value !== null) {
-    result = result.filter(p => p.category?.id === selectedCategoryId.value)
+    result = result.filter(p => getProductCategoryId(p) === selectedCategoryId.value)
   }
   return result
 })
 
 const filteredProducts = computed(() => {
-  let active = products.value.filter(p => p.status === 'ACTIVE')
+  let active = sortProductsByHomeOrder(
+    products.value.filter(p => p.status === 'ACTIVE'),
+    categories.value
+  )
 
   // 按分类筛选
   if (selectedCategoryId.value !== null) {
-    active = active.filter(p => p.category?.id === selectedCategoryId.value)
+    active = active.filter(p => getProductCategoryId(p) === selectedCategoryId.value)
   }
 
   // 按搜索词筛选
@@ -234,9 +242,9 @@ function getYesterdayPrice(productId: number): number | null {
   return data?.yesterdayPrice?.currentPrice ?? data?.inheritedPrice ?? null
 }
 
-function formatPriceValue(value: number | null | undefined): string {
+function formatPriceValue(product: Product, value: number | null | undefined): string {
   if (value == null) return '--'
-  return `¥${Number(value).toFixed(2)}`
+  return `${getCurrencySymbol(product.currency)}${Number(value).toFixed(2)}`
 }
 
 function getDiffValue(productId: number): number | null {
@@ -246,12 +254,13 @@ function getDiffValue(productId: number): number | null {
   return current - previous
 }
 
-function getDiffText(productId: number): string {
-  const diff = getDiffValue(productId)
+function getDiffText(product: Product): string {
+  const diff = getDiffValue(product.id)
   if (diff == null) return '--'
-  if (diff > 0) return `+¥${diff.toFixed(2)}`
-  if (diff < 0) return `-¥${Math.abs(diff).toFixed(2)}`
-  return '¥0.00'
+  const symbol = getCurrencySymbol(product.currency)
+  if (diff > 0) return `+${symbol}${diff.toFixed(2)}`
+  if (diff < 0) return `-${symbol}${Math.abs(diff).toFixed(2)}`
+  return `${symbol}0.00`
 }
 
 function getDiffClass(productId: number): string {
@@ -270,7 +279,11 @@ async function loadCategories() {
   try {
     const res = await getCategories('ACTIVE')
     if (res.code === 200 && res.data) {
-      categories.value = res.data
+      categories.value = [...res.data].sort((a, b) =>
+        (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+        || a.name.localeCompare(b.name, 'zh-CN')
+        || a.id - b.id
+      )
     }
   } catch (error) {
     console.error('加载分类失败:', error)
@@ -312,7 +325,7 @@ async function loadData() {
   try {
     // 并行加载所有数据
     const [productsRes, pricesRes] = await Promise.all([
-      getProducts({ page: 0, size: 100 }),
+      getProducts({ page: 0, size: 100, sortBy: 'sortOrder', sortDirection: 'asc' }),
       getPricesByDateWithStats(selectedDate.value)
     ])
 
@@ -381,8 +394,7 @@ onMounted(() => {
     return
   }
 
-  loadCategories()
-  loadData()
+  Promise.all([loadAllDicts(), loadCategories(), loadData()])
 })
 </script>
 
@@ -642,6 +654,8 @@ onMounted(() => {
 }
 
 .price-large {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 34rpx;
   font-weight: 700;
   color: #0D6E6E;
@@ -785,6 +799,8 @@ onMounted(() => {
 }
 
 .price-value {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 28rpx;
   font-weight: 700;
   color: #0D6E6E;

@@ -1,18 +1,26 @@
 package com.pricemanagement.controller;
 
 import com.pricemanagement.dto.NotificationDTO;
+import com.pricemanagement.dto.NotificationMiniProgramSubscriptionDTO;
+import com.pricemanagement.dto.NotificationMiniProgramSubscriptionUpdateRequest;
+import com.pricemanagement.dto.NotificationPreferenceDTO;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.annotation.OperationLog;
 import com.pricemanagement.entity.NotificationDeliveryLog;
 import com.pricemanagement.entity.NotificationRecipient;
 import com.pricemanagement.entity.OperationLog.OperationType;
 import com.pricemanagement.service.NotificationService;
+import com.pricemanagement.service.NotificationMiniProgramSubscriptionService;
+import com.pricemanagement.service.NotificationPreferenceService;
+import com.pricemanagement.service.NotificationRealtimeService;
 import com.pricemanagement.util.SecurityUtils;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -22,6 +30,9 @@ import java.util.List;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationPreferenceService notificationPreferenceService;
+    private final NotificationRealtimeService notificationRealtimeService;
+    private final NotificationMiniProgramSubscriptionService miniProgramSubscriptionService;
 
     @GetMapping("/my")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
@@ -41,6 +52,12 @@ public class NotificationController {
                 notificationService.getUnreadCount(SecurityUtils.getCurrentUserId()));
     }
 
+    @GetMapping("/events")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public SseEmitter events() {
+        return notificationRealtimeService.subscribe(SecurityUtils.getCurrentUserId());
+    }
+
     @PostMapping("/{messageId}/read")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "标记通知已读")
@@ -57,9 +74,48 @@ public class NotificationController {
         return Result.success("全部通知已读", count);
     }
 
+    @PostMapping("/{messageId}/archive")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "归档通知")
+    public Result<Void> archive(@PathVariable Long messageId) {
+        notificationService.archive(messageId, SecurityUtils.getCurrentUserId());
+        return Result.success("通知已归档");
+    }
+
     @GetMapping("/{messageId}/deliveries")
     @PreAuthorize("hasRole('ADMIN')")
     public Result<List<NotificationDeliveryLog>> deliveries(@PathVariable Long messageId) {
         return Result.success("获取投递记录成功", notificationService.getDeliveries(messageId));
+    }
+
+    @GetMapping("/preferences")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<List<NotificationPreferenceDTO>> preferences() {
+        return Result.success("获取通知偏好成功",
+                notificationPreferenceService.list(SecurityUtils.getCurrentUserId()));
+    }
+
+    @PutMapping("/preferences")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "更新通知偏好")
+    public Result<List<NotificationPreferenceDTO>> updatePreferences(@RequestBody List<NotificationPreferenceDTO> preferences) {
+        return Result.success("更新通知偏好成功",
+                notificationPreferenceService.save(SecurityUtils.getCurrentUserId(), preferences));
+    }
+
+    @GetMapping("/mini-program/subscriptions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<NotificationMiniProgramSubscriptionDTO> miniProgramSubscriptions() {
+        return Result.success("获取小程序订阅授权状态成功",
+                miniProgramSubscriptionService.status(SecurityUtils.getCurrentUserId()));
+    }
+
+    @PostMapping("/mini-program/subscriptions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "更新小程序订阅授权")
+    public Result<NotificationMiniProgramSubscriptionDTO> updateMiniProgramSubscriptions(
+            @Valid @RequestBody NotificationMiniProgramSubscriptionUpdateRequest request) {
+        return Result.success("更新小程序订阅授权成功",
+                miniProgramSubscriptionService.update(SecurityUtils.getCurrentUserId(), request));
     }
 }

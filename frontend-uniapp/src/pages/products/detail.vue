@@ -1,322 +1,428 @@
 <template>
   <view class="detail-page">
-    <!-- 加载中 -->
-    <view class="loading-state" v-if="loading">
-      <text>加载中...</text>
+    <view v-if="loading" class="state-panel">
+      <text>正在加载产品详情</text>
     </view>
 
-    <!-- 产品详情 -->
-    <view class="detail-content" v-else-if="product">
-      <!-- 价格走势图（置顶） -->
-      <view class="info-card">
-        <text class="info-title">价格走势</text>
-        <price-trend-chart :productId="productId" />
-      </view>
+    <view v-else-if="!product" class="state-panel">
+      <text>产品不存在或已删除</text>
+      <button class="back-btn" @click="goBack">返回上一页</button>
+    </view>
 
-      <!-- 基本信息 -->
-      <view class="info-card">
-        <view class="info-header">
-          <text class="info-title">基本信息</text>
-          <text class="info-status" :class="product.status">{{ product.status === 'ACTIVE' ? '启用' : '停用' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">产品名称</text>
-          <text class="info-value">{{ product.name }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">产品编码</text>
-          <text class="info-value">{{ product.code || '-' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">所属分类</text>
-          <text class="info-value">{{ product.category?.name || '-' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">规格型号</text>
-          <text class="info-value">{{ product.specs || '-' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">计量单位</text>
-          <text class="info-value">{{ product.unit || '-' }}</text>
-        </view>
-      </view>
-
-      <!-- 价格信息 -->
-      <view class="info-card">
-        <text class="info-title">价格信息</text>
-        <view class="price-highlight">
-          <view class="price-main-info">
-            <text class="price-label">销售价</text>
-            <text class="price-main">¥{{ currentPrice?.currentPrice || product?.sellingPrice || '-' }}</text>
-          </view>
-          <text class="price-date" v-if="currentPrice?.effectiveDate">
-            {{ formatDate(currentPrice.effectiveDate) }}
+    <view v-else class="detail-content">
+      <view class="product-hero">
+        <view class="hero-tags">
+          <text class="status-tag" :class="{ inactive: product.status === 'INACTIVE' }">
+            {{ statusLabel }}
           </text>
+          <text v-if="product.showOnHome" class="home-tag">首页展示</text>
         </view>
-        <view class="info-row">
-          <text class="info-label">预算价</text>
-          <text class="info-value">¥{{ currentPrice?.budgetPrice || product?.budgetPrice || '-' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">币种</text>
-          <text class="info-value">{{ product?.currency || 'CNY' }}</text>
+        <text class="product-name">{{ product.name }}</text>
+        <text class="product-meta">{{ productMeta }}</text>
+        <text class="product-description">{{ product.description || product.remark || '暂无产品描述' }}</text>
+
+        <view class="price-grid">
+          <view class="price-metric primary">
+            <text class="metric-label">当前价格</text>
+            <text class="metric-value">{{ formatPrice(displayPrice) }}</text>
+            <text class="metric-note">{{ currentPrice?.effectiveDate ? `${formatDate(currentPrice.effectiveDate)} 生效` : '当前有效价格' }}</text>
+          </view>
+          <view class="price-metric">
+            <text class="metric-label">预算价格</text>
+            <text class="metric-value">{{ formatPrice(budgetPrice) }}</text>
+            <text class="metric-note">差额 {{ formatSignedPrice(budgetDifference) }}</text>
+          </view>
         </view>
       </view>
 
-      <!-- 其他信息 -->
+      <view class="info-card trend-card">
+        <view class="section-header">
+          <view>
+            <text class="section-title">价格走势</text>
+            <text class="section-subtitle">价格与预算价格趋势参考</text>
+          </view>
+        </view>
+        <price-trend-chart
+          :productId="productId"
+          :currency-symbol="currencySymbol"
+          :budget-price="budgetPrice"
+        />
+      </view>
+
       <view class="info-card">
-        <text class="info-title">其他信息</text>
-        <view class="info-row">
-          <text class="info-label">产品描述</text>
-          <text class="info-value">{{ product.description || '-' }}</text>
+        <view class="section-header">
+          <view>
+            <text class="section-title">基础资料</text>
+            <text class="section-subtitle">产品识别与适用范围</text>
+          </view>
+          <text class="completeness">{{ completeness }}%</text>
         </view>
-        <view class="info-row">
-          <text class="info-label">备注</text>
-          <text class="info-value">{{ product.remark || '-' }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">创建时间</text>
-          <text class="info-value">{{ product.createdTime }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">更新时间</text>
-          <text class="info-value">{{ product.updatedTime }}</text>
+        <view class="progress"><view class="progress-value" :style="{ width: `${completeness}%` }" /></view>
+        <view class="info-list">
+          <view v-for="item in infoItems" :key="item.label" class="info-row">
+            <text class="info-label">{{ item.label }}</text>
+            <text class="info-value">{{ item.value }}</text>
+          </view>
         </view>
       </view>
 
-      <view class="pc-tip" v-if="userStore.canEdit">
+      <view v-if="userStore.canEdit" class="pc-tip">
         <text>产品资料维护请前往 PC 端完成。</text>
       </view>
-    </view>
-
-    <!-- 错误状态 -->
-    <view class="error-state" v-else>
-      <text class="error-text">产品不存在或已删除</text>
-      <button class="back-btn" @click="goBack">返回列表</button>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/useUserStore'
-import { getProductById, getCurrentPrice } from '@/api/products'
-import type { Product, Price } from '@/types'
+import { getCurrentPrice, getProductById } from '@/api/products'
+import { getOrigins } from '@/api/origins'
+import { getCustomers } from '@/api/customers'
+import { getCurrencySymbol, getDictValue, loadAllDicts } from '@/composables/useDict'
+import type { Customer, Origin, Price, Product } from '@/types'
 
 const userStore = useUserStore()
 const product = ref<Product | null>(null)
 const currentPrice = ref<Price | null>(null)
 const loading = ref(true)
-const productId = ref<number>(0)
+const productId = ref(0)
+const origins = ref<Origin[]>([])
+const customers = ref<Customer[]>([])
+
+const parseDictIds = (value?: string) => {
+  if (!value) return []
+  try {
+    const result = JSON.parse(value)
+    return Array.isArray(result) ? result : []
+  } catch {
+    return []
+  }
+}
+
+const statusLabel = computed(() => product.value ? getDictValue('common_status', product.value.status) : '-')
+const unitLabel = computed(() => product.value?.unit ? getDictValue('unit', product.value.unit) : '-')
+const currencyLabel = computed(() => product.value?.currency ? getDictValue('currency', product.value.currency) : '-')
+const currencySymbol = computed(() => getCurrencySymbol(product.value?.currency))
+const originMap = computed(() => new Map(origins.value.map(item => [item.code, item.name])))
+const customerMap = computed(() => new Map(customers.value.map(item => [item.code, item.name])))
+const originNames = computed(() =>
+  parseDictIds(product.value?.originIds).map(key => originMap.value.get(key) || key).filter(Boolean).join('、') || '-'
+)
+const customerNames = computed(() =>
+  parseDictIds(product.value?.customerIds).map(key => customerMap.value.get(key) || key).filter(Boolean).join('、') || '-'
+)
+const displayPrice = computed(() => currentPrice.value?.currentPrice ?? product.value?.sellingPrice ?? null)
+const budgetPrice = computed(() => currentPrice.value?.budgetPrice ?? product.value?.budgetPrice ?? null)
+const budgetDifference = computed(() => {
+  if (displayPrice.value == null || budgetPrice.value == null) return null
+  return Number(displayPrice.value) - Number(budgetPrice.value)
+})
+const productMeta = computed(() =>
+  [product.value?.code, product.value?.category?.name, product.value?.specs, unitLabel.value, originNames.value]
+    .filter(value => value && value !== '-')
+    .join(' · ') || '暂无产品规格信息'
+)
+const completeness = computed(() => {
+  if (!product.value) return 0
+  const values = [
+    product.value.name,
+    product.value.code,
+    product.value.category?.name,
+    product.value.specs,
+    product.value.unit,
+    product.value.originIds,
+    product.value.customerIds,
+    product.value.description,
+    product.value.currency
+  ]
+  return Math.round((values.filter(Boolean).length / values.length) * 100)
+})
+const infoItems = computed(() => [
+  { label: '产品编码', value: product.value?.code || '-' },
+  { label: '所属分类', value: product.value?.category?.name || '-' },
+  { label: '规格型号', value: product.value?.specs || '-' },
+  { label: '计量单位', value: unitLabel.value },
+  { label: '产地', value: originNames.value },
+  { label: '适用客户', value: customerNames.value },
+  { label: '币种', value: currencyLabel.value }
+])
+
+const formatPrice = (value?: number | null) =>
+  value == null ? '-' : `${currencySymbol.value}${Number(value).toFixed(2)}`
+
+const formatSignedPrice = (value?: number | null) => {
+  if (value == null) return '-'
+  return `${value > 0 ? '+' : ''}${currencySymbol.value}${Number(value).toFixed(2)}`
+}
+
+const formatDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : '-'
 
 const loadProduct = async () => {
   if (!productId.value) return
-
   loading.value = true
   try {
     const [productRes, priceRes] = await Promise.all([
       getProductById(productId.value),
       getCurrentPrice(productId.value)
     ])
-    if (productRes.code === 200 && productRes.data) {
-      product.value = productRes.data
-    }
-    if (priceRes.code === 200 && priceRes.data) {
-      currentPrice.value = priceRes.data
-    }
+    product.value = productRes.data || null
+    currentPrice.value = priceRes.data || null
+    const [originResult, customerResult] = await Promise.allSettled([
+      getOrigins('ACTIVE'),
+      getCustomers('ACTIVE')
+    ])
+    origins.value = originResult.status === 'fulfilled' ? originResult.value.data || [] : []
+    customers.value = customerResult.status === 'fulfilled' ? customerResult.value.data || [] : []
   } catch (error) {
+    product.value = null
     console.error('加载产品详情失败:', error)
   } finally {
     loading.value = false
   }
 }
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '-'
-  return dateStr.split('T')[0]
-}
-
-const goBack = () => {
-  uni.navigateBack()
-}
+const goBack = () => uni.navigateBack()
 
 onLoad((options) => {
-  if (options?.id) {
-    productId.value = Number(options.id)
-    loadProduct()
-  }
+  if (options?.id) productId.value = Number(options.id)
 })
 
-onMounted(() => {
+onMounted(async () => {
   userStore.restoreSession()
+  await Promise.all([loadAllDicts(), loadProduct()])
 })
 </script>
 
 <style scoped>
 .detail-page {
   min-height: 100vh;
-  background: #F5F5F5;
-  padding: 24rpx 32rpx;
-  padding-bottom: 120rpx;
+  padding: 24rpx 28rpx 120rpx;
   box-sizing: border-box;
+  background: #F4F6F8;
 }
 
-.loading-state {
-  padding: 160rpx 0;
-  text-align: center;
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
 }
 
-.loading-state text {
+.state-panel {
+  min-height: 720rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28rpx;
+  color: #667085;
   font-size: 28rpx;
-  color: #666666;
+}
+
+.product-hero {
+  padding: 28rpx;
+  border-radius: 16rpx;
+  background: #0A5555;
+}
+
+.hero-tags {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+}
+
+.status-tag,
+.home-tag {
+  padding: 8rpx 14rpx;
+  border-radius: 10rpx;
+  font-size: 21rpx;
+  font-weight: 650;
+}
+
+.status-tag {
+  background: #E7F3F3;
+  color: #0D6E6E;
+}
+
+.status-tag.inactive {
+  background: #FDECEC;
+  color: #C7524A;
+}
+
+.home-tag {
+  background: rgba(255, 255, 255, .14);
+  color: #FFFFFF;
+}
+
+.product-name {
+  display: block;
+  color: #FFFFFF;
+  font-size: 42rpx;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.product-meta,
+.product-description {
+  display: block;
+  margin-top: 10rpx;
+  color: #B8D8D8;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.product-description {
+  color: #D0E4E4;
+}
+
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 24rpx;
+}
+
+.price-metric {
+  min-width: 0;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  background: #FFFFFF;
+}
+
+.metric-label,
+.metric-note {
+  display: block;
+  color: #667085;
+  font-size: 21rpx;
+}
+
+.metric-value {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin: 8rpx 0;
+  overflow: hidden;
+  color: #1A1A1A;
+  font-size: 28rpx;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-metric.primary .metric-value {
+  color: #0D6E6E;
+}
+
+.metric-note {
+  color: #98A2B3;
+  font-size: 19rpx;
 }
 
 .info-card {
-  background: #FFFFFF;
-  border-radius: 16rpx;
   padding: 24rpx;
-  margin-bottom: 24rpx;
-}
-
-.info-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24rpx;
-}
-
-.info-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1A1A1A;
-  display: block;
-  margin-bottom: 24rpx;
-}
-
-.info-header .info-title {
-  margin-bottom: 0;
-}
-
-.info-status {
-  font-size: 24rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 8rpx;
-}
-
-.info-status.ACTIVE {
-  background: rgba(13, 110, 110, 0.1);
-  color: #0D6E6E;
-}
-
-.info-status.INACTIVE {
-  background: rgba(153, 153, 153, 0.1);
-  color: #999999;
-}
-
-.pc-tip {
-  border: 1px solid #D7E7E7;
+  border: 1px solid #E4E7EC;
   border-radius: 16rpx;
-  background: #F0FAFA;
+  background: #FFFFFF;
+}
+
+.trend-card {
+  padding-bottom: 14rpx;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.section-title,
+.section-subtitle {
+  display: block;
+}
+
+.section-title {
+  color: #1A1A1A;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.section-subtitle {
+  margin-top: 5rpx;
+  color: #98A2B3;
+  font-size: 20rpx;
+}
+
+.completeness {
   color: #0D6E6E;
   font-size: 26rpx;
-  line-height: 1.6;
-  padding: 24rpx;
-  margin-bottom: 24rpx;
+  font-weight: 750;
+}
+
+.progress {
+  height: 12rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #EAECF0;
+}
+
+.progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: #0D6E6E;
+}
+
+.info-list {
+  margin-top: 14rpx;
 }
 
 .info-row {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 16rpx 0;
-  border-bottom: 1px solid #F5F5F5;
+  gap: 24rpx;
+  padding: 18rpx 0;
+  border-bottom: 1px solid #EAECF0;
 }
 
 .info-row:last-child {
-  border-bottom: none;
+  border-bottom: 0;
 }
 
 .info-label {
-  font-size: 28rpx;
-  color: #666666;
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 24rpx;
 }
 
 .info-value {
-  font-size: 28rpx;
-  color: #1A1A1A;
-  text-align: right;
   flex: 1;
-  margin-left: 32rpx;
-}
-
-.price-highlight {
-  background: rgba(13, 110, 110, 0.1);
-  border-radius: 12rpx;
-  padding: 24rpx;
-  margin-bottom: 24rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.price-main-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.price-highlight .price-label {
-  font-size: 28rpx;
-  color: #666666;
-}
-
-.price-main {
-  font-size: 40rpx;
-  font-weight: 600;
-  color: #0D6E6E;
-}
-
-.price-date {
+  color: #1A1A1A;
   font-size: 24rpx;
-  color: #999999;
-  background: rgba(255, 255, 255, 0.6);
-  padding: 8rpx 16rpx;
-  border-radius: 8rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: right;
 }
 
-.action-bar {
-  padding: 32rpx 0;
-}
-
-.edit-btn {
-  width: 100%;
-  height: 88rpx;
-  background: #0D6E6E;
-  color: #FFFFFF;
-  font-size: 32rpx;
-  border-radius: 12rpx;
-  border: none;
-}
-
-.error-state {
-  padding: 160rpx 0;
-  text-align: center;
-}
-
-.error-text {
-  display: block;
-  font-size: 28rpx;
-  color: #999999;
-  margin-bottom: 32rpx;
+.pc-tip {
+  padding: 22rpx;
+  border: 1px solid #D7E7E7;
+  border-radius: 16rpx;
+  background: #F0FAFA;
+  color: #0D6E6E;
+  font-size: 24rpx;
+  line-height: 1.6;
 }
 
 .back-btn {
   width: 240rpx;
   height: 72rpx;
+  border: 0;
+  border-radius: 12rpx;
   background: #0D6E6E;
   color: #FFFFFF;
-  font-size: 28rpx;
-  border-radius: 12rpx;
-  border: none;
+  font-size: 26rpx;
 }
 </style>

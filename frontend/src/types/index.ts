@@ -359,6 +359,259 @@ export interface NotificationMessage {
   createdTime?: string
 }
 
+export interface AdminNotificationSummary extends NotificationMessage {
+  dedupeKey?: string
+  expireTime?: string
+  createdBy?: number
+  recipientCount: number
+  unreadCount: number
+  failedDeliveryCount: number
+}
+
+export interface NotificationPreference {
+  id?: number
+  notificationType: string
+  channel: string
+  enabled: boolean
+  quietStartTime?: string
+  quietEndTime?: string
+}
+
+export type SystemNoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'CANCELLED' | 'EXPIRED'
+
+export interface SystemNotice {
+  id: number
+  title: string
+  summary?: string
+  content: string
+  targetRoles: string
+  channels: string
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+  status: SystemNoticeStatus
+  scheduledPublishTime?: string
+  publishedTime?: string
+  cancelledTime?: string
+  expireTime?: string
+  notificationMessageId?: number
+  createdBy?: number
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface SystemNoticeCreateRequest {
+  title: string
+  summary?: string
+  content: string
+  targetRoles: Role[]
+  channels: string[]
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+  scheduledPublishTime?: string
+  expireTime?: string
+}
+
+export interface NotificationDeliveryLog {
+  id: number
+  messageId: number
+  recipientId: number
+  userId: number
+  channel: string
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
+  provider?: string
+  providerMessageId?: string
+  retryCount?: number
+  deliveredTime?: string
+  errorCode?: string
+  errorMessage?: string
+  test?: boolean
+  createdTime?: string
+  updatedTime?: string
+}
+
+export interface NotificationRecipient {
+  id: number
+  messageId: number
+  userId: number
+  username?: string
+  nickname?: string
+  readStatus: 'UNREAD' | 'READ'
+  readTime?: string
+  archived: boolean
+  archivedTime?: string
+  firstSeenTime?: string
+}
+
+export interface NotificationChannelMetric {
+  channel: string
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  pendingCount: number
+  failureRate: number
+}
+
+export interface NotificationTypeMetric {
+  type: string
+  count: number
+}
+
+export interface NotificationDashboard {
+  todayMessageCount: number
+  todayDeliveryCount: number
+  successDeliveryCount: number
+  failedDeliveryCount: number
+  skippedDeliveryCount: number
+  pendingDeliveryCount: number
+  providerFailureRate: number
+  outboxPendingCount: number
+  outboxProcessingCount: number
+  outboxFailedCount: number
+  outboxRetryCount: number
+  oldestPendingWaitSeconds?: number
+  oldestPendingTime?: string
+  channelMetrics: NotificationChannelMetric[]
+  highFrequencyTypes: NotificationTypeMetric[]
+}
+
+export interface NotificationProviderHealth {
+  channel: string
+  provider: string
+  registered: boolean
+  configured: boolean
+  pendingCount: number
+  failedCount: number
+  consecutiveFailureCount: number
+  lastDeliveryTime?: string
+  lastStatus?: string
+  lastErrorCode?: string
+  lastErrorMessage?: string
+  healthStatus: 'OK' | 'DEGRADED' | 'DOWN' | 'NOT_CONFIGURED'
+}
+
+export interface NotificationThrottleRule {
+  type: string
+  enabled: boolean
+  windowMinutes: number
+  maxCount: number
+  currentCount: number
+  throttled: boolean
+}
+
+export interface NotificationChannelTemplateMapping {
+  notificationType: string
+  templateName?: string
+  templateIdMasked: string
+  page?: string
+  fields?: Record<string, string>
+  configured: boolean
+}
+
+export interface NotificationChannelDiagnosticItem {
+  key: string
+  label: string
+  status: 'PASS' | 'FAIL'
+  severity: 'INFO' | 'WARNING' | 'ERROR'
+  message: string
+}
+
+export interface NotificationChannelConfig {
+  channel: string
+  provider: string
+  enabled: boolean
+  configured: boolean
+  registered: boolean
+  healthStatus: 'OK' | 'DEGRADED' | 'DOWN' | 'NOT_CONFIGURED'
+  source: 'DATABASE' | 'ENV' | string
+  appIdMasked: string
+  endpointUrlMasked?: string
+  secretConfigured: boolean
+  secretSource?: string
+  timeoutMs?: number
+  defaultPage?: string
+  tokenUrlMasked?: string
+  sendUrlMasked?: string
+  updatedTime?: string
+  templates: NotificationChannelTemplateMapping[]
+  diagnostics: NotificationChannelDiagnosticItem[]
+}
+
+export interface NotificationChannelConfigUpdateRequest {
+  enabled?: boolean
+  appId?: string
+  clearAppId?: boolean
+  endpointUrl?: string
+  clearEndpointUrl?: boolean
+  secret?: string
+  clearSecret?: boolean
+  timeoutMs?: number
+  defaultPage?: string
+  clearDefaultPage?: boolean
+  templates?: Array<{
+    notificationType: string
+    templateId?: string
+    page?: string
+    fields?: Record<string, string>
+  }>
+}
+
+export interface NotificationProviderTestResult {
+  channel: string
+  passed: boolean
+  passedCount: number
+  totalCount: number
+  diagnostics: NotificationChannelDiagnosticItem[]
+}
+
+export interface NotificationMiniProgramCoverage {
+  targetCount: number
+  openidBound: number
+  authorized: number
+  reachable: number
+  inAppFallback: number
+  rejectedOrBanned: number
+  lowBalance: number
+  notificationType?: string
+}
+
+export interface AdminMiniProgramSubscription {
+  userId: number
+  username: string
+  nickname?: string
+  role: Role
+  openidBound: boolean
+  openidMasked: string
+  priceAvailableCount: number
+  noticeAvailableCount: number
+  priceStatus: string
+  noticeStatus: string
+  status: 'NORMAL' | 'LOW_BALANCE' | 'UNBOUND' | 'REJECTED' | string
+  lastAuthorizedTime?: string
+  templates: Array<{
+    notificationType: string
+    templateIdMasked: string
+    status: string
+    availableCount: number
+    authorized: boolean
+    lastAuthorizedTime?: string
+  }>
+  resolution?: {
+    status: 'OPEN' | 'RESOLVED' | 'SNOOZED' | 'FOLLOW_UP'
+    remark?: string
+    remindAfter?: string
+    followUpRequired: boolean
+    resolvedBy?: number
+    resolvedTime?: string
+  }
+  recentDeliveries?: NotificationDeliveryLog[]
+  preferences?: NotificationPreference[]
+}
+
+export interface NotificationSseEvent {
+  eventType: 'connected' | 'unreadCountChanged' | 'newNotification'
+  unreadCount?: number
+  messageId?: number
+  notificationType?: string
+}
+
 // 日常价格查询行
 export interface PriceQueryRow {
   productId: number

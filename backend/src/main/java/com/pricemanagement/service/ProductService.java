@@ -54,7 +54,11 @@ public class ProductService {
         Specification<Product> spec = (root, query, cb) -> cb.conjunction();
         if (keyword != null && !keyword.isBlank()) {
             String keywordLike = "%" + keyword.trim().toLowerCase() + "%";
-            spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("name")), keywordLike));
+            spec = spec.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("name")), keywordLike),
+                    cb.like(cb.lower(cb.coalesce(root.get("code").as(String.class), "")), keywordLike),
+                    cb.like(cb.lower(cb.coalesce(root.get("specs").as(String.class), "")), keywordLike)
+            ));
         }
         if (categoryId != null) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("category").get("id"), categoryId));

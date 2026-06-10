@@ -3,10 +3,12 @@ package com.pricemanagement.dto;
 import com.pricemanagement.entity.NotificationMessage;
 import com.pricemanagement.entity.NotificationRecipient;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 @Data
+@NoArgsConstructor
 public class NotificationDTO {
     private Long id;
     private Long messageId;
@@ -24,6 +26,29 @@ public class NotificationDTO {
     private LocalDateTime readTime;
     private Boolean archived;
     private LocalDateTime createdTime;
+
+    public NotificationDTO(Long id, Long messageId, String type, String title, String summary, String content,
+                           String businessType, Long businessId, String channels,
+                           NotificationMessage.NotificationPriority priority, String linkType, String linkParams,
+                           NotificationRecipient.ReadStatus readStatus, LocalDateTime readTime, Boolean archived,
+                           LocalDateTime createdTime) {
+        this.id = id;
+        this.messageId = messageId;
+        this.type = type;
+        this.title = title;
+        this.summary = summary;
+        this.content = content;
+        this.businessType = businessType;
+        this.businessId = businessId;
+        this.channels = channels;
+        this.priority = priority;
+        this.linkType = linkType;
+        this.linkParams = linkParams;
+        this.readStatus = readStatus;
+        this.readTime = readTime;
+        this.archived = archived;
+        this.createdTime = createdTime;
+    }
 
     public static NotificationDTO from(NotificationRecipient recipient, NotificationMessage message) {
         NotificationDTO dto = new NotificationDTO();

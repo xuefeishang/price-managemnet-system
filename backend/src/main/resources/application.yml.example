@@ -15,7 +15,7 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
@@ -53,7 +53,7 @@ jwt:
 
 logging:
   level:
-    com.pricemanagement: debug
+    com.pricemanagement: info
 
 # 外部 API Key 授权配置。开发示例 key 禁止用于生产环境。
 api-key:
@@ -68,3 +68,32 @@ api-key:
     auth-failure-sample-rate: 1.0
     max-error-message-length: 500
     max-query-length: 1000
+
+# 通知中心可靠投递配置
+notification:
+  outbox:
+    enabled: ${NOTIFICATION_OUTBOX_ENABLED:true}
+    batch-size: ${NOTIFICATION_OUTBOX_BATCH_SIZE:20}
+    max-retries: ${NOTIFICATION_OUTBOX_MAX_RETRIES:3}
+    lock-seconds: ${NOTIFICATION_OUTBOX_LOCK_SECONDS:120}
+    poll-delay-ms: ${NOTIFICATION_OUTBOX_POLL_DELAY_MS:30000}
+  mini-program:
+    enabled: ${WECHAT_MINI_NOTIFY_ENABLED:false}
+    eligibility-reconcile-cron: "${WECHAT_MINI_ELIGIBILITY_RECONCILE_CRON:0 30 3 * * ?}"
+    app-id: ${WECHAT_MINI_APP_ID:wx00c7266dd35d3ab7}
+    app-secret: ${WECHAT_MINI_APP_SECRET:}
+    timeout-ms: ${WECHAT_MINI_NOTIFY_TIMEOUT_MS:5000}
+    default-page: ${WECHAT_MINI_DEFAULT_PAGE:pages/notifications/index}
+    templates:
+      PRICE_PUBLISHED:
+        template-id: ${WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED:T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk}
+        page: ${WECHAT_MINI_PRICE_PAGE:pages/home/index}
+        fields:
+          type: ${WECHAT_MINI_PRICE_FIELD_TYPE:phrase2}
+          tip: ${WECHAT_MINI_PRICE_FIELD_TIP:thing4}
+      SYSTEM_NOTICE:
+        template-id: ${WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE:RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo}
+        page: ${WECHAT_MINI_NOTICE_PAGE:pages/notifications/index}
+        fields:
+          creator: ${WECHAT_MINI_NOTICE_FIELD_CREATOR:thing1}
+          time: ${WECHAT_MINI_NOTICE_FIELD_TIME:time2}

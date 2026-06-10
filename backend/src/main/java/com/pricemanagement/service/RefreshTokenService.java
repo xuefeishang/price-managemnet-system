@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,7 @@ public class RefreshTokenService {
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final SecurityProperties securityProperties;
+    private final PermissionService permissionService;
 
     /**
      * 刷新令牌有效期（默认7天）
@@ -108,7 +110,12 @@ public class RefreshTokenService {
         }
         refreshTokenRepository.save(refreshToken);
 
-        return jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
+        List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
+        if (roleCodes.isEmpty()) {
+            roleCodes = List.of(user.getRole().name());
+        }
+        Set<String> permissions = permissionService.getUserPermissions(user.getId());
+        return jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, roleCodes.get(0), permissions);
     }
 
     /**

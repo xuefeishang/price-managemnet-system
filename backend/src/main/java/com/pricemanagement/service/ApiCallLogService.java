@@ -29,6 +29,7 @@ public class ApiCallLogService {
 
     private final ApiCallLogRepository callLogRepository;
     private final ApiKeyProperties properties;
+    private final NotificationEventService notificationEventService;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(ApiCallLog callLog) {
@@ -41,7 +42,8 @@ public class ApiCallLogService {
             }
             callLog.setQueryString(truncate(callLog.getQueryString(), properties.getLog().getMaxQueryLength()));
             callLog.setErrorMessage(truncate(callLog.getErrorMessage(), properties.getLog().getMaxErrorMessageLength()));
-            callLogRepository.save(callLog);
+            ApiCallLog saved = callLogRepository.save(callLog);
+            notifyApiWarning(saved);
         } catch (Exception ex) {
             log.warn("Failed to save external API call log: {}", ex.getMessage());
         }
@@ -133,6 +135,21 @@ public class ApiCallLogService {
             return false;
         }
         return ThreadLocalRandom.current().nextDouble() < sampleRate;
+    }
+
+    private void notifyApiWarning(ApiCallLog callLog) {
+        if (callLog == null) {
+            return;
+        }
+        boolean authFailed = callLog.getAuthResult() != null && !"SUCCESS".equals(callLog.getAuthResult());
+        boolean serverOrLimitError = callLog.getStatusCode() != null
+                && (callLog.getStatusCode() == 429 || callLog.getStatusCode() >= 500);
+        if (authFailed || serverOrLimitError) {
+            notificationEventService.apiLimitWarning(
+                    callLog.getAppId(),
+                    callLog.getEndpoint(),
+                    callLog.getErrorMessage());
+        }
     }
 
     private String truncate(String value, int maxLength) {

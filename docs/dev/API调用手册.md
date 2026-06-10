@@ -525,6 +525,61 @@ POST /api/auth/logout
 
 ---
 
+## 通知中心接口
+
+用户侧接口均要求已登录，且只能操作当前认证用户自己的通知；管理侧接口仅 `ADMIN` 可用。
+
+### 用户侧
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/notifications/my` | 查询我的通知，支持 `page`、`size`、`readStatus` |
+| GET | `/api/notifications/unread-count` | 查询未读通知数 |
+| GET | `/api/notifications/events` | SSE 轻事件流，推送 `connected`、`unreadCountChanged`、`newNotification`；前端断开后回退轮询 |
+| POST | `/api/notifications/{messageId}/read` | 标记单条通知已读 |
+| POST | `/api/notifications/read-all` | 标记全部通知已读 |
+| POST | `/api/notifications/{messageId}/archive` | 归档单条通知 |
+| GET | `/api/notifications/preferences` | 查询通知偏好 |
+| PUT | `/api/notifications/preferences` | 更新通知偏好 |
+| GET | `/api/notifications/mini-program/subscriptions` | 查询当前用户小程序订阅模板、openid 绑定、Provider 配置和授权次数 |
+| POST | `/api/notifications/mini-program/subscriptions` | 上报当前用户点击微信订阅授权后的模板授权结果 |
+
+小程序订阅授权上报示例：
+
+```json
+{
+  "results": [
+    {
+      "notificationType": "PRICE_PUBLISHED",
+      "templateId": "template-id-from-backend",
+      "result": "accept"
+    }
+  ]
+}
+```
+
+后端只使用当前认证用户 ID 和 `sys_user.wechat_openid`，客户端不得传入 userId。`templateId` 必须来自后端订阅状态接口返回的已配置模板；授权结果为 `accept` 时累计一次可用授权次数，`reject` / `ban` 会清空对应模板可用次数。
+
+### 管理侧
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/notifications/dashboard` | 查询通知指标看板：今日消息、投递结果、Outbox 积压、重试数、最长待投递时间、渠道指标、高频类型 |
+| GET | `/api/admin/notifications/providers/health` | 查询 Provider 注册/配置状态、待投递数、失败数、连续失败数和健康状态 |
+| GET | `/api/admin/notifications/throttle-rules` | 查询聚合频控规则和当前窗口内触发情况 |
+| GET | `/api/admin/notifications` | 分页查询全局通知消息 |
+| GET | `/api/admin/notifications/{id}` | 查询通知详情 |
+| GET | `/api/admin/notifications/{id}/recipients` | 查询通知收件人，响应包含 `userId`、`username`、`nickname`、`readStatus` 等字段，管理端收件人清单优先展示 `nickname` / `username` |
+| GET | `/api/admin/notifications/{id}/deliveries` | 查询投递日志 |
+| POST | `/api/admin/notifications/deliveries/{id}/retry` | 重试投递记录 |
+| GET | `/api/admin/notifications/mini-program/coverage?roles=ADMIN,EDITOR` | 小程序发布前触达预估；`roles` 由后端显式拆分并校验 |
+| GET | `/api/admin/notifications/mini-program/subscriptions/{userId}` | 查询订阅授权运维详情，包含模板状态、最近投递、失败原因、用户偏好和处理记录 |
+| POST | `/api/admin/notifications/mini-program/subscriptions/{userId}/resolve` | 标记已处理、暂不提醒、记录备注或生成跟进标记 |
+| POST | `/api/admin/notifications/channels/MINI_PROGRAM/test-token` | 远程校验微信 access_token 配置，不返回 token 明文 |
+| POST | `/api/admin/notifications/channels/MINI_PROGRAM/test-delivery` | 对指定用户和通知类型创建受控测试投递 |
+
+---
+
 ## 产品接口
 
 ### 获取产品列表

@@ -83,25 +83,31 @@
               <text class="product-meta">{{ getProductMeta(product) }}</text>
             </view>
             <view class="price-info">
-              <text class="current-price">{{ formatPrice(getCurrentPrice(product.id)) }}</text>
-              <text class="price-label">当日售价</text>
+              <text class="current-price">{{ formatPrice(product, getCurrentPrice(product.id)) }}</text>
+              <text class="price-label">当日价格</text>
             </view>
           </view>
 
           <view class="compare-row">
             <view class="compare-item">
               <text class="compare-label">昨日</text>
-              <text class="compare-value">{{ formatPrice(getYesterdayPrice(product.id)) }}</text>
+              <text class="compare-value">{{ formatPrice(product, getYesterdayPrice(product.id)) }}</text>
             </view>
             <view class="compare-item">
               <text class="compare-label">较昨日</text>
               <text class="compare-value" :class="getDiffClass(product.id)">
-                {{ formatDiff(product.id) }}
+                {{ formatDiff(product, product.id) }}
               </text>
             </view>
             <view class="compare-item">
               <text class="compare-label">月均</text>
-              <text class="compare-value">{{ formatPrice(getMonthlyAvg(product.id)) }}</text>
+              <text class="compare-value">{{ formatPrice(product, getMonthlyAvg(product.id)) }}</text>
+            </view>
+          </view>
+          <view class="card-actions">
+            <view class="detail-btn" @click.stop="goToDetail(product.id)">
+              <text>查看详情</text>
+              <text class="detail-arrow">›</text>
             </view>
           </view>
         </view>
@@ -114,10 +120,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { getProducts, getPricesByDateWithStats, type PriceWithStats } from '@/api/products'
 import { getCategories } from '@/api/categories'
 import type { PageResponse, Product, ProductCategory } from '@/types'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
+import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 
 const selectedDate = ref(getYesterday())
 const searchQuery = ref('')
@@ -173,6 +181,17 @@ const loadData = async () => {
   }
 }
 
+const consumeNotificationTargetDate = () => {
+  const targetDate = uni.getStorageSync('notificationTargetHistoryDate')
+  if (typeof targetDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return
+  uni.removeStorageSync('notificationTargetHistoryDate')
+  if (targetDate === selectedDate.value) {
+    loadData()
+    return
+  }
+  selectedDate.value = targetDate
+}
+
 const onDateChange = (event: any) => {
   selectedDate.value = event.detail.value
 }
@@ -198,9 +217,9 @@ const getMonthlyAvg = (productId: number): number | null => {
   return priceDataMap.value.get(productId)?.monthlyAveragePrice ?? null
 }
 
-const formatPrice = (price: number | null | undefined) => {
+const formatPrice = (product: Product, price: number | null | undefined) => {
   if (price == null) return '--'
-  return `¥${Number(price).toFixed(2)}`
+  return `${getCurrencySymbol(product.currency)}${Number(price).toFixed(2)}`
 }
 
 const getDiff = (productId: number): number | null => {
@@ -210,12 +229,13 @@ const getDiff = (productId: number): number | null => {
   return current - yesterday
 }
 
-const formatDiff = (productId: number) => {
+const formatDiff = (product: Product, productId: number) => {
   const diff = getDiff(productId)
   if (diff == null) return '--'
-  if (diff > 0) return `+¥${diff.toFixed(2)}`
-  if (diff < 0) return `-¥${Math.abs(diff).toFixed(2)}`
-  return '¥0.00'
+  const symbol = getCurrencySymbol(product.currency)
+  if (diff > 0) return `+${symbol}${diff.toFixed(2)}`
+  if (diff < 0) return `-${symbol}${Math.abs(diff).toFixed(2)}`
+  return `${symbol}0.00`
 }
 
 const getDiffClass = (productId: number) => {
@@ -233,7 +253,8 @@ const goToDetail = (productId: number) => {
 
 watch(selectedDate, loadData)
 
-onMounted(loadData)
+onMounted(() => Promise.all([loadAllDicts(), loadData()]))
+onShow(consumeNotificationTargetDate)
 </script>
 
 <style scoped>
@@ -420,6 +441,8 @@ onMounted(loadData)
 }
 
 .current-price {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   display: block;
   color: #0D6E6E;
   font-size: 34rpx;
@@ -442,6 +465,32 @@ onMounted(loadData)
   padding: 16rpx;
 }
 
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18rpx;
+}
+
+.detail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  min-width: 176rpx;
+  height: 64rpx;
+  border-radius: 12rpx;
+  background: #0D6E6E;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  font-weight: 650;
+}
+
+.detail-arrow {
+  color: #FFFFFF;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
 .compare-item {
   text-align: center;
 }
@@ -453,6 +502,8 @@ onMounted(loadData)
 }
 
 .compare-value {
+  font-family: Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
   display: block;
   margin-top: 6rpx;
   color: #1A1A1A;

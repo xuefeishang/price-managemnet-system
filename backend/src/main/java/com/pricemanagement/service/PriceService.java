@@ -521,13 +521,17 @@ public class PriceService {
      * @return 每日价格数据点列表，同一天只保留最新记录
      */
     public List<PriceTrendDTO> getPriceTrend(Long productId, int days) {
-        LocalDate endDate = LocalDate.now();
+        return getPriceTrend(productId, days, null);
+    }
+
+    public List<PriceTrendDTO> getPriceTrend(Long productId, int days, LocalDate requestedEndDate) {
+        LocalDate endDate = requestedEndDate == null ? LocalDate.now() : requestedEndDate;
         LocalDate startDate = endDate.minusDays(days - 1);
 
         List<Price> prices = priceRepository.findByProductIdAndDateRange(productId, startDate, endDate);
 
-        // 如果查询范围内没有找到数据，获取最近的价格记录（按 createdTime 降序）
-        if (prices.isEmpty()) {
+        // 当前趋势无数据时保留原有降级；历史趋势必须严格限制在基准日内。
+        if (prices.isEmpty() && requestedEndDate == null) {
             prices = priceRepository.findByProductIdOrderByCreatedTimeDesc(productId);
             // 只取最近 'days' 条记录
             if (prices.size() > days) {

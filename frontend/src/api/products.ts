@@ -101,6 +101,6 @@ export interface PriceTrendPoint {
 }
 
 // 获取某产品的价格走势数据
-export const getPriceTrend = async (productId: number, days: number): Promise<ApiResponse<PriceTrendPoint[]>> => {
-  return await http.get(`/api/products/${productId}/price-trend`, { params: { days } })
+export const getPriceTrend = async (productId: number, days: number, endDate?: string): Promise<ApiResponse<PriceTrendPoint[]>> => {
+  return await http.get(`/api/products/${productId}/price-trend`, { params: { days, endDate } })
 }
