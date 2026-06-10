@@ -521,10 +521,12 @@ export interface NotificationChannelConfig {
   registered: boolean
   healthStatus: 'OK' | 'DEGRADED' | 'DOWN' | 'NOT_CONFIGURED'
   source: 'DATABASE' | 'ENV' | string
+  appId?: string
   appIdMasked: string
   endpointUrlMasked?: string
   secretConfigured: boolean
   secretSource?: string
+  secretFingerprintMasked?: string
   timeoutMs?: number
   defaultPage?: string
   tokenUrlMasked?: string

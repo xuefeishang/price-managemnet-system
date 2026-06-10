@@ -90,7 +90,7 @@ class NotificationObservabilityServiceTests {
     }
 
     @Test
-    void miniProgramHealthRequiresCredentialsAndTemplate() {
+    void miniProgramHealthIsDegradedWhenCredentialsExistButTemplateIsMissing() {
         SysDict miniProgram = new SysDict();
         miniProgram.setCategory("notification_channel");
         miniProgram.setDictKey(NotificationService.CHANNEL_MINI_PROGRAM);
@@ -124,6 +124,6 @@ class NotificationObservabilityServiceTests {
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().isRegistered()).isTrue();
         assertThat(result.getFirst().isConfigured()).isFalse();
-        assertThat(result.getFirst().getHealthStatus()).isEqualTo("NOT_CONFIGURED");
+        assertThat(result.getFirst().getHealthStatus()).isEqualTo("DEGRADED");
     }
 }

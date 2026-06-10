@@ -77,7 +77,7 @@
   - 统计分析（趋势图、饼图、柱状图）
   - 月度报表、年度报表 + 用户排行
   - 通用定时任务管理：支持价格自动发布任务配置、启停、手动执行和执行日志查看；默认任务初始化为停用，需管理员确认后启用
-  - 通知管理平台：价格发布、审批待办、定时任务失败、外部 API 告警、导入导出完成和系统公告均通过统一 `NotificationCreateCommand` 接入；PC 端通过 SSE 轻事件 + 带抖动和失败退避的轮询降级获取未读数，用户卡片更多按钮以红色数字提示未读消息；外部渠道通过 `notification_outbox` 异步投递，Webhook Provider 支持幂等键、超时和失败落库；ADMIN 可在“系统管理 / 通知管理”查询消息、收件人、投递日志、失败重试、指标看板、Provider 健康状态和聚合频控规则，并创建、发布、撤回系统公告；PC `/notifications` 支持选择 `MINI_PROGRAM` 作为小程序订阅消息渠道，渠道配置页可维护小程序 AppID、启用状态、模板映射、跳转页和 AppSecret 密钥托管状态，并提供本地诊断、远程 token 校验、受控测试投递与最近失败跳转；订阅授权详情抽屉展示模板、最近投递、失败原因、用户偏好和异常处理记录，站内通知始终兜底，uni-app 我的页提供消息入口、未读角标、通知列表、全部已读、归档、价格查询跳转和小程序订阅授权入口
+  - 通知管理平台：价格发布、审批待办、定时任务失败、外部 API 告警、导入导出完成和系统公告均通过统一 `NotificationCreateCommand` 接入；PC 端通过 SSE 轻事件 + 带抖动和失败退避的轮询降级获取未读数，用户卡片更多按钮以红色数字提示未读消息；外部渠道通过 `notification_outbox` 异步投递，Webhook Provider 支持幂等键、超时和失败落库；ADMIN 可在“系统管理 / 通知管理”查询消息、收件人、投递日志、失败重试、指标看板、Provider 健康状态和聚合频控规则，并创建、发布、撤回系统公告；PC `/notifications` 支持选择 `MINI_PROGRAM` 作为小程序订阅消息渠道，渠道配置页可维护小程序 AppID、启用状态、模板映射、跳转页和 AppSecret 密钥托管状态，并提供本地诊断、远程 token 校验、受控测试投递与最近失败跳转；订阅授权详情抽屉展示模板、最近投递、失败原因、用户偏好和异常处理记录，站内通知始终兜底，uni-app 通知页提供订阅授权主入口、未读摘要、全部已读、归档、价格查询跳转和订阅消息点击参数承接，我的页保留消息入口、未读角标和订阅授权快捷入口
 
 - **审批流程管理**
   - 审批工作流配置（创建、编辑、删除、激活/停用）
@@ -186,6 +186,8 @@ npm run dev
 | `backend/src/main/resources/db/migration/V37__notification_mini_resolution_status_dict.sql` | 小程序订阅异常处理状态字典 |
 | `backend/src/main/resources/db/migration/V38__notification_mini_program_eligibility.sql` | 小程序订阅用户资格查询快照与聚合行状态数据库分页索引 |
 | `backend/src/main/resources/db/migration/V32__notification_channel_config.sql` | 通知渠道运行配置表，支持小程序订阅消息 PC 运维配置和密钥托管 |
+| `backend/src/main/resources/db/migration/V39__system_setting_permission_backfill.sql` | 回填并启用 `system:setting` 权限，确保 ADMIN 可保存通知渠道运行配置 |
+| `backend/src/main/resources/db/migration/V40__notification_mini_program_page_dict.sql` | 小程序通知跳转页字典，统一默认页和模板页的可选路径 |
 
 ## 项目文档
 

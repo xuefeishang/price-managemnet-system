@@ -220,6 +220,26 @@ public class AdminNotificationController {
         return Result.success("获取投递记录成功", notificationService.getDeliveries(id));
     }
 
+    @GetMapping("/{id}/delivery-logs")
+    public Result<Page<NotificationDeliveryLog>> deliveryLogs(
+            @PathVariable Long id,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) NotificationDeliveryLog.DeliveryStatus status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.success("获取投递日志成功",
+                notificationService.getAdminDeliveryLogs(
+                        id,
+                        channel,
+                        status,
+                        keyword,
+                        PageRequest.of(
+                                Math.max(page, 0),
+                                Math.min(Math.max(size, 1), 100),
+                                Sort.by(Sort.Direction.DESC, "createdTime"))));
+    }
+
     @PostMapping("/deliveries/{id}/retry")
     @PreAuthorize("hasAuthority('notification:retry')")
     @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "重试通知投递")

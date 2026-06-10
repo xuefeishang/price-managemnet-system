@@ -9,6 +9,7 @@ import com.pricemanagement.dto.NotificationChannelConfigUpdateRequest;
 import com.pricemanagement.dto.NotificationProviderTestResultDTO;
 import com.pricemanagement.entity.NotificationChannelConfig;
 import com.pricemanagement.repository.NotificationChannelConfigRepository;
+import com.pricemanagement.repository.SysDictRepository;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -21,15 +22,18 @@ import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class NotificationMiniProgramRuntimeConfigService {
 
     public static final String CHANNEL = NotificationService.CHANNEL_MINI_PROGRAM;
+    public static final String MINI_PROGRAM_PAGE_DICT_CATEGORY = "notification_mini_program_page";
 
     private final NotificationMiniProgramProperties properties;
     private final NotificationChannelConfigRepository configRepository;
@@ -37,6 +41,7 @@ public class NotificationMiniProgramRuntimeConfigService {
     private final ApiKeyProperties apiKeyProperties;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final SysDictRepository sysDictRepository;
 
     @Transactional(readOnly = true)
     public RuntimeConfig activeConfig() {
@@ -80,7 +85,9 @@ public class NotificationMiniProgramRuntimeConfigService {
         if (Boolean.TRUE.equals(request.getClearDefaultPage())) {
             config.setDefaultPage(null);
         } else if (StringUtils.hasText(request.getDefaultPage())) {
-            config.setDefaultPage(normalize(request.getDefaultPage()));
+            String defaultPage = normalize(request.getDefaultPage());
+            validateMiniProgramPage(defaultPage, "默认跳转页");
+            config.setDefaultPage(defaultPage);
         }
         if (Boolean.TRUE.equals(request.getClearSecret())) {
             config.setSecretCipher(null);
@@ -136,6 +143,7 @@ public class NotificationMiniProgramRuntimeConfigService {
         config.setSource("ENV");
         config.setSecretConfigured(StringUtils.hasText(properties.getAppSecret()));
         config.setSecretSource(StringUtils.hasText(properties.getAppSecret()) ? "ENV" : "NONE");
+        config.setSecretFingerprint(fingerprint(properties.getAppSecret()));
         return config;
     }
 
@@ -157,10 +165,12 @@ public class NotificationMiniProgramRuntimeConfigService {
             config.setAppSecret(secretService.decrypt(dbConfig.getSecretCipher()));
             config.setSecretConfigured(true);
             config.setSecretSource("DATABASE");
+            config.setSecretFingerprint(firstText(dbConfig.getSecretFingerprint(), fingerprint(config.getAppSecret())));
         } else {
             config.setAppSecret(properties.getAppSecret());
             config.setSecretConfigured(StringUtils.hasText(properties.getAppSecret()));
             config.setSecretSource(StringUtils.hasText(properties.getAppSecret()) ? "ENV" : "NONE");
+            config.setSecretFingerprint(fingerprint(properties.getAppSecret()));
         }
         return config;
     }
@@ -172,12 +182,16 @@ public class NotificationMiniProgramRuntimeConfigService {
         dto.setEnabled(config.isEnabled());
         dto.setConfigured(config.isConfigured());
         dto.setRegistered(true);
-        dto.setHealthStatus(config.isConfigured() && config.hasAnyTemplateConfigured() ? "OK" : "NOT_CONFIGURED");
+        dto.setHealthStatus(config.isOperationallyReady()
+                ? "OK"
+                : (config.hasAnyConfiguration() ? "DEGRADED" : "NOT_CONFIGURED"));
         dto.setSource(config.getSource());
+        dto.setAppId(config.getAppId());
         dto.setAppIdMasked(mask(config.getAppId(), 6));
         dto.setEndpointUrlMasked(maskUrl(config.getSendUrl()));
         dto.setSecretConfigured(config.isSecretConfigured());
         dto.setSecretSource(config.getSecretSource());
+        dto.setSecretFingerprintMasked(maskFingerprint(config.getSecretFingerprint()));
         dto.setTimeoutMs(config.getTimeoutMs());
         dto.setDefaultPage(config.getDefaultPage());
         dto.setTokenUrlMasked(maskUrl(config.getTokenUrl()));
@@ -252,15 +266,19 @@ public class NotificationMiniProgramRuntimeConfigService {
         }
         Map<String, NotificationMiniProgramProperties.Template> templates = new LinkedHashMap<>(current.getTemplates());
         if (request.getTemplates() != null) {
+            Set<String> seenTypes = new HashSet<>();
             for (NotificationChannelConfigUpdateRequest.TemplateMappingRequest item : request.getTemplates()) {
                 if (!StringUtils.hasText(item.getNotificationType())) {
                     continue;
                 }
                 String key = normalizeKey(item.getNotificationType());
+                validateTemplateMapping(key, item, seenTypes);
                 NotificationMiniProgramProperties.Template existing = templates.get(key);
                 NotificationMiniProgramProperties.Template template = new NotificationMiniProgramProperties.Template();
                 template.setTemplateId(firstText(item.getTemplateId(), existing == null ? null : existing.getTemplateId()));
-                template.setPage(firstText(item.getPage(), existing == null ? null : existing.getPage()));
+                template.setPage(item.getPage() == null
+                        ? (existing == null ? null : existing.getPage())
+                        : (StringUtils.hasText(item.getPage()) ? normalize(item.getPage()) : null));
                 template.setFields(item.getFields() == null
                         ? (existing == null || existing.getFields() == null ? new LinkedHashMap<>() : existing.getFields())
                         : item.getFields());
@@ -269,6 +287,32 @@ public class NotificationMiniProgramRuntimeConfigService {
         }
         stored.setTemplates(templates.isEmpty() ? properties.configuredTemplates() : templates);
         return stored;
+    }
+
+    private void validateTemplateMapping(
+            String notificationType,
+            NotificationChannelConfigUpdateRequest.TemplateMappingRequest item,
+            Set<String> seenTypes) {
+        if (!seenTypes.add(notificationType)) {
+            throw new IllegalArgumentException("小程序模板通知类型重复: " + notificationType);
+        }
+        boolean activeType = sysDictRepository.findByCategoryAndDictKey("notification_type", notificationType)
+                .map(dict -> dict.getStatus() == com.pricemanagement.constants.CommonStatus.ACTIVE)
+                .orElse(false);
+        if (!activeType) {
+            throw new IllegalArgumentException("小程序模板通知类型不存在或未启用: " + notificationType);
+        }
+        if (StringUtils.hasText(item.getTemplateId())
+                && (item.getFields() == null || item.getFields().isEmpty())) {
+            throw new IllegalArgumentException("小程序模板字段映射不能为空: " + notificationType);
+        }
+        if (StringUtils.hasText(item.getPage())) {
+            validateMiniProgramPage(normalize(item.getPage()), "模板跳转页");
+        }
+        if (item.getFields() != null && item.getFields().entrySet().stream()
+                .anyMatch(entry -> !StringUtils.hasText(entry.getKey()) || !StringUtils.hasText(entry.getValue()))) {
+            throw new IllegalArgumentException("小程序模板字段映射不能包含空键或空值: " + notificationType);
+        }
     }
 
     private StoredConfig readStoredConfig(String configJson) {
@@ -353,6 +397,27 @@ public class NotificationMiniProgramRuntimeConfigService {
         }
     }
 
+    private String maskFingerprint(String fingerprint) {
+        if (!StringUtils.hasText(fingerprint)) {
+            return "-";
+        }
+        String trimmed = fingerprint.trim();
+        return "SHA-256 …" + trimmed.substring(Math.max(0, trimmed.length() - 8));
+    }
+
+    private String fingerprint(String secret) {
+        return StringUtils.hasText(secret) ? secretService.fingerprint(secret.trim()) : null;
+    }
+
+    private void validateMiniProgramPage(String page, String fieldName) {
+        boolean activePage = sysDictRepository.findByCategoryAndDictKey(MINI_PROGRAM_PAGE_DICT_CATEGORY, page)
+                .map(dict -> dict.getStatus() == com.pricemanagement.constants.CommonStatus.ACTIVE)
+                .orElse(false);
+        if (!activePage) {
+            throw new IllegalArgumentException(fieldName + "不存在或未启用: " + page);
+        }
+    }
+
     private void notifyConfigChanged() {
         eventPublisher.publishEvent(new MiniProgramConfigChangedEvent());
     }
@@ -376,6 +441,7 @@ public class NotificationMiniProgramRuntimeConfigService {
         private String source;
         private boolean secretConfigured;
         private String secretSource;
+        private String secretFingerprint;
         private LocalDateTime updatedTime;
 
         public String tokenCacheKey() {
@@ -406,8 +472,24 @@ public class NotificationMiniProgramRuntimeConfigService {
             return enabled && hasCredentials();
         }
 
+        public boolean isOperationallyReady() {
+            return isConfigured() && hasAnyDeliverableTemplate();
+        }
+
+        public boolean hasAnyConfiguration() {
+            return enabled
+                    || StringUtils.hasText(appId)
+                    || secretConfigured
+                    || hasAnyTemplateConfigured();
+        }
+
         public boolean hasAnyTemplateConfigured() {
             return !configuredTemplates().isEmpty();
+        }
+
+        public boolean hasAnyDeliverableTemplate() {
+            return configuredTemplates().values().stream()
+                    .anyMatch(template -> template.getFields() != null && !template.getFields().isEmpty());
         }
 
         public Optional<NotificationMiniProgramProperties.Template> resolveTemplate(String notificationType) {

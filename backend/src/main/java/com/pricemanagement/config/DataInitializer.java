@@ -273,6 +273,11 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("notification_channel", "MINI_PROGRAM", "小程序订阅消息", null, 3, "通知渠道"));
             dicts.add(createDict("notification_channel", "WEBHOOK", "Webhook", null, 4, "通知渠道"));
             dicts.add(createDict("notification_channel", "WECHAT_WORK", "企业微信", null, 5, "通知渠道"));
+            dicts.add(createDict("notification_mini_program_page", "pages/notifications/index", "消息通知", null, 1, "小程序通知跳转页"));
+            dicts.add(createDict("notification_mini_program_page", "pages/home/index", "首页", null, 2, "小程序通知跳转页"));
+            dicts.add(createDict("notification_mini_program_page", "pages/history/index", "历史价格", null, 3, "小程序通知跳转页"));
+            dicts.add(createDict("notification_mini_program_page", "pages/products/list", "产品列表", null, 4, "小程序通知跳转页"));
+            dicts.add(createDict("notification_mini_program_page", "pages/profile/index", "个人中心", null, 5, "小程序通知跳转页"));
             dicts.add(createDict("notification_read_status", "UNREAD", "未读", "#F59E0B", 1, "阅读状态"));
             dicts.add(createDict("notification_read_status", "READ", "已读", "#10B981", 2, "阅读状态"));
             dicts.add(createDict("notification_priority", "LOW", "低", "#64748B", 1, "通知优先级"));

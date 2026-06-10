@@ -98,10 +98,10 @@ public class NotificationObservabilityService {
                 .ifPresent(delivery -> {
                     dto.setLastDeliveryTime(delivery.getUpdatedTime());
                     dto.setLastStatus(delivery.getStatus().name());
-                    dto.setLastErrorCode(delivery.getErrorCode());
+        dto.setLastErrorCode(delivery.getErrorCode());
                     dto.setLastErrorMessage(delivery.getErrorMessage());
                 });
-        dto.setHealthStatus(resolveHealthStatus(dto));
+        dto.setHealthStatus(resolveHealthStatus(dto, channel));
         return dto;
     }
 
@@ -114,7 +114,7 @@ public class NotificationObservabilityService {
         if (NotificationService.CHANNEL_MINI_PROGRAM.equals(channel)) {
             NotificationMiniProgramRuntimeConfigService.RuntimeConfig runtimeConfig =
                     miniProgramRuntimeConfigService.activeConfig();
-            return runtimeConfig.isConfigured() && runtimeConfig.hasAnyTemplateConfigured();
+            return runtimeConfig.isOperationallyReady();
         }
         return providerRegistry.hasProvider(channel);
     }
@@ -133,8 +133,15 @@ public class NotificationObservabilityService {
         return count;
     }
 
-    private String resolveHealthStatus(NotificationProviderHealthDTO dto) {
-        if (!dto.isRegistered() || !dto.isConfigured()) {
+    private String resolveHealthStatus(NotificationProviderHealthDTO dto, String channel) {
+        if (!dto.isRegistered()) {
+            return "NOT_CONFIGURED";
+        }
+        if (!dto.isConfigured()) {
+            if (NotificationService.CHANNEL_MINI_PROGRAM.equals(channel)
+                    && miniProgramRuntimeConfigService.activeConfig().hasAnyConfiguration()) {
+                return "DEGRADED";
+            }
             return "NOT_CONFIGURED";
         }
         if (dto.getConsecutiveFailureCount() >= 3 || dto.getFailedCount() >= 20) {

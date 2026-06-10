@@ -342,6 +342,10 @@ public class NotificationService {
         return value == null || value.isBlank();
     }
 
+    private String normalizeFilter(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     private List<User> resolveRecipients(NotificationCreateCommand command) {
         Map<Long, User> users = new LinkedHashMap<>();
         if (command.getRecipientUsers() != null && !command.getRecipientUsers().isEmpty()) {
@@ -459,6 +463,21 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public List<NotificationDeliveryLog> getDeliveries(Long messageId) {
         return deliveryLogRepository.findByMessageIdOrderByIdAsc(messageId);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<NotificationDeliveryLog> getAdminDeliveryLogs(
+            Long messageId,
+            String channel,
+            NotificationDeliveryLog.DeliveryStatus status,
+            String keyword,
+            Pageable pageable) {
+        return deliveryLogRepository.findAdminDeliveryLogs(
+                messageId,
+                normalizeFilter(channel),
+                status,
+                normalizeFilter(keyword),
+                pageable);
     }
 
     @Transactional(readOnly = true)

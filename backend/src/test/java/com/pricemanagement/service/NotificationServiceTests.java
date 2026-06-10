@@ -95,6 +95,38 @@ class NotificationServiceTests {
     }
 
     @Test
+    void getAdminDeliveryLogsUsesRepositoryPaginationAndFilters() {
+        PageRequest pageable = PageRequest.of(0, 10);
+        NotificationDeliveryLog delivery = new NotificationDeliveryLog();
+        delivery.setId(40L);
+        delivery.setMessageId(20L);
+        delivery.setChannel(NotificationService.CHANNEL_MINI_PROGRAM);
+        delivery.setStatus(NotificationDeliveryLog.DeliveryStatus.FAILED);
+        Page<NotificationDeliveryLog> page = new PageImpl<>(List.of(delivery), pageable, 1);
+        when(deliveryLogRepository.findAdminDeliveryLogs(
+                20L,
+                NotificationService.CHANNEL_MINI_PROGRAM,
+                NotificationDeliveryLog.DeliveryStatus.FAILED,
+                "WECHAT",
+                pageable)).thenReturn(page);
+
+        Page<NotificationDeliveryLog> result = notificationService.getAdminDeliveryLogs(
+                20L,
+                " MINI_PROGRAM ",
+                NotificationDeliveryLog.DeliveryStatus.FAILED,
+                " WECHAT ",
+                pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        verify(deliveryLogRepository).findAdminDeliveryLogs(
+                20L,
+                NotificationService.CHANNEL_MINI_PROGRAM,
+                NotificationDeliveryLog.DeliveryStatus.FAILED,
+                "WECHAT",
+                pageable);
+    }
+
+    @Test
     void unreadCountUsesVisibleNonArchivedQuery() {
         when(recipientRepository.countVisibleByUserIdAndReadStatus(
                 org.mockito.ArgumentMatchers.eq(1L),

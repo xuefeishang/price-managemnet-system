@@ -20,7 +20,9 @@ import com.pricemanagement.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -37,6 +39,7 @@ import java.util.stream.Collectors;
 public class AdminMiniProgramSubscriptionManagementService {
 
     private static final int LOW_BALANCE_THRESHOLD = 1;
+    private static final int GUIDE_BATCH_SIZE = 200;
 
     private final UserRepository userRepository;
     private final NotificationMiniProgramSubscriptionRepository subscriptionRepository;
@@ -158,14 +161,27 @@ public class AdminMiniProgramSubscriptionManagementService {
 
     @Transactional
     public int sendGuide(NotificationAuthorizationGuideRequest request, Long operatorId) {
-        List<User> users = targetUsers(request.getTargetRoles(), request.getKeyword());
-        Map<Long, List<NotificationMiniProgramSubscription>> subscriptions = subscriptionMap(users);
-        List<Long> userIds = users.stream()
-                .map(user -> toRow(user, subscriptions.get(user.getId())))
-                .filter(row -> matchesStatus(row, request.getStatus()))
-                .map(AdminMiniProgramSubscriptionDTO::getUserId)
-                .toList();
-        return createGuideNotification(userIds, operatorId);
+        int pageNumber = 0;
+        int sent = 0;
+        Page<User> page;
+        do {
+            page = userRepository.findActiveMiniProgramSubscriptionTargets(
+                    CommonStatus.ACTIVE,
+                    singleRole(request.getTargetRoles()),
+                    normalizeKeyword(request.getKeyword()),
+                    PageRequest.of(pageNumber, GUIDE_BATCH_SIZE, Sort.by(Sort.Direction.ASC, "id")));
+            List<User> users = page.getContent();
+            Map<Long, List<NotificationMiniProgramSubscription>> subscriptions = subscriptionMap(users);
+            List<Long> userIds = users.stream()
+                    .filter(user -> matchesRoles(user, request.getTargetRoles()))
+                    .map(user -> toRow(user, subscriptions.get(user.getId())))
+                    .filter(row -> matchesStatus(row, request.getStatus()))
+                    .map(AdminMiniProgramSubscriptionDTO::getUserId)
+                    .toList();
+            sent += createGuideNotification(userIds, operatorId);
+            pageNumber++;
+        } while (page.hasNext());
+        return sent;
     }
 
     @Transactional
@@ -213,6 +229,14 @@ public class AdminMiniProgramSubscriptionManagementService {
                         || contains(user.getNickname(), normalizedKeyword)
                         || contains(user.getPhone(), normalizedKeyword))
                 .toList();
+    }
+
+    private User.Role singleRole(List<User.Role> roles) {
+        return roles == null || roles.size() != 1 ? null : roles.get(0);
+    }
+
+    private boolean matchesRoles(User user, List<User.Role> roles) {
+        return roles == null || roles.isEmpty() || roles.contains(user.getRole());
     }
 
     private String normalizeKeyword(String keyword) {

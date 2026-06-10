@@ -194,9 +194,7 @@ export const useUserStore = defineStore('user', () => {
    * @param permissionCode 权限编码
    */
   const hasPermission = (permissionCode: string): boolean => {
-    // 管理员拥有所有权限
-    if (user.value?.role === 'ADMIN') return true
-    // 检查权限列表
+    // 权限按钮必须与 JWT / 后端 hasAuthority 使用同一份动态权限集合。
     return permissions.value.has(permissionCode)
   }
 

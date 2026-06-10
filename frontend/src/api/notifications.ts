@@ -84,6 +84,19 @@ export const getAdminNotificationDeliveries = async (id: number): Promise<ApiRes
   return await http.get(`/api/admin/notifications/${id}/deliveries`)
 }
 
+export const getAdminNotificationDeliveryLogs = async (
+  id: number,
+  params?: {
+    page?: number
+    size?: number
+    channel?: string
+    status?: string
+    keyword?: string
+  }
+): Promise<ApiResponse<PageResponse<NotificationDeliveryLog>>> => {
+  return await http.get(`/api/admin/notifications/${id}/delivery-logs`, { params })
+}
+
 export const retryAdminNotificationDelivery = async (id: number): Promise<ApiResponse<void>> => {
   return await http.post(`/api/admin/notifications/deliveries/${id}/retry`)
 }

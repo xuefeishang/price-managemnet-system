@@ -8,6 +8,25 @@
       <button class="read-all-btn" :disabled="unreadCount <= 0" @click="handleReadAll">全部已读</button>
     </view>
 
+    <view class="subscribe-panel">
+      <view class="subscribe-main">
+        <text class="subscribe-title">小程序消息订阅</text>
+        <text class="subscribe-desc">{{ subscribeDescription }}</text>
+        <view v-if="miniSubscription.templates.length > 0" class="subscribe-tags">
+          <text
+            v-for="template in miniSubscription.templates"
+            :key="template.notificationType + template.templateId"
+            class="subscribe-tag"
+          >
+            {{ subscriptionTemplateLabel(template.notificationType) }} · {{ subscriptionStatusLabel(template.status) }} · 剩余 {{ template.availableCount }}
+          </text>
+        </view>
+      </view>
+      <button class="subscribe-btn" :disabled="!canRequestSubscribe" @click="requestMiniProgramSubscribe">
+        订阅
+      </button>
+    </view>
+
     <view class="tabs">
       <view class="tab" :class="{ active: filter === 'ALL' }" @click="switchFilter('ALL')">全部</view>
       <view class="tab" :class="{ active: filter === 'UNREAD' }" @click="switchFilter('UNREAD')">未读</view>
@@ -51,7 +70,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import {
   archiveNotification,
   getMyNotifications,
@@ -63,6 +82,7 @@ import { useUserStore } from '@/store/useUserStore'
 import type { NotificationMessage, PageResponse } from '@/types'
 import { getDictValue, loadAllDicts } from '@/composables/useDict'
 import { refreshNotificationIndicator } from '@/composables/useNotificationIndicator'
+import { useMiniProgramSubscription } from '@/composables/useMiniProgramSubscription'
 
 const userStore = useUserStore()
 const notifications = ref<NotificationMessage[]>([])
@@ -73,6 +93,17 @@ const size = 20
 const loading = ref(false)
 const finished = ref(false)
 const loadError = ref('')
+const targetMessageId = ref(0)
+const targetOpened = ref(false)
+const {
+  miniSubscription,
+  canRequestSubscribe,
+  subscribeDescription,
+  loadMiniSubscriptions,
+  requestMiniProgramSubscribe,
+  subscriptionTemplateLabel,
+  subscriptionStatusLabel
+} = useMiniProgramSubscription()
 
 const typeLabel = (type: string) => getDictValue('notification_type', type)
 const priorityLabel = (priority: string) => getDictValue('notification_priority', priority)
@@ -101,6 +132,14 @@ const loadUnread = async () => {
   }
 }
 
+const openTargetNotification = async () => {
+  if (!targetMessageId.value || targetOpened.value) return
+  const target = notifications.value.find(item => item.messageId === targetMessageId.value || item.id === targetMessageId.value)
+  if (!target) return
+  targetOpened.value = true
+  await openNotification(target)
+}
+
 const loadList = async (reset = false) => {
   if (loading.value || (finished.value && !reset)) return
   if (reset) {
@@ -123,6 +162,7 @@ const loadList = async (reset = false) => {
     finished.value = pageData.last || (page.value + 1 >= pageData.totalPages)
     page.value += 1
     await loadUnread()
+    await openTargetNotification()
   } catch (error) {
     loadError.value = '通知加载失败，请稍后重试'
     console.error('加载通知列表失败:', error)
@@ -137,7 +177,7 @@ const loadList = async (reset = false) => {
 const loadMore = () => loadList(false)
 
 const refresh = async () => {
-  await Promise.all([loadList(true), loadUnread()])
+  await Promise.all([loadList(true), loadUnread(), loadMiniSubscriptions()])
 }
 
 const switchFilter = (next: 'ALL' | 'UNREAD') => {
@@ -195,7 +235,14 @@ onMounted(() => {
   loadAllDicts().finally(refresh)
 })
 
-onShow(loadUnread)
+onLoad((options) => {
+  const value = Number(options?.messageId || options?.id || 0)
+  targetMessageId.value = Number.isFinite(value) ? value : 0
+})
+
+onShow(async () => {
+  await Promise.all([loadUnread(), loadMiniSubscriptions()])
+})
 
 onPullDownRefresh(async () => {
   await refresh()
@@ -259,6 +306,75 @@ onPullDownRefresh(async () => {
 
 .read-all-btn[disabled] {
   background: #CBD5E1;
+}
+
+.subscribe-panel {
+  background: #FFFFFF;
+  border-bottom: 1rpx solid #E5E7EB;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 24rpx 32rpx;
+}
+
+.subscribe-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.subscribe-title,
+.subscribe-desc {
+  display: block;
+}
+
+.subscribe-title {
+  color: #1A1A1A;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.subscribe-desc {
+  color: #64748B;
+  font-size: 24rpx;
+  line-height: 1.5;
+  margin-top: 8rpx;
+}
+
+.subscribe-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.subscribe-tag {
+  max-width: 100%;
+  background: #F1F5F9;
+  border-radius: 999rpx;
+  color: #475569;
+  font-size: 22rpx;
+  line-height: 1.3;
+  padding: 8rpx 14rpx;
+}
+
+.subscribe-btn {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin: 0;
+  min-width: 128rpx;
+  height: 64rpx;
+  border-radius: 12rpx;
+  background: #0D6E6E;
+  color: #FFFFFF;
+  font-size: 26rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+}
+
+.subscribe-btn[disabled] {
+  background: #CBD5E1;
+  color: #FFFFFF;
 }
 
 .tabs {

@@ -16,10 +16,12 @@ public class NotificationChannelConfigDTO {
     private boolean registered;
     private String healthStatus;
     private String source;
+    private String appId;
     private String appIdMasked;
     private String endpointUrlMasked;
     private boolean secretConfigured;
     private String secretSource;
+    private String secretFingerprintMasked;
     private Integer timeoutMs;
     private String defaultPage;
     private String tokenUrlMasked;

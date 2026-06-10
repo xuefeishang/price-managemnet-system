@@ -4,7 +4,7 @@ import { showToast } from 'vant'
 import {
   cancelSystemNotice,
   createSystemNotice,
-  getAdminNotificationDeliveries,
+  getAdminNotificationDeliveryLogs,
   getAdminNotificationRecipients,
   getAdminNotifications,
   getMiniProgramCoverage,
@@ -27,6 +27,7 @@ import {
 } from '@/api/notifications'
 import { getDictOptions, getDictValue, loadAllDicts } from '@/composables/useDict'
 import { Permission, usePermission } from '@/composables/usePermission'
+import { useUserStore } from '@/store/useUserStore'
 import type {
   AdminNotificationSummary,
   AdminMiniProgramSubscription,
@@ -67,6 +68,7 @@ const resolutionForm = reactive({
 })
 const selectedNotification = ref<AdminNotificationSummary | null>(null)
 const showNoticeEditor = ref(false)
+const userStore = useUserStore()
 const { hasPermission } = usePermission()
 
 type NotificationTab = 'overview' | 'publish' | 'audit' | 'channels' | 'subscriptions'
@@ -140,7 +142,9 @@ const deliveryFilters = reactive({
 
 const deliveryPagination = reactive({
   page: 0,
-  size: 3
+  size: 5,
+  totalElements: 0,
+  totalPages: 0
 })
 
 const noticeForm = reactive<SystemNoticeCreateRequest>({
@@ -172,6 +176,20 @@ const canTestToken = computed(() => hasPermission(Permission.NOTIFICATION_TEST_T
 const canTestDelivery = computed(() => hasPermission(Permission.NOTIFICATION_TEST_DELIVERY))
 const subscriptionRowStatusOptions = computed(() => getDictOptions('notification_mini_subscription_row_status'))
 const resolutionStatusOptions = computed(() => getDictOptions('notification_mini_resolution_status'))
+const miniProgramPageOptions = computed(() => getDictOptions('notification_mini_program_page'))
+const templateNotificationTypeOptions = computed(() =>
+  typeOptions.value.filter(option => ['PRICE_PUBLISHED', 'SYSTEM_NOTICE'].includes(option.value))
+)
+const defaultMiniProgramTemplateFields: Record<string, Record<string, string>> = {
+  PRICE_PUBLISHED: {
+    type: 'phrase2',
+    tip: 'thing4'
+  },
+  SYSTEM_NOTICE: {
+    creator: 'thing1',
+    time: 'time2'
+  }
+}
 const visibleTabs = computed(() => tabs.filter(tab => tab.key !== 'subscriptions' || canViewSubscriptions.value))
 const miniProgramHealth = computed(() =>
   providerHealth.value.find(provider => provider.channel === 'MINI_PROGRAM') || null
@@ -190,6 +208,11 @@ const selectedProviderHealth = computed(() =>
 )
 const selectedChannelConfig = computed(() =>
   selectedChannel.value === 'MINI_PROGRAM' ? miniProgramConfig.value : null
+)
+const selectedChannelHealthStatus = computed(() =>
+  selectedChannel.value === 'MINI_PROGRAM'
+    ? selectedChannelConfig.value?.healthStatus || selectedProviderHealth.value?.healthStatus || 'NOT_CONFIGURED'
+    : selectedProviderHealth.value?.healthStatus || (selectedChannel.value === 'IN_APP' ? 'OK' : 'NOT_CONFIGURED')
 )
 const selectedChannelDiagnostics = computed(() => selectedChannelConfig.value?.diagnostics || [])
 const selectedChannelTemplates = computed(() => selectedChannelConfig.value?.templates || [])
@@ -292,37 +315,16 @@ const externalFailedDeliveries = computed(() =>
   deliveries.value.filter(delivery => delivery.channel !== 'IN_APP' && delivery.status === 'FAILED').length
 )
 const highFrequencyTypes = computed(() => dashboard.value?.highFrequencyTypes || [])
-const filteredDeliveries = computed(() => {
-  const keyword = deliveryFilters.keyword.trim().toLowerCase()
-  return deliveries.value.filter(delivery => {
-    if (deliveryFilters.channel && delivery.channel !== deliveryFilters.channel) return false
-    if (deliveryFilters.status && delivery.status !== deliveryFilters.status) return false
-    if (!keyword) return true
-    return [
-      delivery.channel,
-      getDictValue('notification_channel', delivery.channel),
-      delivery.status,
-      getDictValue('notification_delivery_status', delivery.status),
-      delivery.provider,
-      delivery.providerMessageId,
-      delivery.errorCode,
-      delivery.errorMessage
-    ].some(value => String(value || '').toLowerCase().includes(keyword))
-  })
-})
-const deliveryTotalPages = computed(() => Math.max(1, Math.ceil(filteredDeliveries.value.length / deliveryPagination.size)))
-const pagedDeliveries = computed(() => {
-  const start = deliveryPagination.page * deliveryPagination.size
-  return filteredDeliveries.value.slice(start, start + deliveryPagination.size)
-})
+const deliveryTotalPages = computed(() => Math.max(1, deliveryPagination.totalPages || 1))
+const pagedDeliveries = computed(() => deliveries.value)
 const deliveryPageLabel = computed(() =>
-  `${filteredDeliveries.value.length === 0 ? 0 : deliveryPagination.page + 1} / ${deliveryTotalPages.value}`
+  `${deliveryPagination.totalElements === 0 ? 0 : deliveryPagination.page + 1} / ${deliveryTotalPages.value}`
 )
 const deliveryRangeLabel = computed(() => {
-  if (filteredDeliveries.value.length === 0) return '共 0 条'
+  if (deliveryPagination.totalElements === 0) return '共 0 条'
   const start = deliveryPagination.page * deliveryPagination.size + 1
-  const end = Math.min((deliveryPagination.page + 1) * deliveryPagination.size, filteredDeliveries.value.length)
-  return `${start}-${end} / ${filteredDeliveries.value.length} 条`
+  const end = Math.min((deliveryPagination.page + 1) * deliveryPagination.size, deliveryPagination.totalElements)
+  return `${start}-${end} / ${deliveryPagination.totalElements} 条`
 })
 
 let detailRequestSeq = 0
@@ -349,7 +351,7 @@ const loadObservability = async () => {
 
 const syncChannelConfigForm = (config: NotificationChannelConfig | null) => {
   channelConfigForm.enabled = Boolean(config?.enabled)
-  channelConfigForm.appId = ''
+  channelConfigForm.appId = config?.appId || ''
   channelConfigForm.endpointUrl = ''
   channelConfigForm.secret = ''
   channelConfigForm.timeoutMs = config?.timeoutMs || 5000
@@ -360,6 +362,46 @@ const syncChannelConfigForm = (config: NotificationChannelConfig | null) => {
     page: template.page || '',
     fields: { ...(template.fields || {}) }
   }))
+}
+
+const applyDefaultTemplateFields = (template: { notificationType: string; fields?: Record<string, string> }) => {
+  if (Object.keys(template.fields || {}).length > 0) return
+  template.fields = { ...(defaultMiniProgramTemplateFields[template.notificationType] || {}) }
+}
+
+const addChannelTemplate = () => {
+  const used = new Set((channelConfigForm.templates || []).map(template => template.notificationType))
+  const nextType = templateNotificationTypeOptions.value.find(option => !used.has(option.value))?.value || ''
+  const template = {
+    notificationType: nextType,
+    templateId: '',
+    page: '',
+    fields: { ...(defaultMiniProgramTemplateFields[nextType] || {}) }
+  }
+  channelConfigForm.templates = [...(channelConfigForm.templates || []), template]
+}
+
+const validateChannelConfigForm = () => {
+  const templates = channelConfigForm.templates || []
+  const seen = new Set<string>()
+  for (const template of templates) {
+    const type = template.notificationType?.trim()
+    if (!type) {
+      showToast('请选择模板通知类型')
+      return false
+    }
+    if (seen.has(type)) {
+      showToast('模板通知类型不能重复')
+      return false
+    }
+    seen.add(type)
+    const fields = Object.entries(template.fields || {}).filter(([key, value]) => key && value)
+    if ((template.templateId || '').trim() && fields.length === 0) {
+      showToast('已填写模板ID时必须配置字段映射')
+      return false
+    }
+  }
+  return true
 }
 
 const loadMiniProgramConfig = async () => {
@@ -382,6 +424,13 @@ const loadMiniProgramCoverage = async () => {
 }
 
 const loadMiniProgramSubscriptions = async () => {
+  const hasTokenPermission = userStore.permissions.has(Permission.NOTIFICATION_SUBSCRIPTION_VIEW)
+  if (userStore.isAdmin && !hasTokenPermission) {
+    subscriptions.value = []
+    subscriptionPagination.totalElements = 0
+    subscriptionPagination.totalPages = 0
+    return
+  }
   if (!canViewSubscriptions.value) {
     subscriptions.value = []
     subscriptionPagination.totalElements = 0
@@ -401,6 +450,15 @@ const loadMiniProgramSubscriptions = async () => {
     subscriptions.value = pageData.content || []
     subscriptionPagination.totalElements = pageData.totalElements || 0
     subscriptionPagination.totalPages = pageData.totalPages || 0
+  } catch (error: any) {
+    if (error?.response?.status === 403) {
+      subscriptions.value = []
+      subscriptionPagination.totalElements = 0
+      subscriptionPagination.totalPages = 0
+      showToast('当前登录令牌缺少订阅授权权限，请重新登录后再查看')
+      return
+    }
+    throw error
   } finally {
     subscriptionLoading.value = false
   }
@@ -480,19 +538,38 @@ const loadNotices = async () => {
   }
 }
 
+const loadDeliveryLogs = async () => {
+  if (!selectedNotification.value) {
+    deliveries.value = []
+    deliveryPagination.totalElements = 0
+    deliveryPagination.totalPages = 0
+    return
+  }
+  const response = await getAdminNotificationDeliveryLogs(selectedNotification.value.id, {
+    page: deliveryPagination.page,
+    size: deliveryPagination.size,
+    channel: deliveryFilters.channel || undefined,
+    status: deliveryFilters.status || undefined,
+    keyword: deliveryFilters.keyword || undefined
+  })
+  const pageData = response.data as PageResponse<NotificationDeliveryLog>
+  deliveries.value = pageData.content || []
+  deliveryPagination.totalElements = pageData.totalElements || 0
+  deliveryPagination.totalPages = pageData.totalPages || 0
+}
+
 const selectNotification = async (notification: AdminNotificationSummary) => {
   const requestSeq = ++detailRequestSeq
   selectedNotification.value = notification
   detailLoading.value = true
+  deliveryPagination.page = 0
   try {
-    const [recipientResponse, deliveryResponse] = await Promise.all([
+    const [recipientResponse] = await Promise.all([
       getAdminNotificationRecipients(notification.id, { page: 0, size: 20 }),
-      getAdminNotificationDeliveries(notification.id)
+      loadDeliveryLogs()
     ])
     if (requestSeq !== detailRequestSeq) return
     recipients.value = recipientResponse.data.content || []
-    deliveries.value = deliveryResponse.data || []
-    deliveryPagination.page = 0
   } finally {
     if (requestSeq === detailRequestSeq) {
       detailLoading.value = false
@@ -529,6 +606,7 @@ const changeNoticePage = async (page: number) => {
 
 const searchDeliveryLogs = () => {
   deliveryPagination.page = 0
+  loadDeliveryLogs()
 }
 
 const resetDeliveryFilters = () => {
@@ -536,11 +614,13 @@ const resetDeliveryFilters = () => {
   deliveryFilters.channel = ''
   deliveryFilters.status = ''
   deliveryPagination.page = 0
+  loadDeliveryLogs()
 }
 
-const changeDeliveryPage = (page: number) => {
+const changeDeliveryPage = async (page: number) => {
   if (page < 0 || page >= deliveryTotalPages.value || page === deliveryPagination.page) return
   deliveryPagination.page = page
+  await loadDeliveryLogs()
 }
 
 const refreshAll = async () => {
@@ -567,9 +647,7 @@ const resetFilters = () => {
 const retryDelivery = async (delivery: NotificationDeliveryLog) => {
   await retryAdminNotificationDelivery(delivery.id)
   showToast('已提交投递重试')
-  if (selectedNotification.value) {
-    await selectNotification(selectedNotification.value)
-  }
+  await loadDeliveryLogs()
 }
 
 const switchTab = (tab: NotificationTab) => {
@@ -585,12 +663,21 @@ const saveChannelConfig = async () => {
     showPlannedAction(`${getDictValue('notification_channel', selectedChannel.value)}配置`)
     return
   }
-  const response = await saveNotificationChannelConfig(selectedChannel.value, channelConfigForm)
-  miniProgramConfig.value = response.data
-  syncChannelConfigForm(response.data)
-  channelEditing.value = false
-  showToast('渠道配置已保存')
-  await Promise.all([loadObservability(), loadMiniProgramCoverage()])
+  if (!validateChannelConfigForm()) return
+  try {
+    const response = await saveNotificationChannelConfig(selectedChannel.value, channelConfigForm)
+    miniProgramConfig.value = response.data
+    syncChannelConfigForm(response.data)
+    channelEditing.value = false
+    showToast('渠道配置已保存')
+    await Promise.all([loadObservability(), loadMiniProgramCoverage()])
+  } catch (error: any) {
+    if (error?.response?.status === 403) {
+      showToast('当前登录令牌缺少系统设置权限，请重新登录后再保存')
+      return
+    }
+    showToast(error?.response?.data?.message || error?.message || '渠道配置保存失败')
+  }
 }
 
 const testChannelConfig = async () => {
@@ -777,7 +864,17 @@ const templateFieldsText = (fields?: Record<string, string>) => {
   return entries.length ? entries.map(([key, value]) => `${key} -> ${value}`).join(' / ') : '-'
 }
 
+const ensureFreshNotificationPermissions = async () => {
+  await userStore.fetchProfile()
+  if (userStore.isAdmin && userStore.refreshTokenValue) {
+    const accessToken = await userStore.refreshAccessToken()
+    if (!accessToken) return
+    await userStore.fetchProfile()
+  }
+}
+
 onMounted(async () => {
+  await ensureFreshNotificationPermissions()
   await loadAllDicts()
   await refreshAll()
 })
@@ -1180,6 +1277,10 @@ onMounted(async () => {
             </div>
             <div class="delivery-filter compact-filter">
               <input v-model="deliveryFilters.keyword" class="form-input" placeholder="错误码或 Provider" @keyup.enter="searchDeliveryLogs" />
+              <select v-model="deliveryFilters.channel" class="form-input" @change="searchDeliveryLogs">
+                <option value="">全部渠道</option>
+                <option v-for="option in channelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
               <select v-model="deliveryFilters.status" class="form-input" @change="searchDeliveryLogs">
                 <option value="">全部状态</option>
                 <option v-for="option in deliveryStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -1256,19 +1357,26 @@ onMounted(async () => {
             <div class="panel-header">
               <h2>基础配置</h2>
               <div class="row-actions">
-                <button v-if="canManageChannelConfig" class="btn-outline compact-button" type="button" @click="editChannelConfig"><span class="btn-icon">⚙</span>配置</button>
-                <span class="status-pill" :class="toneClass(selectedProviderHealth?.healthStatus || 'NOT_CONFIGURED')">
-                  {{ getDictValue('notification_provider_health_status', selectedProviderHealth?.healthStatus || 'NOT_CONFIGURED') }}
+                <span class="status-pill" :class="toneClass(selectedChannelHealthStatus)">
+                  {{ getDictValue('notification_provider_health_status', selectedChannelHealthStatus) }}
                 </span>
               </div>
             </div>
             <div class="config-grid">
               <article><span>Provider 启用</span><strong>{{ selectedChannelConfig?.enabled ? '已启用' : '未启用' }}</strong><small>关闭后外部投递记录为 SKIPPED</small></article>
-              <article><span>AppID / Endpoint</span><strong>{{ selectedChannelConfig?.appIdMasked || selectedChannelConfig?.endpointUrlMasked || '-' }}</strong><small>非敏感参数脱敏展示</small></article>
+              <article><span>AppID / Endpoint</span><strong>{{ selectedChannelConfig?.appIdMasked || selectedChannelConfig?.endpointUrlMasked || '-' }}</strong><small>编辑时回写完整 AppID</small></article>
               <article><span>接口超时</span><strong>{{ selectedChannelConfig?.timeoutMs || '-' }} ms</strong><small>建议限制 1000-30000ms</small></article>
-              <article class="secret-card"><span>密钥状态</span><strong>{{ selectedChannelConfig?.secretConfigured ? '已托管' : '未配置' }}</strong><small>来源：{{ selectedChannelConfig?.secretSource || '-' }}</small></article>
-              <article><span>默认跳转页</span><strong>{{ selectedChannelConfig?.defaultPage || '-' }}</strong><small>模板可覆盖</small></article>
-              <article><span>配置来源</span><strong>{{ selectedChannelConfig?.source || '-' }}</strong><small>数据库配置优先，环境变量兜底</small></article>
+              <article class="secret-card">
+                <span>密钥状态</span>
+                <strong>{{ selectedChannelConfig?.secretConfigured ? '已托管' : '未配置' }}</strong>
+                <small>{{ selectedChannelConfig?.secretSource || '-' }} / {{ selectedChannelConfig?.secretFingerprintMasked || '-' }}</small>
+              </article>
+              <article>
+                <span>默认跳转页</span>
+                <strong>{{ selectedChannelConfig?.defaultPage ? getDictValue('notification_mini_program_page', selectedChannelConfig.defaultPage) : '-' }}</strong>
+                <small>{{ selectedChannelConfig?.defaultPage || '未配置' }} / 模板可覆盖</small>
+              </article>
+              <article><span>配置来源</span><strong>{{ selectedChannelConfig?.source || '-' }}</strong><small>最近更新：{{ formatTime(selectedChannelConfig?.updatedTime) }}</small></article>
             </div>
             <div v-if="channelEditing && selectedChannel === 'MINI_PROGRAM'" class="config-edit-grid">
               <label>
@@ -1281,7 +1389,15 @@ onMounted(async () => {
               </label>
               <label>
                 <span>AppSecret</span>
-                <input v-model="channelConfigForm.secret" class="form-input" type="password" placeholder="只写入，不回显" />
+                <input
+                  v-model="channelConfigForm.secret"
+                  class="form-input"
+                  type="password"
+                  :placeholder="selectedChannelConfig?.secretConfigured ? '已配置，留空则保留；输入新值将替换' : '输入 AppSecret'"
+                />
+                <small v-if="selectedChannelConfig?.secretConfigured">
+                  {{ selectedChannelConfig.secretSource || '-' }} / {{ selectedChannelConfig.secretFingerprintMasked || '已托管' }}
+                </small>
               </label>
               <label>
                 <span>接口超时 ms</span>
@@ -1289,7 +1405,10 @@ onMounted(async () => {
               </label>
               <label>
                 <span>默认跳转页</span>
-                <input v-model="channelConfigForm.defaultPage" class="form-input" placeholder="pages/notifications/index" />
+                <select v-model="channelConfigForm.defaultPage" class="form-input">
+                  <option value="">请选择默认跳转页</option>
+                  <option v-for="option in miniProgramPageOptions" :key="option.value" :value="option.value">{{ option.label }}（{{ option.value }}）</option>
+                </select>
               </label>
               <label>
                 <span>发送接口地址</span>
@@ -1300,9 +1419,6 @@ onMounted(async () => {
           <div class="config-section">
             <div class="panel-header">
               <h2>模板映射</h2>
-              <div class="row-actions">
-                <button v-if="canManageChannelConfig" class="btn-outline compact-button" type="button" @click="editChannelConfig"><span class="btn-icon">✎</span>编辑映射</button>
-              </div>
             </div>
             <div class="template-table">
               <div class="template-row header"><span>通知类型</span><span>模板名称</span><span>模板ID</span><span>字段映射</span><span>状态</span></div>
@@ -1326,7 +1442,10 @@ onMounted(async () => {
               <article v-for="(template, index) in channelConfigForm.templates" :key="template.notificationType" class="template-edit-row">
                 <label>
                   <span>通知类型</span>
-                  <input v-model="template.notificationType" class="form-input" />
+                  <select v-model="template.notificationType" class="form-input" @change="applyDefaultTemplateFields(template)">
+                    <option value="">请选择通知类型</option>
+                    <option v-for="option in templateNotificationTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                  </select>
                 </label>
                 <label>
                   <span>模板ID</span>
@@ -1334,11 +1453,18 @@ onMounted(async () => {
                 </label>
                 <label>
                   <span>跳转页</span>
-                  <input v-model="template.page" class="form-input" />
+                  <select v-model="template.page" class="form-input">
+                    <option value="">使用默认跳转页</option>
+                    <option v-for="option in miniProgramPageOptions" :key="option.value" :value="option.value">{{ option.label }}（{{ option.value }}）</option>
+                  </select>
+                </label>
+                <label>
+                  <span>字段映射</span>
+                  <input class="form-input" :value="templateFieldsText(template.fields)" readonly />
                 </label>
                 <button v-if="canManageChannelConfig" class="btn-outline compact-button" type="button" @click="channelConfigForm.templates?.splice(index, 1)"><span class="btn-icon">×</span>删除</button>
               </article>
-              <button v-if="canManageChannelConfig" class="btn-primary compact-button" type="button" @click="channelConfigForm.templates?.push({ notificationType: '', templateId: '', page: '', fields: {} })"><span class="btn-icon">+</span>新增模板</button>
+              <button v-if="canManageChannelConfig" class="btn-primary compact-button" type="button" @click="addChannelTemplate"><span class="btn-icon">+</span>新增模板</button>
             </div>
           </div>
         </section>
@@ -1472,7 +1598,7 @@ onMounted(async () => {
             <h2>{{ selectedSubscription.nickname || selectedSubscription.username }}</h2>
             <small>{{ getDictValue('user_role', selectedSubscription.role) }} / {{ selectedSubscription.openidMasked }}</small>
           </div>
-          <button class="btn-outline compact-button" type="button" @click="selectedSubscription = null">关闭</button>
+          <button class="btn-outline compact-button" type="button" @click="selectedSubscription = null"><span class="btn-icon">×</span>关闭</button>
         </div>
         <div v-if="subscriptionDetailLoading" class="state-inline">详情加载中...</div>
         <template v-else>
@@ -1480,8 +1606,8 @@ onMounted(async () => {
             <div class="panel-header">
               <h3>模板授权</h3>
               <div class="row-actions">
-                <button v-if="canGuideSubscription" class="btn-outline compact-button" type="button" @click="guideSelectedSubscription">发送授权引导</button>
-                <button v-if="canTestDelivery" class="btn-outline compact-button" type="button" @click="sendSubscriptionTestDelivery">测试投递</button>
+                <button v-if="canGuideSubscription" class="btn-outline compact-button" type="button" @click="guideSelectedSubscription"><span class="btn-icon">↗</span>发送授权引导</button>
+                <button v-if="canTestDelivery" class="btn-outline compact-button" type="button" @click="sendSubscriptionTestDelivery"><span class="btn-icon">⚡</span>测试投递</button>
               </div>
             </div>
             <div v-for="template in selectedSubscription.templates" :key="template.notificationType" class="drawer-row">
@@ -1497,7 +1623,7 @@ onMounted(async () => {
             </select>
             <input v-if="resolutionForm.status === 'SNOOZED'" v-model="resolutionForm.remindAfter" class="form-input" type="datetime-local" />
             <textarea v-model="resolutionForm.remark" class="form-input" maxlength="500" placeholder="处理备注"></textarea>
-            <button v-if="canResolveSubscription" class="btn-primary" type="button" @click="saveSubscriptionResolution">保存处理结果</button>
+            <button v-if="canResolveSubscription" class="btn-primary" type="button" @click="saveSubscriptionResolution"><span class="btn-icon">✓</span>保存处理结果</button>
           </section>
           <section class="drawer-section">
             <h3>最近投递</h3>

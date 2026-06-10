@@ -112,4 +112,53 @@ class AdminMiniProgramSubscriptionManagementServiceTests {
                 pageable);
         verify(userRepository, never()).findByStatus(any());
     }
+
+    @Test
+    void sendGuideUsesPagedDatabaseQueryInsteadOfLoadingAllUsers() {
+        User user = new User();
+        user.setId(1L);
+        user.setUsername("editor");
+        user.setRole(User.Role.EDITOR);
+        user.setStatus(com.pricemanagement.constants.CommonStatus.ACTIVE);
+        org.springframework.data.domain.PageRequest pageable =
+                org.springframework.data.domain.PageRequest.of(
+                        0,
+                        200,
+                        org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "id"));
+        when(userRepository.findActiveMiniProgramSubscriptionTargets(
+                eq(com.pricemanagement.constants.CommonStatus.ACTIVE),
+                eq(User.Role.EDITOR),
+                eq("iron"),
+                eq(pageable)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(user), pageable, 1));
+        when(subscriptionRepository.findByUserIdIn(List.of(1L))).thenReturn(List.of());
+        when(runtimeConfigService.configuredTemplates()).thenReturn(List.of());
+        when(eligibilityService.evaluate(user, List.of()))
+                .thenReturn(new NotificationMiniProgramEligibilityService.Evaluation(
+                        NotificationMiniProgramEligibility.RowStatus.UNBOUND,
+                        false,
+                        0,
+                        0,
+                        0,
+                        null,
+                        "empty"));
+        when(resolutionRepository.findSnoozedUserIds(any(), any())).thenReturn(List.of());
+        when(userRepository.findAllById(List.of(1L))).thenReturn(List.of(user));
+
+        com.pricemanagement.dto.NotificationAuthorizationGuideRequest request =
+                new com.pricemanagement.dto.NotificationAuthorizationGuideRequest();
+        request.setTargetRoles(List.of(User.Role.EDITOR));
+        request.setKeyword("iron");
+
+        int sent = service.sendGuide(request, 99L);
+
+        assertThat(sent).isEqualTo(1);
+        verify(userRepository).findActiveMiniProgramSubscriptionTargets(
+                com.pricemanagement.constants.CommonStatus.ACTIVE,
+                User.Role.EDITOR,
+                "iron",
+                pageable);
+        verify(userRepository, never()).findByStatus(any());
+        verify(notificationService).create(any());
+    }
 }

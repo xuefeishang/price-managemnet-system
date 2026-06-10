@@ -37,11 +37,11 @@
               :key="template.notificationType + template.templateId"
               class="subscribe-tag"
             >
-              {{ getDictValue('notification_type', template.notificationType) }} · {{ getDictValue('notification_mini_subscription_status', template.status) }} · {{ template.availableCount }}
+              {{ subscriptionTemplateLabel(template.notificationType) }} · {{ subscriptionStatusLabel(template.status) }} · {{ template.availableCount }}
             </text>
           </view>
         </view>
-        <button class="subscribe-btn" :disabled="!canRequestSubscribe" @click="handleSubscribeMessages">
+        <button class="subscribe-btn" :disabled="!canRequestSubscribe" @click="requestMiniProgramSubscribe">
           订阅
         </button>
       </view>
@@ -62,63 +62,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getDictValue, loadAllDicts } from '@/composables/useDict'
 import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
-import {
-  getMiniProgramSubscriptions,
-  updateMiniProgramSubscriptions
-} from '@/api/notifications'
-import type { NotificationMiniProgramSubscription } from '@/types'
+import { useMiniProgramSubscription } from '@/composables/useMiniProgramSubscription'
 import { onShow } from '@dcloudio/uni-app'
 
 const userStore = useUserStore()
 const { unreadCount, refreshNotificationIndicator } = useNotificationIndicator()
-const miniSubscription = ref<NotificationMiniProgramSubscription>({
-  enabled: false,
-  configured: false,
-  openidBound: false,
-  templates: []
-})
+const {
+  miniSubscription,
+  canRequestSubscribe,
+  subscribeDescription,
+  loadMiniSubscriptions,
+  requestMiniProgramSubscribe,
+  subscriptionTemplateLabel,
+  subscriptionStatusLabel
+} = useMiniProgramSubscription()
 
 const roleLabel = computed(() => {
   const role = userStore.user?.role
   return role ? getDictValue('user_role', role) : ''
 })
 
-const canRequestSubscribe = computed(() => {
-  return miniSubscription.value.enabled
-    && miniSubscription.value.configured
-    && miniSubscription.value.openidBound
-    && miniSubscription.value.templates.length > 0
-})
-
-const subscribeDescription = computed(() => {
-  if (!miniSubscription.value.enabled) return '订阅消息功能未启用'
-  if (!miniSubscription.value.configured) return '订阅消息模板尚未配置'
-  if (!miniSubscription.value.openidBound) return '请先使用微信登录绑定小程序身份'
-  if (miniSubscription.value.templates.length === 0) return '暂无可订阅的消息模板'
-  return '授权后可收到价格发布和系统公告提醒'
-})
-
 const loadUnreadCount = async () => {
   await refreshNotificationIndicator(false)
-}
-
-const loadMiniSubscriptions = async () => {
-  try {
-    const response = await getMiniProgramSubscriptions()
-    miniSubscription.value = response.data
-  } catch {
-    miniSubscription.value = {
-      enabled: false,
-      configured: false,
-      openidBound: false,
-      templates: []
-    }
-  }
 }
 
 const goNotifications = () => {
@@ -136,33 +106,6 @@ const handleLogout = () => {
       }
     }
   })
-}
-
-const handleSubscribeMessages = async () => {
-  if (!canRequestSubscribe.value) {
-    uni.showToast({ title: subscribeDescription.value, icon: 'none' })
-    return
-  }
-  const tmplIds = miniSubscription.value.templates.map(item => item.templateId)
-  // #ifdef MP-WEIXIN
-  try {
-    const result = await uni.requestSubscribeMessage({ tmplIds })
-    const responseMap = result as unknown as Record<string, string>
-    const results = miniSubscription.value.templates.map(template => ({
-      notificationType: template.notificationType,
-      templateId: template.templateId,
-      result: responseMap[template.templateId] || 'unknown'
-    }))
-    const response = await updateMiniProgramSubscriptions({ results })
-    miniSubscription.value = response.data
-    uni.showToast({ title: '订阅状态已更新', icon: 'success' })
-  } catch {
-    uni.showToast({ title: '订阅授权未完成', icon: 'none' })
-  }
-  // #endif
-  // #ifndef MP-WEIXIN
-  uni.showToast({ title: '请在微信小程序中订阅消息', icon: 'none' })
-  // #endif
 }
 
 onMounted(async () => {
