@@ -1,7 +1,7 @@
 ---
 name: deploy
 preamble-tier: 1
-version: 1.3.0
+version: 1.3.1
 description: |
   将价格管理系统部署到生产环境（10.7.5.175）。包含代码提交、推送、
   生产环境同步、Docker镜像构建、容器启动的完整流程。
@@ -187,41 +187,70 @@ ssh root@10.7.5.175 "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports
 **预期结果：**
 - `price-management-backend` 状态为 `(healthy)`
 - `price-management-frontend` 状态为 `Up`
-- 端口：前端 80（可选）、**32080（PC 端 + 小程序主入口）**、**32081（小程序内网测试专用）**，后端 8080
+- 端口：前端 443（域名 HTTPS）、**32080（统一 HTTPS 入口）**、**32801（内网正式 HTTP 入口）**、80（保留），后端 8080
 
-### 4.1.1 关键端口说明
+### 4.1.1 关键端口说明（来自当前生产 nginx.conf）
 
-| 端口 | 用途 | 客户端 | 备注 |
-|------|------|--------|------|
-| 80 | PC 端 HTTP（可选） | PC 浏览器 | 保留端口，必要时启用 |
-| **32080** | **统一入口（PC 端 + 小程序主入口）** | PC / 小程序 | 内网 + 外网共用 |
-| **32081** | **小程序内网测试专用** | 微信小程序（开发版） | **必须监听，小程序内网测试强制要求** |
+生产环境 nginx.conf 当前配置为四个 server 块，对应四种入口：
+
+| 端口 | 用途 | 客户端 | 配置特点 |
+|------|------|--------|----------|
+| **443** | 正式 HTTPS 入口（域名） | PC / 小程序（生产） | `server_name price.jlmining.com`，需 SSL 证书 |
+| **32080** | **统一 HTTPS 入口**（PC 端 + 微信小程序） | PC / 小程序 | `server_name price.jlmining.com`，SSL 终止，小程序 request 合法域名 |
+| **32801** | **内网正式 HTTP 入口** | 内网 PC / 内网联调 | HTTP 入口，**小程序内网测试强制要求** |
+| 80 | 保留 HTTP | 内网 PC | 当前未启用重定向，独立提供服务 |
 | 8080 | 后端 API（host 网络） | nginx 代理目标 | 容器直接监听宿主机，无 docker-proxy |
 
-**⚠️ 重要：小程序内网测试强制要求监听 32081 端口**
+**⚠️ 重要：小程序内网测试强制要求监听 32801 端口**
 
-- 微信小程序开发工具在内网环境联调时，仅信任以下端口范围内的目标服务器
-- **32081 必须监听**，否则小程序内网测试无法访问后端
-- 部署后必须验证 32081 端口是否正常响应（详见 4.3.2）
-- **任何一次前端镜像重建后，都必须重新验证 32081 端口的连通性**
+- 微信小程序开发工具在内网环境联调时，使用 `http://10.7.5.175:32801` 作为后端 API 入口
+- **32801 必须监听**，否则小程序内网测试无法访问后端
+- 部署后必须验证 32801 端口是否正常响应（详见 4.3.1）
+- **任何一次前端镜像重建后，都必须重新验证 32801 端口的连通性**
 
-### 4.1.2 nginx 配置中端口 32081 的处理
+### 4.1.2 nginx.conf 实际结构（来源：生产环境 10.7.5.175）
 
-`nginx.conf` 必须同时监听 32080 和 32081 两个端口：
+当前生产 `nginx.conf` 包含四个 server 块：
 
 ```nginx
+# 1. 默认 server：拒绝 IP/未配置域名访问 HTTPS
 server {
-    listen 32080;   # PC 端 + 小程序主入口
-    listen 32081;   # 小程序内网测试专用
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/nginx/certs/price.jlmining.com.pem;
+    ssl_certificate_key /etc/nginx/certs/price.jlmining.com.key;
+    return 444;
+}
+
+# 2. 正式 HTTPS 入口
+server {
+    listen 443 ssl;
+    server_name price.jlmining.com;
+    ssl_certificate /etc/nginx/certs/price.jlmining.com.pem;
+    ssl_certificate_key /etc/nginx/certs/price.jlmining.com.key;
+    # 安全头 + Gzip + SPA 路由 + API 代理
+}
+
+# 3. 主服务器 - 统一 HTTPS 入口（端口 32080）
+server {
+    listen 32080 ssl;
+    server_name price.jlmining.com;
+    # 与正式 HTTPS 相同的代理配置 + CORS 跨域头
+    # 微信小程序 request 合法域名使用 https://price.jlmining.com:32080
+}
+
+# 4. 内网正式 HTTP 入口：80 / 32801
+server {
+    listen 80;
+    listen 32801;
     server_name localhost;
-    # ...
+    # 独立服务，不重定向
+    # 小程序内网测试走 32801
 }
 ```
 
-**常见错误**：仅监听 32080，缺少 32081 → 小程序内网测试失败
-
-**修复方法**：
-1. 编辑 `nginx.conf`，添加 `listen 32081;`
+**修复方法（如果端口丢失）**：
+1. 编辑 `/opt/price-management-system/nginx.conf`，添加对应 `listen` 指令
 2. 重新构建前端镜像：`docker compose build --no-cache frontend`
 3. 重新创建前端容器：`docker compose up -d frontend`
 
@@ -237,11 +266,11 @@ ssh root@10.7.5.175 "sleep 90 && docker ps --format '{{.Names}}\t{{.Status}}' | 
 ### 4.3 API 功能验证
 
 ```bash
-# 验证统一入口（32080）
-ssh root@10.7.5.175 "curl -s http://localhost:32080/api/auth/captcha | head -c 200"
+# 验证统一 HTTPS 入口（32080）
+ssh root@10.7.5.175 "curl -s -k https://localhost:32080/api/auth/captcha | head -c 200"
 
-# 验证小程序内网测试端口（32081）
-ssh root@10.7.5.175 "curl -s http://localhost:32081/api/auth/captcha | head -c 200"
+# 验证小程序内网测试 HTTP 入口（32801）
+ssh root@10.7.5.175 "curl -s http://localhost:32801/api/auth/captcha | head -c 200"
 
 # 验证后端直接访问
 ssh root@10.7.5.175 "curl -s http://localhost:8080/api/products?page=0&size=1"
@@ -251,16 +280,25 @@ ssh root@10.7.5.175 "curl -s http://localhost:8080/api/products?page=0&size=1"
 - 验证码接口返回 JSON 格式数据
 - 产品接口返回 JSON（可能 401 未登录）
 
-**⚠️ 32081 端口必须返回 200**，否则小程序内网测试不可用
+**⚠️ 32801 端口必须返回 200**，否则小程序内网测试不可用
 
 ### 4.3.1 端口监听验证脚本
 
 ```bash
-# 检查 32080 和 32081 是否都在监听
-ssh root@10.7.5.175 "netstat -tlnp 2>/dev/null | grep -E ':32080|:32081|:8080' || ss -tlnp | grep -E ':32080|:32081|:8080'"
+# 检查所有关键端口是否都在监听
+ssh root@10.7.5.175 "netstat -tlnp 2>/dev/null | grep -E ':443|:32080|:32801|:80|:8080' || ss -tlnp | grep -E ':443|:32080|:32801|:80|:8080'"
 ```
 
-**预期结果**：三个端口都在 LISTEN 状态
+**预期结果**：所有关键端口都在 LISTEN 状态
+
+### 4.3.2 HTTPS 443 验证（域名证书）
+
+```bash
+# 验证域名证书
+ssh root@10.7.5.175 "curl -s -k https://price.jlmining.com:443/api/auth/captcha | head -c 200"
+```
+
+**预期**：返回 JSON 验证码数据
 
 ---
 
@@ -288,9 +326,9 @@ ssh root@10.7.5.175 "docker logs price-management-backend 2>&1 | grep -i 'error\
 | 容器名称冲突 | 旧容器未删除 | `docker rm -f price-management-frontend price-management-backend` |
 | 前端 502 | nginx 代理配置错误 | 检查 nginx.conf 使用 `host.docker.internal` |
 | 健康检查失败 | 后端启动异常 | 查看后端日志定位问题 |
-| **小程序内网测试失败（32081 不可达）** | nginx.conf 缺少 `listen 32081;` | 编辑 nginx.conf 添加 32081 监听，重新构建前端 |
-| **32081 端口返回 404/502** | 前端镜像未重建 | `docker compose build --no-cache frontend && docker compose up -d frontend` |
-| **SSL 证书加载失败** | nginx.conf 引用不存在的证书文件 | 从 git 历史回退 nginx.conf 到稳定版本 |
+| **小程序内网测试失败（32801 不可达）** | nginx.conf 缺少 `listen 32801;` | 编辑 nginx.conf 添加 32801 监听，重新构建前端 |
+| **32801 端口返回 404/502** | 前端镜像未重建 | `docker compose build --no-cache frontend && docker compose up -d frontend` |
+| **SSL 证书加载失败** | nginx.conf 引用不存在的证书文件（如 `price.jlmining.com.pem`） | 从 git 历史回退 nginx.conf 到稳定版本（不要修改已部署的稳定版） |
 
 ### 5.3 强制重置生产环境
 
@@ -336,11 +374,11 @@ ssh root@10.7.5.175 "cd /opt/price-management-system && git checkout -- . && git
 | 检查项 | 命令 | 预期 |
 |--------|------|------|
 | 容器状态 | `docker ps` | backend (healthy), frontend Up |
-| **32080 端口** | `curl localhost:32080/` | HTTP 200 |
-| **32081 端口**（小程序内网测试） | `curl localhost:32081/api/auth/captcha` | JSON 响应，HTTP 200 |
-| 32080 验证码 API | `curl localhost:32080/api/auth/captcha` | JSON 响应 |
-| 登录页面 | 浏览器访问 `http://10.7.5.175:32080` | 显示登录界面 |
-| 小程序内网测试 | 微信开发者工具访问 `http://10.7.5.175:32081` | 正常加载小程序 |
+| **443 端口**（正式 HTTPS） | `curl -k https://price.jlmining.com:443/api/auth/captcha` | JSON 响应 |
+| **32080 端口**（统一 HTTPS 入口） | `curl -k https://localhost:32080/api/auth/captcha` | JSON 响应 |
+| **32801 端口**（小程序内网测试） | `curl http://localhost:32801/api/auth/captcha` | JSON 响应 |
+| 登录页面 | 浏览器访问 `https://price.jlmining.com:32080` | 显示登录界面 |
+| 小程序内网测试 | 微信开发者工具访问 `http://10.7.5.175:32801` | 正常加载小程序 |
 
 ---
 
@@ -363,8 +401,9 @@ Tag: v<版本号> 已推送
 - price-management-frontend: Up
 
 访问地址:
-- PC 端 / 小程序主入口: http://10.7.5.175:32080（内网） / http://101.254.159.153:32080（外网）
-- 小程序内网测试专用: http://10.7.5.175:32081（**必须监听**）
+- 正式域名 HTTPS: https://price.jlmining.com:443
+- PC 端 / 小程序主入口: https://price.jlmining.com:32080（内网） / https://101.254.159.153:32080（外网）
+- 小程序内网测试专用: http://10.7.5.175:32801（**必须监听**）
 
 版本记录: docs/VERSIONS.md 已更新
 ```
@@ -407,5 +446,5 @@ Tag: v<版本号> 已推送
 
 ---
 
-*Skill 版本: 1.3.0*
-*最后更新: 2026-06-13 — 增加小程序内网测试端口 32081 监听要求、端口验证清单、SSL 证书与 32081 故障排查*
+*Skill 版本: 1.3.1*
+*最后更新: 2026-06-13 — 修正端口架构（443 / 32080 / 32801 / 80），与生产 nginx.conf 实际配置对齐*
