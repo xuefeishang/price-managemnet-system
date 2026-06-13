@@ -103,6 +103,8 @@ public class ProductService {
 
     @Transactional
     public Product createProduct(Product product, Long applicantId) {
+        product.setBudgetPrice(null);
+
         // 处理分类ID转换
         if (product.getCategoryId() != null) {
             ProductCategory category = categoryRepository.findById(product.getCategoryId())
@@ -181,7 +183,7 @@ public class ProductService {
         // 需要排除的系统字段
         Set<String> excludedFields = Set.of(
             "id", "version", "createdTime", "updatedTime",
-            "category", "categoryId", "class"
+            "category", "categoryId", "budgetPrice", "class"
         );
 
         for (java.beans.PropertyDescriptor pd : src.getPropertyDescriptors()) {
@@ -246,7 +248,6 @@ public class ProductService {
         changeData.put("originIds", product.getOriginIds());
         changeData.put("customerIds", product.getCustomerIds());
         changeData.put("remark", product.getRemark());
-        changeData.put("budgetPrice", product.getBudgetPrice());
         changeData.put("action", action);
         return changeData;
     }

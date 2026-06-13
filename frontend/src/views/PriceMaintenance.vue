@@ -177,8 +177,6 @@ const formatBudgetPrice = (productId: number): string => {
   const symbol = getProductCurrencySymbol(productId)
   const price = priceMap.value.get(productId)
   if (price?.budgetPrice != null) return `${symbol}${price.budgetPrice.toFixed(2)}`
-  const product = productById.value.get(productId)
-  if (product?.budgetPrice != null) return `${symbol}${product.budgetPrice.toFixed(2)}`
   const inherited = inheritedBudgetPriceMap.value.get(productId)
   if (inherited != null) return `${symbol}${inherited.toFixed(2)}`
   return '-'
@@ -271,6 +269,11 @@ const loadProducts = async (options: { silent?: boolean } = {}) => {
     products.value = pageData.content || []
     tableTotalElements.value = pageData.totalElements || 0
     tableTotalPages.value = pageData.totalPages || 0
+    if (tableTotalPages.value > 0 && tablePage.value >= tableTotalPages.value) {
+      tablePage.value = tableTotalPages.value - 1
+      await loadProducts(options)
+      return
+    }
     products.value.forEach(initEditingData)
   } catch (error) {
     console.error('Failed to load products:', error)
@@ -437,6 +440,7 @@ const handleSave = async () => {
 
   saving.value = true
   let failCount = 0
+  const savedPage = tablePage.value
 
   try {
     const items = []
@@ -457,7 +461,6 @@ const handleSave = async () => {
         basePriceId: existingPrice?.id,
         basePriceVersion: existingPrice?.version,
         currentPrice,
-        budgetPrice: existingPrice?.budgetPrice ?? product?.budgetPrice,
         unit: existingPrice?.unit ?? product?.unit,
         priceSpec: existingPrice?.priceSpec,
         effectiveDate: selectedDate.value
@@ -476,6 +479,7 @@ const handleSave = async () => {
       items
     })
     applyDraft(response.data)
+    tablePage.value = Math.min(savedPage, Math.max(tableTotalPages.value - 1, 0))
     showToast(`草稿保存成功，共 ${items.length} 条`)
   } catch (error: any) {
     console.error('Failed to save price draft:', error)

@@ -38,6 +38,12 @@ public class PriceController {
         return Result.success("获取价格历史成功", historyList);
     }
 
+    @GetMapping("/products/{productId}/price-years")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    public Result<List<Integer>> getProductPriceYears(@PathVariable Long productId) {
+        return Result.success("获取价格年份成功", priceService.getPriceYears(productId));
+    }
+
     /**
      * 获取产品的当前价格
      */
@@ -178,14 +184,17 @@ public class PriceController {
      * 获取某产品的价格走势数据
      * @param productId 产品ID
      * @param days 天数（30、180、365等），默认30
+     * @param startDate 可选的精确开始日期；传入后优先于 days 计算结果
+     * @param endDate 可选的结束日期
      */
     @GetMapping("/products/{productId}/price-trend")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<List<PriceTrendDTO>> getPriceTrend(
             @PathVariable Long productId,
             @RequestParam(defaultValue = "30") int days,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        List<PriceTrendDTO> trendData = priceService.getPriceTrend(productId, days, endDate);
+        List<PriceTrendDTO> trendData = priceService.getPriceTrend(productId, days, startDate, endDate);
         return Result.success("获取价格走势成功", trendData);
     }
 }

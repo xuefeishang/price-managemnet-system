@@ -41,6 +41,8 @@ class PricePublishServiceTests {
     @Mock
     private PriceService priceService;
     @Mock
+    private ProductAnnualBudgetService annualBudgetService;
+    @Mock
     private NotificationEventService notificationEventService;
 
     @InjectMocks
@@ -56,6 +58,8 @@ class PricePublishServiceTests {
 
         when(batchRepository.findByIdForUpdate(batch.getId())).thenReturn(Optional.of(batch));
         when(itemRepository.findByBatchIdOrderByIdAsc(batch.getId())).thenReturn(List.of(publishedItem, draftItem));
+        when(annualBudgetService.getBudgetPrice(draftItem.getProduct().getId(), draftItem.getEffectiveDate()))
+                .thenReturn(Optional.of(new BigDecimal("88.88")));
         when(priceService.doSavePrice(eq(draftItem.getProduct()), any(Price.class), eq(null))).thenReturn(savedPrice);
         when(publishLogRepository.save(any(PricePublishLog.class))).thenAnswer(invocation -> {
             PricePublishLog log = invocation.getArgument(0);
@@ -68,7 +72,9 @@ class PricePublishServiceTests {
                 1L
         );
 
-        verify(priceService).doSavePrice(eq(draftItem.getProduct()), any(Price.class), eq(null));
+        ArgumentCaptor<Price> priceCaptor = ArgumentCaptor.forClass(Price.class);
+        verify(priceService).doSavePrice(eq(draftItem.getProduct()), priceCaptor.capture(), eq(null));
+        assertThat(priceCaptor.getValue().getBudgetPrice()).isEqualByComparingTo("88.88");
         assertThat(draftItem.getItemStatus()).isEqualTo(PriceDraftItem.ItemStatus.PUBLISHED);
         assertThat(draftItem.getPublishedPriceId()).isEqualTo(savedPrice.getId());
         assertThat(batch.getStatus()).isEqualTo(PriceDraftBatch.DraftStatus.PUBLISHED);
@@ -97,6 +103,8 @@ class PricePublishServiceTests {
 
         when(batchRepository.findByIdForUpdate(batch.getId())).thenReturn(Optional.of(batch));
         when(itemRepository.findByBatchIdOrderByIdAsc(batch.getId())).thenReturn(List.of(publishedItem, draftItem));
+        when(annualBudgetService.getBudgetPrice(draftItem.getProduct().getId(), draftItem.getEffectiveDate()))
+                .thenReturn(Optional.empty());
         when(priceService.doSavePrice(eq(draftItem.getProduct()), any(Price.class), eq(null)))
                 .thenThrow(new IllegalStateException("价格写入失败"));
         when(publishLogRepository.save(any(PricePublishLog.class))).thenAnswer(invocation -> {
@@ -131,6 +139,8 @@ class PricePublishServiceTests {
 
         when(batchRepository.findByIdForUpdate(batch.getId())).thenReturn(Optional.of(batch));
         when(itemRepository.findByBatchIdOrderByIdAsc(batch.getId())).thenReturn(List.of(publishedItem, draftItem));
+        when(annualBudgetService.getBudgetPrice(draftItem.getProduct().getId(), draftItem.getEffectiveDate()))
+                .thenReturn(Optional.empty());
         when(priceService.doSavePrice(eq(draftItem.getProduct()), any(Price.class), eq(null))).thenReturn(savedPrice);
         when(publishLogRepository.save(logCaptor.capture())).thenAnswer(invocation -> {
             PricePublishLog log = invocation.getArgument(0);

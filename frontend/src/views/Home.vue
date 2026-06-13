@@ -308,9 +308,9 @@ const summaryForDisplay = computed<HomeSummary>(() => {
 const trendRangesForDisplay = computed(() => chartRanges.value.length > 0
   ? chartRanges.value
   : [
-      { key: '7d', label: '7日', days: 7 },
-      { key: '30d', label: '30日', days: 30 },
-      { key: '90d', label: '90日', days: 90 }
+      { key: '30d', label: '30天', days: 30 },
+      { key: '180d', label: '180天', days: 180 },
+      { key: '1y', label: '12个月', days: 365 }
     ])
 
 const normalizeTrendDirection = (direction?: string): ProductTrendItem['direction'] => {
@@ -374,7 +374,8 @@ const trendProductItems = computed<ProductTrendItem[]>(() =>
         currentPrice: currentPriceValueMap.value.get(product.id) ?? null,
         points: history.map(item => ({
           date: item.date || item.effectiveDate || item.createdTime,
-          price: item.currentPrice ?? item.newPrice ?? null
+          price: item.currentPrice ?? item.newPrice ?? null,
+          budgetPrice: item.budgetPrice ?? null
         })).filter(point => point.date),
         lineColor: categoryVisual.chartLineColor || categoryVisual.primaryColor,
         areaColor: categoryVisual.chartAreaColor || categoryVisual.glowColor
@@ -403,7 +404,8 @@ const selectedTrendItem = computed<ProductTrendItem | null>(() => {
     currentPrice: currentPriceValueMap.value.get(product.id) ?? null,
     points: history.map(item => ({
       date: item.date || item.effectiveDate || item.createdTime,
-      price: item.currentPrice ?? item.newPrice ?? null
+      price: item.currentPrice ?? item.newPrice ?? null,
+      budgetPrice: item.budgetPrice ?? null
     })).filter(point => point.date),
     lineColor: categoryVisual.chartLineColor || categoryVisual.primaryColor,
     areaColor: categoryVisual.chartAreaColor || categoryVisual.glowColor
@@ -513,23 +515,27 @@ const generateChartOption = (productId: number) => {
   if (history.length === 0) return null
 
   const recent = history.slice(-30)
-  const validPoints = recent
+  const points = recent
     .map(h => ({
       date: h.date || h.effectiveDate || h.createdTime,
-      price: h.currentPrice ?? h.newPrice ?? null
+      price: h.currentPrice ?? h.newPrice ?? null,
+      budgetPrice: h.budgetPrice ?? null
     }))
-    .filter(point => point.date && point.price != null)
-  if (validPoints.length === 0) return null
+    .filter(point => point.date && (point.price != null || point.budgetPrice != null))
+  const validPriceCount = points.filter(point => point.price != null).length
+  if (points.length === 0) return null
 
-  const dates = validPoints.map(h => {
+  const dates = points.map(h => {
     const d = new Date(h.date)
     return `${d.getMonth() + 1}/${d.getDate()}`
   })
-  const prices = validPoints.map(h => h.price)
+  const prices = points.map(h => h.price == null ? null : Number(h.price))
+  const budgets = points.map(h => h.budgetPrice == null ? null : Number(h.budgetPrice))
 
   const product = products.value.find(item => item.id === productId)
   const categoryVisual = getCategoryVisual(product ? getProductCategoryId(product) : undefined)
   const lineColor = categoryVisual.chartLineColor || categoryVisual.primaryColor || themeConfig.value.chartPrimaryColor || '#0D6E6E'
+  const budgetColor = themeConfig.value.chartBudgetColor || 'var(--chart-budget-color)'
   const areaColor = categoryVisual.chartAreaColor || categoryVisual.glowColor || 'rgba(13, 110, 110, 0.12)'
 
   return {
@@ -538,31 +544,55 @@ const generateChartOption = (productId: number) => {
     yAxis: { type: 'value', show: false },
     tooltip: {
       trigger: 'axis',
+      renderMode: 'html',
+      appendToBody: true,
+      confine: false,
+      extraCssText: 'z-index: 10000;',
       formatter: (params: any) => {
-        const p = params[0]
-        return p ? `${p.axisValue}<br/>价格: ${formatPriceNumber(p.value)}` : ''
+        const items = Array.isArray(params) ? params : []
+        if (!items.length) return ''
+        return [
+          items[0].axisValue,
+          ...items
+            .filter((item: any) => item.value != null)
+            .map((item: any) => `${item.marker}${item.seriesName}: ${formatPriceNumber(item.value)}`)
+        ].join('<br/>')
       },
-      confine: true,
       textStyle: { fontSize: 10 }
     },
-    series: [{
-      type: 'line',
-      data: prices,
-      smooth: true,
-      symbol: 'none',
-      itemStyle: { color: lineColor },
-      lineStyle: { width: 1.5, color: lineColor },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: areaColor },
-            { offset: 1, color: 'rgba(255, 255, 255, 0)' }
-          ]
+    series: [
+      {
+        name: '价格',
+        type: 'line',
+        data: prices,
+        smooth: true,
+        connectNulls: true,
+        symbol: validPriceCount <= 1 ? 'circle' : 'none',
+        symbolSize: 4,
+        itemStyle: { color: lineColor },
+        lineStyle: { width: 1.5, color: lineColor },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: areaColor },
+              { offset: 1, color: 'rgba(255, 255, 255, 0)' }
+            ]
+          }
         }
+      },
+      {
+        name: '预算',
+        type: 'line',
+        data: budgets,
+        smooth: true,
+        connectNulls: true,
+        symbol: 'none',
+        itemStyle: { color: budgetColor },
+        lineStyle: { width: 1.2, type: 'dashed', color: budgetColor, opacity: 0.76 }
       }
-    }]
+    ]
   }
 }
 

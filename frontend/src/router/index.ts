@@ -83,6 +83,12 @@ const router = createRouter({
           meta: { title: '价格维护', editorOnly: true }
         },
         {
+          path: 'budget-management',
+          name: 'BudgetManagement',
+          component: () => import('../views/BudgetManagement.vue'),
+          meta: { title: '预算管理', editorOnly: true }
+        },
+        {
           path: 'price-query',
           name: 'PriceQuery',
           component: () => import('../views/PriceQuery.vue'),

@@ -572,6 +572,7 @@ POST /api/auth/logout
 | GET | `/api/admin/notifications/{id}/recipients` | 查询通知收件人，响应包含 `userId`、`username`、`nickname`、`readStatus` 等字段，管理端收件人清单优先展示 `nickname` / `username` |
 | GET | `/api/admin/notifications/{id}/deliveries` | 查询投递日志 |
 | POST | `/api/admin/notifications/deliveries/{id}/retry` | 重试投递记录 |
+| GET/PUT | `/api/admin/notifications/channels/MINI_PROGRAM/config` | 查询/保存小程序渠道配置；保存时 `templates=null` 表示不变，`templates=[]` 表示清空模板集合，模板项 `clearTemplateId=true` 表示清空该类型模板 ID |
 | GET | `/api/admin/notifications/mini-program/coverage?roles=ADMIN,EDITOR` | 小程序发布前触达预估；`roles` 由后端显式拆分并校验 |
 | GET | `/api/admin/notifications/mini-program/subscriptions/{userId}` | 查询订阅授权运维详情，包含模板状态、最近投递、失败原因、用户偏好和处理记录 |
 | POST | `/api/admin/notifications/mini-program/subscriptions/{userId}/resolve` | 标记已处理、暂不提醒、记录备注或生成跟进标记 |
@@ -794,6 +795,20 @@ GET /api/products/{productId}/price-trend
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | days | int | 否 | 30 | 天数（30/180/365） |
+| startDate | date | 否 | - | 精确开始日期；传入后优先于 `days` 计算的开始日期 |
+| endDate | date | 否 | 当天 | 结束日期 |
+
+查看某个自然年时，传入该年的 `startDate=YYYY-01-01` 与 `endDate=YYYY-12-31`；查看当前年时，`endDate` 使用当天。
+
+### 获取产品价格录入年份
+
+```
+GET /api/products/{productId}/price-years
+```
+
+**权限：** ADMIN / EDITOR / VIEWER
+
+返回该产品正式价格记录中实际存在的年份，按年份倒序排列；不返回无数据年份，也不限制历史年限。
 
 ---
 

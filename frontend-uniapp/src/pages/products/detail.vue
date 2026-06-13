@@ -78,18 +78,14 @@ import { computed, onMounted, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/useUserStore'
 import { getCurrentPrice, getProductById } from '@/api/products'
-import { getOrigins } from '@/api/origins'
-import { getCustomers } from '@/api/customers'
 import { getCurrencySymbol, getDictValue, loadAllDicts } from '@/composables/useDict'
-import type { Customer, Origin, Price, Product } from '@/types'
+import type { Price, Product } from '@/types'
 
 const userStore = useUserStore()
 const product = ref<Product | null>(null)
 const currentPrice = ref<Price | null>(null)
 const loading = ref(true)
 const productId = ref(0)
-const origins = ref<Origin[]>([])
-const customers = ref<Customer[]>([])
 
 const parseDictIds = (value?: string) => {
   if (!value) return []
@@ -105,13 +101,11 @@ const statusLabel = computed(() => product.value ? getDictValue('common_status',
 const unitLabel = computed(() => product.value?.unit ? getDictValue('unit', product.value.unit) : '-')
 const currencyLabel = computed(() => product.value?.currency ? getDictValue('currency', product.value.currency) : '-')
 const currencySymbol = computed(() => getCurrencySymbol(product.value?.currency))
-const originMap = computed(() => new Map(origins.value.map(item => [item.code, item.name])))
-const customerMap = computed(() => new Map(customers.value.map(item => [item.code, item.name])))
 const originNames = computed(() =>
-  parseDictIds(product.value?.originIds).map(key => originMap.value.get(key) || key).filter(Boolean).join('、') || '-'
+  parseDictIds(product.value?.originIds).map(key => getDictValue('origin', key)).filter(Boolean).join('、') || '-'
 )
 const customerNames = computed(() =>
-  parseDictIds(product.value?.customerIds).map(key => customerMap.value.get(key) || key).filter(Boolean).join('、') || '-'
+  parseDictIds(product.value?.customerIds).map(key => getDictValue('customer', key)).filter(Boolean).join('、') || '-'
 )
 const displayPrice = computed(() => currentPrice.value?.currentPrice ?? product.value?.sellingPrice ?? null)
 const budgetPrice = computed(() => currentPrice.value?.budgetPrice ?? product.value?.budgetPrice ?? null)
@@ -120,7 +114,7 @@ const budgetDifference = computed(() => {
   return Number(displayPrice.value) - Number(budgetPrice.value)
 })
 const productMeta = computed(() =>
-  [product.value?.code, product.value?.category?.name, product.value?.specs, unitLabel.value, originNames.value]
+  [product.value?.category?.name, product.value?.specs, unitLabel.value, originNames.value]
     .filter(value => value && value !== '-')
     .join(' · ') || '暂无产品规格信息'
 )
@@ -128,7 +122,6 @@ const completeness = computed(() => {
   if (!product.value) return 0
   const values = [
     product.value.name,
-    product.value.code,
     product.value.category?.name,
     product.value.specs,
     product.value.unit,
@@ -140,12 +133,11 @@ const completeness = computed(() => {
   return Math.round((values.filter(Boolean).length / values.length) * 100)
 })
 const infoItems = computed(() => [
-  { label: '产品编码', value: product.value?.code || '-' },
   { label: '所属分类', value: product.value?.category?.name || '-' },
   { label: '规格型号', value: product.value?.specs || '-' },
   { label: '计量单位', value: unitLabel.value },
   { label: '产地', value: originNames.value },
-  { label: '适用客户', value: customerNames.value },
+  { label: '报价适用客户', value: customerNames.value },
   { label: '币种', value: currencyLabel.value }
 ])
 
@@ -164,17 +156,11 @@ const loadProduct = async () => {
   loading.value = true
   try {
     const [productRes, priceRes] = await Promise.all([
-      getProductById(productId.value),
-      getCurrentPrice(productId.value)
+      getProductById(productId.value, false),
+      getCurrentPrice(productId.value, false)
     ])
     product.value = productRes.data || null
     currentPrice.value = priceRes.data || null
-    const [originResult, customerResult] = await Promise.allSettled([
-      getOrigins('ACTIVE'),
-      getCustomers('ACTIVE')
-    ])
-    origins.value = originResult.status === 'fulfilled' ? originResult.value.data || [] : []
-    customers.value = customerResult.status === 'fulfilled' ? customerResult.value.data || [] : []
   } catch (error) {
     product.value = null
     console.error('加载产品详情失败:', error)

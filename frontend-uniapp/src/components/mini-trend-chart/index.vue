@@ -12,7 +12,7 @@
     </view>
 
     <!-- 无数据状态 -->
-    <view v-if="!loading && priceData.length === 0" class="empty-overlay">
+    <view v-if="!loading && !hasChartData" class="empty-overlay">
       <text class="empty-text">--</text>
     </view>
   </view>
@@ -28,11 +28,13 @@ const props = withDefaults(defineProps<{
   width?: number  // rpx 单位
   height?: number // rpx 单位
   lineColor?: string
+  budgetColor?: string
 }>(), {
   days: 30,
   width: 232,
   height: 60,
-  lineColor: '#0D6E6E'
+  lineColor: '#0D6E6E',
+  budgetColor: '#E07B54'
 })
 
 const instance = getCurrentInstance()
@@ -43,8 +45,16 @@ const widthRpx = computed(() => `${props.width}rpx`)
 const heightRpx = computed(() => `${props.height}rpx`)
 
 const loading = ref(false)
-const priceData = ref<number[]>([])
+const priceData = ref<Array<{ date: string; price: number | null; budgetPrice: number | null }>>([])
 const canvasReady = ref(false)
+const priceValues = computed(() => priceData.value
+  .map(item => item.price)
+  .filter((value): value is number => value != null && Number.isFinite(value)))
+const budgetValues = computed(() => priceData.value
+  .map(item => item.budgetPrice)
+  .filter((value): value is number => value != null && Number.isFinite(value)))
+const chartValues = computed(() => [...priceValues.value, ...budgetValues.value])
+const hasChartData = computed(() => chartValues.value.length > 0)
 
 // HEX转RGB
 const hexToRgb = (hex: string) => {
@@ -64,7 +74,7 @@ const rpxToPx = (rpx: number): number => {
 }
 
 const drawChart = () => {
-  if (priceData.value.length === 0 || !canvasReady.value) return
+  if (!hasChartData.value || !canvasReady.value) return
 
   // #ifdef MP-WEIXIN
   const query = uni.createSelectorQuery().in(instance)
@@ -111,49 +121,76 @@ const drawChartContent = (ctx: any, width: number, height: number) => {
 
   if (chartWidth <= 0 || chartHeight <= 0) return
 
-  const prices = priceData.value
-  const minPrice = Math.min(...prices)
-  const maxPrice = Math.max(...prices)
+  const values = chartValues.value
+  const minPrice = Math.min(...values)
+  const maxPrice = Math.max(...values)
   const range = maxPrice - minPrice || 1
 
-  // 计算点坐标
-  const points = prices.map((price, index) => {
-    const x = padding + (index / (prices.length - 1 || 1)) * chartWidth
-    const y = padding + (1 - (price - minPrice) / range) * chartHeight
-    return { x, y }
-  })
+  const pricePoints = priceData.value
+    .map((item, index) => {
+      if (item.price == null) return null
+      const x = padding + (index / (priceData.value.length - 1 || 1)) * chartWidth
+      const y = padding + (1 - (item.price - minPrice) / range) * chartHeight
+      return { x, y }
+    })
+    .filter((point): point is { x: number; y: number } => point != null)
+  const budgetPoints = priceData.value
+    .map((item, index) => {
+      if (item.budgetPrice == null) return null
+      const x = padding + (index / (priceData.value.length - 1 || 1)) * chartWidth
+      const y = padding + (1 - (item.budgetPrice - minPrice) / range) * chartHeight
+      return { x, y }
+    })
+    .filter((point): point is { x: number; y: number } => point != null)
 
-  // 填充区域
-  ctx.beginPath()
-  ctx.moveTo(points[0].x, height - padding)
-  points.forEach(p => ctx.lineTo(p.x, p.y))
-  ctx.lineTo(points[points.length - 1].x, height - padding)
-  ctx.closePath()
+  if (pricePoints.length > 0) {
+    // 填充区域
+    ctx.beginPath()
+    ctx.moveTo(pricePoints[0].x, height - padding)
+    pricePoints.forEach(p => ctx.lineTo(p.x, p.y))
+    ctx.lineTo(pricePoints[pricePoints.length - 1].x, height - padding)
+    ctx.closePath()
 
-  // 渐变填充
-  const gradient = ctx.createLinearGradient(0, padding, 0, height - padding)
-  const rgb = hexToRgb(props.lineColor)
-  gradient.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.30)`)
-  gradient.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0.05)`)
-  ctx.fillStyle = gradient
-  ctx.fill()
+    // 渐变填充
+    const gradient = ctx.createLinearGradient(0, padding, 0, height - padding)
+    const rgb = hexToRgb(props.lineColor)
+    gradient.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.30)`)
+    gradient.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0.05)`)
+    ctx.fillStyle = gradient
+    ctx.fill()
 
-  // 绘制曲线
-  ctx.beginPath()
-  points.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y)
-    else ctx.lineTo(p.x, p.y)
-  })
-  ctx.strokeStyle = props.lineColor
-  ctx.lineWidth = 1.5
-  ctx.stroke()
+    // 绘制曲线
+    ctx.beginPath()
+    pricePoints.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y)
+      else ctx.lineTo(p.x, p.y)
+    })
+    ctx.strokeStyle = props.lineColor
+    ctx.lineWidth = 1.5
+    ctx.stroke()
 
-  // 绘制最新价格点
-  const lastPoint = points[points.length - 1]
-  ctx.beginPath()
-  ctx.arc(lastPoint.x, lastPoint.y, 3, 0, 2 * Math.PI)
-  ctx.fillStyle = props.lineColor
-  ctx.fill()
+    // 单点和最新价格点
+    const lastPoint = pricePoints[pricePoints.length - 1]
+    ctx.beginPath()
+    ctx.arc(lastPoint.x, lastPoint.y, 3, 0, 2 * Math.PI)
+    ctx.fillStyle = props.lineColor
+    ctx.fill()
+  }
+
+  if (budgetPoints.length > 0) {
+    ctx.save?.()
+    ctx.beginPath()
+    ctx.setLineDash?.([4, 3])
+    budgetPoints.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y)
+      else ctx.lineTo(p.x, p.y)
+    })
+    ctx.strokeStyle = props.budgetColor
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    ctx.setLineDash?.([])
+    ctx.restore?.()
+  }
 }
 
 const loadTrendData = async () => {
@@ -165,8 +202,12 @@ const loadTrendData = async () => {
 
     if (res.code === 200 && res.data) {
       priceData.value = res.data
-        .map((item: any) => item.currentPrice)
-        .filter((p: number | null) => p != null)
+        .filter((item: any) => item.date && (item.currentPrice != null || item.budgetPrice != null))
+        .map((item: any) => ({
+          date: item.date,
+          price: item.currentPrice == null ? null : Number(item.currentPrice),
+          budgetPrice: item.budgetPrice == null ? null : Number(item.budgetPrice)
+        }))
 
       nextTick(() => {
         setTimeout(() => {

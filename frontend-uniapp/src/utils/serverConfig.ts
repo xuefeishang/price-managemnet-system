@@ -2,9 +2,8 @@
  * 服务器地址配置 - 智能内外网切换
  *
  * 统一端口架构：
- * - PC 端和小程序共用 32080 端口
- * - 内网地址：http://10.7.5.175:32080
- * - 外网地址：http://101.254.159.153:32080
+ * - 正式小程序统一使用微信后台已登记的 HTTPS 合法域名
+ * - 开发环境仍可使用 HTTP 地址进行本地联调
  *
  * 功能：
  * 1. 支持内网/外网双地址配置
@@ -16,12 +15,24 @@
 const STORAGE_KEY = 'api_server_config'
 const NETWORK_MODE_KEY = 'api_network_mode'
 
-// 内网地址（公司内部访问）
-const INTERNAL_BASE_URL = 'http://10.7.5.175:32080'
-// 外网地址（外部访问）
-const EXTERNAL_BASE_URL = 'http://101.254.159.153:32080'
+let DEVELOPMENT_SERVER_CONFIG_ENABLED = import.meta.env.DEV
+let MINI_PROGRAM_ENV_SWITCH_ENABLED = false
+let PRODUCTION_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://price.jlmining.com:32080'
+
+// #ifdef MP-WEIXIN
+DEVELOPMENT_SERVER_CONFIG_ENABLED = false
+MINI_PROGRAM_ENV_SWITCH_ENABLED = true
+PRODUCTION_BASE_URL = 'https://price.jlmining.com:32080'
+// #endif
+
+const LOCAL_TEST_BASE_URL = 'http://127.0.0.1:8080'
+const INTRANET_BASE_URL = 'http://10.7.5.175:32801'
+const INTERNAL_BASE_URL = INTRANET_BASE_URL
+const EXTERNAL_BASE_URL = PRODUCTION_BASE_URL
 // 开发环境地址（本地调试）
-const DEV_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
+const DEV_BASE_URL = DEVELOPMENT_SERVER_CONFIG_ENABLED
+  ? import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
+  : PRODUCTION_BASE_URL
 
 // 网络模式
 export type NetworkMode = 'internal' | 'external' | 'auto' | 'dev'
@@ -29,6 +40,7 @@ export type NetworkMode = 'internal' | 'external' | 'auto' | 'dev'
 export interface ServerConfig {
   ip: string
   port: string
+  protocol?: 'http' | 'https'
 }
 
 // ============ 基础工具函数 ============
@@ -41,11 +53,17 @@ const parseBaseUrl = (url: string): ServerConfig => {
 
   return {
     ip: matched?.[1] || '127.0.0.1',
-    port: matched?.[2] || '32080'
+    port: matched?.[2] || (normalizedUrl.startsWith('https://') ? '443' : '32080'),
+    protocol: normalizedUrl.startsWith('https://') ? 'https' : 'http'
   }
 }
 
-const buildBaseUrl = (config: ServerConfig) => `http://${config.ip.trim()}:${config.port.trim()}`
+const buildBaseUrl = (config: ServerConfig) => {
+  const protocol = config.protocol || (DEVELOPMENT_SERVER_CONFIG_ENABLED ? 'http' : 'https')
+  const port = config.port.trim()
+  const defaultPort = protocol === 'https' ? '443' : '80'
+  return `${protocol}://${config.ip.trim()}${port && port !== defaultPort ? `:${port}` : ''}`
+}
 
 // ============ 配置获取函数 ============
 
@@ -54,12 +72,12 @@ const buildBaseUrl = (config: ServerConfig) => `http://${config.ip.trim()}:${con
  */
 export const getNetworkMode = (): NetworkMode => {
   // 开发环境强制使用开发地址
-  if (import.meta.env.DEV) {
+  if (DEVELOPMENT_SERVER_CONFIG_ENABLED) {
     return 'dev'
   }
 
   const storedMode = uni.getStorageSync(NETWORK_MODE_KEY) as NetworkMode
-  return storedMode || 'auto'
+  return storedMode || (MINI_PROGRAM_ENV_SWITCH_ENABLED ? 'external' : 'auto')
 }
 
 /**
@@ -81,7 +99,7 @@ const getBaseUrlByMode = (mode: NetworkMode): string => {
     case 'external':
       return EXTERNAL_BASE_URL
     case 'dev':
-      return DEV_BASE_URL
+      return MINI_PROGRAM_ENV_SWITCH_ENABLED ? LOCAL_TEST_BASE_URL : DEV_BASE_URL
     case 'auto':
       // 自动模式默认先尝试内网
       return INTERNAL_BASE_URL
@@ -102,6 +120,14 @@ export const getDefaultServerConfig = (): ServerConfig => {
  * 获取当前服务器配置
  */
 export const getServerConfig = (): ServerConfig => {
+  if (MINI_PROGRAM_ENV_SWITCH_ENABLED) {
+    return parseBaseUrl(getBaseUrlByMode(getNetworkMode()))
+  }
+
+  if (!DEVELOPMENT_SERVER_CONFIG_ENABLED) {
+    return parseBaseUrl(PRODUCTION_BASE_URL)
+  }
+
   const storedConfig = uni.getStorageSync(STORAGE_KEY)
   if (storedConfig?.ip && storedConfig?.port) {
     return storedConfig
@@ -121,9 +147,22 @@ export const getApiBaseUrl = (): string => {
  * 保存服务器配置
  */
 export const saveServerConfig = (config: ServerConfig) => {
+  if (MINI_PROGRAM_ENV_SWITCH_ENABLED) {
+    const fixedConfig = parseBaseUrl(getBaseUrlByMode(getNetworkMode()))
+    uni.setStorageSync(STORAGE_KEY, fixedConfig)
+    return fixedConfig
+  }
+
+  if (!DEVELOPMENT_SERVER_CONFIG_ENABLED) {
+    const productionConfig = parseBaseUrl(PRODUCTION_BASE_URL)
+    uni.setStorageSync(STORAGE_KEY, productionConfig)
+    return productionConfig
+  }
+
   const nextConfig = {
     ip: config.ip.trim(),
-    port: config.port.trim()
+    port: config.port.trim(),
+    protocol: config.protocol || (DEVELOPMENT_SERVER_CONFIG_ENABLED ? 'http' : 'https')
   }
   uni.setStorageSync(STORAGE_KEY, nextConfig)
   return nextConfig
@@ -204,7 +243,7 @@ const saveDetectCache = (internal: boolean, external: boolean) => {
  */
 export const detectAndSelectBestNetwork = async (): Promise<{ baseUrl: string; mode: NetworkMode }> => {
   // 开发环境直接返回开发地址
-  if (import.meta.env.DEV) {
+  if (DEVELOPMENT_SERVER_CONFIG_ENABLED) {
     return { baseUrl: DEV_BASE_URL, mode: 'dev' }
   }
 
@@ -322,6 +361,13 @@ export const getInternalBaseUrl = (): string => INTERNAL_BASE_URL
 export const getExternalBaseUrl = (): string => EXTERNAL_BASE_URL
 
 /**
+ * 获取本地测试地址
+ */
+export const getLocalTestBaseUrl = (): string => LOCAL_TEST_BASE_URL
+
+/**
  * 获取统一端口
  */
-export const getServerPort = (): string => '32080'
+export const getServerPort = (): string => parseBaseUrl(PRODUCTION_BASE_URL).port
+
+export const isMiniProgramEnvironmentSwitchEnabled = (): boolean => MINI_PROGRAM_ENV_SWITCH_ENABLED

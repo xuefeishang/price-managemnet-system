@@ -39,8 +39,7 @@ const form = reactive({
   unit: '',
   showOnHome: false,
   currency: 'CNY',
-  sortOrder: 0,
-  budgetPrice: '' as string | number
+  sortOrder: 0
 })
 
 // 计量单位选项（从共享常量引入，与后端/数据库保持一致）
@@ -141,8 +140,7 @@ const loadProduct = async () => {
       unit: product.unit || '',
       showOnHome: product.showOnHome ?? false,
       currency: product.currency || 'CNY',
-      sortOrder: product.sortOrder ?? 0,
-      budgetPrice: product.budgetPrice ?? ''
+      sortOrder: product.sortOrder ?? 0
     })
 
     // 解析产地（单选，dictKey）和客户（多选，dictKey）
@@ -258,7 +256,6 @@ const handleSave = async () => {
       showOnHome: form.showOnHome,
       currency: form.currency,
       sortOrder: form.sortOrder || 0,
-      budgetPrice: form.budgetPrice ? parseFloat(parseFloat(String(form.budgetPrice)).toFixed(2)) : undefined,
       originIds: selectedOriginKey.value ? JSON.stringify([selectedOriginKey.value]) : undefined,
       customerIds: selectedCustomerKeys.value.length > 0 ? JSON.stringify(selectedCustomerKeys.value) : undefined
     }
@@ -430,17 +427,6 @@ onUnmounted(() => {
                         {{ opt.label }}
                       </option>
                     </select>
-                  </div>
-
-                  <div class="form-group">
-                    <label class="form-label">预算价格</label>
-                    <input
-                      v-model="form.budgetPrice"
-                      type="number"
-                      class="form-input"
-                      placeholder="请输入预算价格"
-                      step="0.01"
-                    />
                   </div>
 
                   <div class="form-group">
@@ -748,17 +734,6 @@ onUnmounted(() => {
                 {{ opt.label }}
               </option>
             </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">预算价格</label>
-            <input
-              v-model="form.budgetPrice"
-              type="number"
-              class="form-input"
-              placeholder="请输入预算价格"
-              step="0.01"
-            />
           </div>
 
           <div class="form-group">

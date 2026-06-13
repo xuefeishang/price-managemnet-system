@@ -1,6 +1,16 @@
 
 import http from '@/utils/http'
-import type { ApiResponse, Product, PageResponse, PageRequest, Price, PriceHistory } from '@/types'
+import type {
+  ApiResponse,
+  Product,
+  PageResponse,
+  PageRequest,
+  Price,
+  PriceHistory,
+  ProductAnnualBudget,
+  ProductAnnualBudgetSaveRequest,
+  ProductAnnualBudgetSummary
+} from '@/types'
 
 // 获取产品列表（分页）
 export const getProducts = async (params?: PageRequest): Promise<ApiResponse<PageResponse<Product>>> => {
@@ -35,6 +45,10 @@ export const batchUpdateProductSort = async (items: { id: number; sortOrder: num
 // 获取产品的价格历史
 export const getProductPriceHistory = async (productId: number): Promise<ApiResponse<PriceHistory[]>> => {
   return await http.get(`/api/products/${productId}/price-history`)
+}
+
+export const getProductPriceYears = async (productId: number): Promise<ApiResponse<number[]>> => {
+  return await http.get(`/api/products/${productId}/price-years`)
 }
 
 // 获取产品的当前价格
@@ -83,6 +97,28 @@ export const updatePrice = async (
   return await http.put(`/api/prices/${id}`, price, { params: { source } })
 }
 
+export const getProductAnnualBudgets = async (params: {
+  year: number
+  keyword?: string
+  categoryId?: number
+  status?: string
+}): Promise<ApiResponse<ProductAnnualBudgetSummary>> => {
+  return await http.get('/api/product-budgets', { params })
+}
+
+export const getProductAnnualBudget = async (
+  productId: number,
+  year: number
+): Promise<ApiResponse<ProductAnnualBudget>> => {
+  return await http.get(`/api/product-budgets/${productId}`, { params: { year } })
+}
+
+export const saveProductAnnualBudgets = async (
+  data: ProductAnnualBudgetSaveRequest
+): Promise<ApiResponse<ProductAnnualBudgetSummary>> => {
+  return await http.put('/api/product-budgets', data)
+}
+
 // 获取某产品昨日的价格
 export const getYesterdayPrice = async (productId: number): Promise<ApiResponse<Price | null>> => {
   return await http.get(`/api/products/${productId}/yesterday-price`)
@@ -101,6 +137,11 @@ export interface PriceTrendPoint {
 }
 
 // 获取某产品的价格走势数据
-export const getPriceTrend = async (productId: number, days: number, endDate?: string): Promise<ApiResponse<PriceTrendPoint[]>> => {
-  return await http.get(`/api/products/${productId}/price-trend`, { params: { days, endDate } })
+export const getPriceTrend = async (
+  productId: number,
+  days: number,
+  endDate?: string,
+  startDate?: string
+): Promise<ApiResponse<PriceTrendPoint[]>> => {
+  return await http.get(`/api/products/${productId}/price-trend`, { params: { days, startDate, endDate } })
 }

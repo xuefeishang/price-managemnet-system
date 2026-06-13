@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
 import { getCategories } from '@/api/categories'
-import { getCurrentPrice, getProducts } from '@/api/products'
+import { getCurrentPrice, getProductAnnualBudgets, getProducts } from '@/api/products'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLayout } from '@/composables/useLayout'
 import { Permission, usePermission } from '@/composables/usePermission'
@@ -27,6 +27,7 @@ const products = ref<Product[]>([])
 const categories = ref<ProductCategory[]>([])
 const selectedProduct = ref<Product | null>(null)
 const selectedPrice = ref<Price | null>(null)
+const annualBudgetMap = ref<Map<number, number | null>>(new Map())
 const loading = ref(false)
 const detailLoading = ref(false)
 const keyword = ref('')
@@ -59,6 +60,7 @@ const firstResultIndex = computed(() => totalElements.value ? currentPage.value 
 const lastResultIndex = computed(() => Math.min((currentPage.value + 1) * pageSize.value, totalElements.value))
 const selectedOrigins = computed(() => parseDictList(selectedProduct.value?.originIds, getOriginName))
 const selectedCustomers = computed(() => parseDictList(selectedProduct.value?.customerIds, getCustomerName))
+const selectedBudgetPrice = computed(() => selectedProduct.value ? annualBudgetMap.value.get(selectedProduct.value.id) ?? null : null)
 
 const paginationItems = computed<Array<number | string>>(() => {
   const total = totalPages.value
@@ -122,8 +124,14 @@ const formatDictList = (value: string | undefined, resolver: (key: string) => st
   parseDictList(value, resolver).join('、') || '-'
 
 const getUnitLabel = (unit?: string) => unit ? getDictValue('unit', unit) : '-'
+const getCurrencyLabel = (currency?: string) => {
+  const value = currency?.trim() || 'CNY'
+  const option = getDictOptions('currency').find(item => item.value === value || item.label === value)
+  return option?.label || getDictValue('currency', value) || value
+}
 const formatPrice = (product: Product | null | undefined, value?: number | null) =>
   value === null || value === undefined ? '-' : `${getCurrencySymbol(product?.currency)}${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatAnnualBudget = (product: Product) => formatPrice(product, annualBudgetMap.value.get(product.id) ?? null)
 
 const formatUpdatedTime = (value?: string) => {
   if (!value) return '-'
@@ -203,6 +211,7 @@ const loadProducts = async (syncAdaptive = true) => {
     currentPage.value = pageData.number ?? currentPage.value
     jumpPage.value = String(currentPage.value + 1)
     syncSelectedProduct()
+    await loadAnnualBudgets()
   } catch (error) {
     console.error('Failed to load products:', error)
     products.value = []
@@ -214,6 +223,25 @@ const loadProducts = async (syncAdaptive = true) => {
   if (syncAdaptive && isPCLayout.value) {
     await nextTick()
     applyAdaptivePageSize(true)
+  }
+}
+
+const loadAnnualBudgets = async () => {
+  if (!products.value.length) {
+    annualBudgetMap.value = new Map()
+    return
+  }
+  try {
+    const response = await getProductAnnualBudgets({
+      year: new Date().getFullYear(),
+      keyword: debouncedKeyword.value || undefined,
+      categoryId: categoryId.value || undefined,
+      status: status.value || undefined
+    })
+    annualBudgetMap.value = new Map((response.data?.items || []).map(item => [item.productId, item.budgetPrice ?? null]))
+  } catch (error) {
+    console.error('Failed to load annual budgets:', error)
+    annualBudgetMap.value = new Map()
   }
 }
 
@@ -295,6 +323,7 @@ const addProduct = () => router.push('/product-edit')
 const editProduct = (product: Product) => router.push(`/product-edit/${product.id}`)
 const viewProduct = (product: Product) => router.push(`/product-detail/${product.id}`)
 const maintainPrice = () => router.push('/price-maintenance')
+const manageBudget = () => router.push('/budget-management')
 const manageHomeOrder = () => router.push({ path: '/style-settings', query: { section: 'home-sort' } })
 const switchTab = (path: string) => router.push(path)
 
@@ -446,7 +475,7 @@ onUnmounted(() => {
                   </span>
                   <span class="price-cell">
                     <strong>{{ formatPrice(product, product.sellingPrice) }}</strong>
-                    <small>预算 {{ formatPrice(product, product.budgetPrice) }}</small>
+                    <small>预算 {{ formatAnnualBudget(product) }}</small>
                   </span>
                   <span>
                     <em class="home-status" :class="{ active: product.showOnHome }">
@@ -525,7 +554,7 @@ onUnmounted(() => {
                   <div><dt>分类</dt><dd>{{ selectedProduct.category?.name || '-' }}</dd></div>
                   <div><dt>产地</dt><dd>{{ selectedOrigins.join('、') || '-' }}</dd></div>
                   <div><dt>适用客户</dt><dd>{{ selectedCustomers.join('、') || '-' }}</dd></div>
-                  <div><dt>币种 / 单位</dt><dd>{{ getDictValue('currency', selectedProduct.currency || '') }} / {{ getUnitLabel(selectedProduct.unit) }}</dd></div>
+                  <div><dt>币种 / 单位</dt><dd>{{ getCurrencyLabel(selectedProduct.currency) }} / {{ getUnitLabel(selectedProduct.unit) }}</dd></div>
                 </dl>
               </section>
 
@@ -534,14 +563,17 @@ onUnmounted(() => {
                 <div v-if="detailLoading" class="mini-loading">价格加载中...</div>
                 <div v-else class="price-grid">
                   <div><span>当前售价</span><strong>{{ formatPrice(selectedProduct, selectedPrice?.currentPrice ?? selectedProduct.sellingPrice) }}</strong></div>
-                  <div><span>预算价</span><strong>{{ formatPrice(selectedProduct, selectedPrice?.budgetPrice ?? selectedProduct.budgetPrice) }}</strong></div>
+                  <div><span>预算价</span><strong>{{ formatPrice(selectedProduct, selectedBudgetPrice) }}</strong></div>
                 </div>
               </section>
 
               <section class="detail-card actions-card">
                 <h3>管理执行</h3>
                 <button v-if="hasPermission(Permission.PRICE_EDIT)" type="button" @click="maintainPrice">
-                  <span class="action-icon">↗</span><span><strong>维护价格</strong><small>录入售价、预算价并发布</small></span><em>去处理</em>
+                  <span class="action-icon">↗</span><span><strong>维护价格</strong><small>录入售价并发布</small></span><em>去处理</em>
+                </button>
+                <button v-if="hasPermission(Permission.PRICE_EDIT)" type="button" @click="manageBudget">
+                  <span class="action-icon">◎</span><span><strong>预算管理</strong><small>按产品与年份维护年度预算</small></span><em>去处理</em>
                 </button>
                 <button v-if="hasPermission(Permission.SYSTEM_SETTING)" type="button" @click="manageHomeOrder">
                   <span class="action-icon">≡</span><span><strong>展示与排序</strong><small>切换首页展示并调整顺序</small></span><em>去处理</em>
@@ -600,7 +632,7 @@ onUnmounted(() => {
                 <em :class="{ inactive: product.status !== 'ACTIVE' }">{{ getStatusLabel(product.status) }}</em>
               </span>
               <span class="mobile-card-meta"><strong>{{ product.category?.name || '-' }} · {{ product.specs || '-' }} / {{ getUnitLabel(product.unit) }}</strong><small>{{ formatDictList(product.originIds, getOriginName) }} · {{ formatDictList(product.customerIds, getCustomerName) }}</small></span>
-              <span class="mobile-card-price"><strong>{{ formatPrice(product, product.sellingPrice) }}</strong><small>预算 {{ formatPrice(product, product.budgetPrice) }}</small><em :class="{ inactive: !product.showOnHome }">{{ product.showOnHome ? '首页展示' : '未上首页' }}</em></span>
+              <span class="mobile-card-price"><strong>{{ formatPrice(product, product.sellingPrice) }}</strong><small>预算 {{ formatAnnualBudget(product) }}</small><em :class="{ inactive: !product.showOnHome }">{{ product.showOnHome ? '首页展示' : '未上首页' }}</em></span>
             </button>
             <div v-if="loading" class="panel-state"><span class="spinner"></span>加载产品资料...</div>
             <EmptyState

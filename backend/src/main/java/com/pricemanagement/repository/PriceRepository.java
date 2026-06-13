@@ -77,7 +77,7 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
     /**
      * 查找某产品在指定日期之前（含当天）最近的一条价格记录
      */
-    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id = :productId AND p.effectiveDate <= :date ORDER BY p.effectiveDate DESC LIMIT 1")
+    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id = :productId AND p.effectiveDate <= :date ORDER BY p.effectiveDate DESC, p.createdTime DESC LIMIT 1")
     Optional<Price> findLatestPriceBeforeDate(@Param("productId") Long productId, @Param("date") LocalDate date);
 
     /**
@@ -93,6 +93,9 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
      */
     @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id = :productId AND p.effectiveDate >= :startDate AND p.effectiveDate <= :endDate ORDER BY p.effectiveDate ASC, p.createdTime DESC")
     List<Price> findByProductIdAndDateRange(@Param("productId") Long productId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT DISTINCT YEAR(p.effectiveDate) FROM Price p WHERE p.product.id = :productId AND p.effectiveDate IS NOT NULL ORDER BY YEAR(p.effectiveDate) DESC")
+    List<Integer> findPriceYearsByProductId(@Param("productId") Long productId);
 
     @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.id = :id")
     @Override

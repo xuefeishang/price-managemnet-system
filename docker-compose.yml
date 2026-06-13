@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 后端服务
   backend:
@@ -63,7 +61,11 @@ services:
     container_name: price-management-frontend
     ports:
       - "80:80"        # H5 前端（保留，可选）
-      - "32080:32080"  # 统一入口：PC端 + 小程序（内网/外网）
+      - "443:443"      # 正式 HTTPS：PC端 + 微信小程序
+      - "32080:32080"  # 正式 HTTPS 入口：PC端 + 微信小程序
+      - "32801:32801"  # 内网正式 HTTP 入口
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

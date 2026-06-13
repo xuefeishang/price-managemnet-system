@@ -464,6 +464,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding-bottom: 240rpx;
+  width: 100%;
+  max-width: 100vw;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .header {
@@ -472,6 +476,11 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16rpx;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .date-picker {
@@ -494,6 +503,7 @@ onMounted(() => {
 }
 
 .header-status {
+  flex-shrink: 0;
   padding: 10rpx 16rpx;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.14);
@@ -508,12 +518,16 @@ onMounted(() => {
 
 .entry-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16rpx;
   padding: 20rpx 32rpx 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .summary-card {
+  min-width: 0;
   border-radius: 14rpx;
   background: #FFFFFF;
   padding: 20rpx 12rpx;
@@ -539,6 +553,9 @@ onMounted(() => {
   margin: 20rpx 32rpx 0;
   border-radius: 16rpx;
   padding: 20rpx;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .search-bar {
@@ -559,6 +576,7 @@ onMounted(() => {
 
 .search-input {
   flex: 1;
+  min-width: 0;
   height: 72rpx;
   color: #1A1A1A;
   font-size: 28rpx;
@@ -571,6 +589,9 @@ onMounted(() => {
 }
 
 .category-scroll {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   white-space: nowrap;
 }
 
@@ -597,18 +618,33 @@ onMounted(() => {
 .content {
   flex: 1;
   padding: 24rpx 32rpx;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .price-list {
   display: flex;
   flex-direction: column;
   gap: 24rpx;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .price-card {
   background: #FFFFFF;
   border-radius: 16rpx;
   padding: 20rpx;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .card-main {
@@ -616,6 +652,9 @@ onMounted(() => {
   align-items: center;
   gap: 20rpx;
   margin-bottom: 16rpx;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .card-header {
@@ -684,6 +723,8 @@ onMounted(() => {
 
 .price-input-wrapper {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   background: #F9FAFB;
@@ -712,14 +753,18 @@ onMounted(() => {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12rpx;
   padding: 14rpx;
   background: #F9FAFB;
   border-radius: 8rpx;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .stat-item {
+  min-width: 0;
   text-align: center;
 }
 
@@ -737,6 +782,9 @@ onMounted(() => {
   font-size: 26rpx;
   font-weight: 500;
   color: #1A1A1A;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stat-value.up {
@@ -786,7 +834,10 @@ onMounted(() => {
   border-top: 1rpx solid #E5E7EB;
   background: #FFFFFF;
   padding: 16rpx 32rpx;
+  width: 100%;
+  max-width: 100vw;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .save-info {
@@ -798,20 +849,31 @@ onMounted(() => {
 }
 
 .save-title {
+  display: block;
   color: #1A1A1A;
   font-size: 28rpx;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .save-desc {
+  display: block;
   color: #64748B;
   font-size: 22rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-btn {
+  flex: 0 0 132rpx;
   min-width: 132rpx;
   height: 76rpx;
   margin: 0;
+  padding: 0;
+  box-sizing: border-box;
   border: none;
   border-radius: 12rpx;
   background: #0D6E6E;

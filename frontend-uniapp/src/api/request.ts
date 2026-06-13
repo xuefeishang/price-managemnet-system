@@ -47,7 +47,11 @@ const hideRequestLoading = () => {
   if (loadingCount <= 0) return
   loadingCount -= 1
   if (loadingCount === 0) {
-    uni.hideLoading()
+    // 微信的 loading 与 toast 共用原生提示通道。请求期间若被 toast 替换，
+    // hideLoading 会返回 "toast can't be found"，这属于正常竞态，不应抛出未处理异常。
+    ;(uni.hideLoading as (options: { fail: () => void }) => void)({
+      fail: () => {}
+    })
   }
 }
 

@@ -340,6 +340,42 @@ export interface ScheduledTaskLog {
   createdTime: string
 }
 
+export interface ProductAnnualBudget {
+  id?: number
+  version?: number
+  productId: number
+  productName: string
+  productCode?: string
+  specification?: string
+  categoryId?: number
+  categoryName?: string
+  unit?: string
+  currency?: string
+  budgetYear: number
+  budgetPrice?: number | null
+  latestPrice?: number | null
+  updatedTime?: string
+  configured: boolean
+}
+
+export interface ProductAnnualBudgetSummary {
+  budgetYear: number
+  totalProducts: number
+  configuredProducts: number
+  pendingProducts: number
+  items: ProductAnnualBudget[]
+}
+
+export interface ProductAnnualBudgetSaveRequest {
+  budgetYear: number
+  items: Array<{
+    productId: number
+    version?: number
+    budgetPrice?: number | null
+    remark?: string
+  }>
+}
+
 export interface NotificationMessage {
   id: number
   messageId: number
@@ -550,6 +586,7 @@ export interface NotificationChannelConfigUpdateRequest {
   templates?: Array<{
     notificationType: string
     templateId?: string
+    clearTemplateId?: boolean
     page?: string
     fields?: Record<string, string>
   }>
@@ -572,6 +609,52 @@ export interface NotificationMiniProgramCoverage {
   rejectedOrBanned: number
   lowBalance: number
   notificationType?: string
+}
+
+export type NotificationMiniProgramTemplateStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED'
+
+export interface NotificationMiniProgramTemplateItem {
+  id: number
+  notificationType: string
+  templateIdMasked: string
+  page?: string
+  fields?: Record<string, string>
+  status: NotificationMiniProgramTemplateStatus
+  lastTestStatus?: string
+  lastTestMessage?: string
+  lastTestDeliveryId?: number
+  lastTestTime?: string
+  authorizedUsers: number
+  needReauthorizeUsers: number
+  estimatedReachableUsers: number
+  publishedBy?: number
+  publishedTime?: string
+  updatedTime?: string
+}
+
+export interface NotificationMiniProgramTemplateGroup {
+  notificationType: string
+  authorizedUsers: number
+  needReauthorizeUsers: number
+  estimatedReachableUsers: number
+  versions: NotificationMiniProgramTemplateItem[]
+}
+
+export interface NotificationMiniProgramTemplateCatalog {
+  groups: NotificationMiniProgramTemplateGroup[]
+  summary: {
+    configuredCount: number
+    pendingValidationCount: number
+    draftCount: number
+    activeCount: number
+  }
+}
+
+export interface NotificationMiniProgramTemplateRequest {
+  notificationType: string
+  templateId?: string
+  page?: string
+  fields?: Record<string, string>
 }
 
 export interface AdminMiniProgramSubscription {

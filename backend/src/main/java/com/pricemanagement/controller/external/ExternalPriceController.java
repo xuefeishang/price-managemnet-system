@@ -72,9 +72,12 @@ public class ExternalPriceController {
 
     @GetMapping("/products/{productId}/price-trend")
     @PreAuthorize("hasAuthority('API_price:read')")
-    public Result<List<PriceTrendDTO>> getPriceTrend(@PathVariable Long productId,
-                                                     @RequestParam(defaultValue = "30") int days) {
-        return Result.success("获取价格走势成功", priceService.getPriceTrend(productId, days));
+    public Result<List<PriceTrendDTO>> getPriceTrend(
+            @PathVariable Long productId,
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return Result.success("获取价格走势成功", priceService.getPriceTrend(productId, days, startDate, endDate));
     }
 
     @PostMapping("/products/{productId}/prices")

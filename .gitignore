@@ -27,6 +27,9 @@ logs/
 .env.*.local
 .env.example
 
+# Production TLS certificates
+certs/
+
 # OS
 .DS_Store
 Thumbs.db

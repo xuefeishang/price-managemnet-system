@@ -433,11 +433,6 @@ public class ApprovalService {
                     price.setCostPrice(new BigDecimal(costPrice.toString()));
                 }
 
-                Object budgetPrice = changeData.get("budgetPrice");
-                if (budgetPrice != null) {
-                    price.setBudgetPrice(new BigDecimal(budgetPrice.toString()));
-                }
-
                 Object unit = changeData.get("unit");
                 if (unit != null) {
                     price.setUnit((String) unit);
@@ -490,11 +485,6 @@ public class ApprovalService {
                 Object costPrice = changeData.get("costPrice");
                 if (costPrice != null) {
                     existingPrice.setCostPrice(new BigDecimal(costPrice.toString()));
-                }
-
-                Object budgetPrice = changeData.get("budgetPrice");
-                if (budgetPrice != null) {
-                    existingPrice.setBudgetPrice(new BigDecimal(budgetPrice.toString()));
                 }
 
                 Object unit = changeData.get("unit");

@@ -2,7 +2,6 @@ package com.pricemanagement.dto;
 
 import lombok.Data;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -18,12 +17,13 @@ public class NotificationChannelConfigUpdateRequest {
     private Integer timeoutMs;
     private String defaultPage;
     private Boolean clearDefaultPage = false;
-    private List<TemplateMappingRequest> templates = new ArrayList<>();
+    private List<TemplateMappingRequest> templates;
 
     @Data
     public static class TemplateMappingRequest {
         private String notificationType;
         private String templateId;
+        private Boolean clearTemplateId = false;
         private String page;
         private Map<String, String> fields;
     }

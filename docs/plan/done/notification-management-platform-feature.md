@@ -730,10 +730,10 @@ public interface NotificationChannelProvider {
 | 配置项 | 来源 | 配置职责 | 页面可见性 |
 | --- | --- | --- | --- |
 | `WECHAT_MINI_NOTIFY_ENABLED` | 本系统部署配置 | 运维/管理员决定是否启用 `MINI_PROGRAM` Provider | PC `/notifications` 可显示启用/未启用状态 |
-| `WECHAT_MINI_APP_ID` | 微信公众平台小程序后台 `mp.weixin.qq.com` 的开发设置/开发者 ID | 运维从微信后台复制到后端环境变量；本项目当前默认 AppID 为 `wx00c7266dd35d3ab7` | 页面最多显示“已配置”和脱敏尾号，不展示完整值 |
+| `WECHAT_MINI_APP_ID` | 微信公众平台小程序后台 `mp.weixin.qq.com` 的开发设置/开发者 ID | 运维从微信后台复制到后端环境变量或 PC 渠道配置；项目默认不预置具体 AppID | 页面最多显示“已配置”和脱敏尾号，不展示完整值 |
 | `WECHAT_MINI_APP_SECRET` | 微信公众平台小程序后台生成或重置 | 运维配置到后端环境变量或密钥管理系统 | 页面只能显示“已配置/未配置”，严禁明文展示 |
-| `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 微信公众平台小程序后台的订阅消息“我的模板” | 报价变更通知模板，当前默认模板 ID 为 `T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk` | 页面可显示“价格发布模板已配置/未配置”，可显示脱敏模板 ID |
-| `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 微信公众平台小程序后台的订阅消息“我的模板” | 基础信息/系统公告模板，当前默认模板 ID 为 `RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo` | 页面可显示“系统公告模板已配置/未配置”，可显示脱敏模板 ID |
+| `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 微信公众平台小程序后台的订阅消息“我的模板” | 报价变更通知模板 ID，项目默认不预置正式模板 ID | 页面可显示“价格发布模板已配置/未配置”，可显示脱敏模板 ID |
+| `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 微信公众平台小程序后台的订阅消息“我的模板” | 基础信息/系统公告模板 ID，项目默认不预置正式模板 ID | 页面可显示“系统公告模板已配置/未配置”，可显示脱敏模板 ID |
 | `WECHAT_MINI_PRICE_FIELD_TYPE` / `WECHAT_MINI_PRICE_FIELD_TIP` | 报价变更通知模板详情字段 | 默认映射为 `type -> phrase2`、`tip -> thing4`，对应“类型”“温馨提示” | 页面可显示字段映射诊断，不展示密钥 |
 | `WECHAT_MINI_NOTICE_FIELD_CREATOR` / `WECHAT_MINI_NOTICE_FIELD_TIME` | 基础信息/系统公告模板详情字段 | 默认映射为 `creator -> thing1`、`time -> time2`，对应“创建人”“创建时间” | 页面可显示字段映射诊断，不展示密钥 |
 | `WECHAT_MINI_PRICE_PAGE` / `WECHAT_MINI_NOTICE_PAGE` | 小程序页面路径 | 默认分别为 `pages/home/index`、`pages/notifications/index` | 页面可显示跳转页诊断 |
@@ -753,17 +753,17 @@ PC `/notifications` 的职责是“发布消息 + 诊断配置状态”，不是
 notification:
   mini-program:
     enabled: ${WECHAT_MINI_NOTIFY_ENABLED:false}
-    app-id: ${WECHAT_MINI_APP_ID:wx00c7266dd35d3ab7}
+    app-id: ${WECHAT_MINI_APP_ID:}
     app-secret: ${WECHAT_MINI_APP_SECRET:}
     templates:
       PRICE_PUBLISHED:
-        template-id: ${WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED:T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk}
+        template-id: ${WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED:}
         page: ${WECHAT_MINI_PRICE_PAGE:pages/home/index}
         fields:
           type: ${WECHAT_MINI_PRICE_FIELD_TYPE:phrase2}
           tip: ${WECHAT_MINI_PRICE_FIELD_TIP:thing4}
       SYSTEM_NOTICE:
-        template-id: ${WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE:RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo}
+        template-id: ${WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE:}
         page: ${WECHAT_MINI_NOTICE_PAGE:pages/notifications/index}
         fields:
           creator: ${WECHAT_MINI_NOTICE_FIELD_CREATOR:thing1}
@@ -842,8 +842,8 @@ PC 通知管理页建议从单页工作台升级为 5 个页签：
 
 | 通知类型 | 模板名称 | 模板编号 | 模板 ID | 字段映射 | 跳转页 |
 | --- | --- | --- | --- | --- | --- |
-| `PRICE_PUBLISHED` | 报价变更通知 | `28968` | `T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk` | `type -> phrase2`，`tip -> thing4` | `pages/home/index` |
-| `SYSTEM_NOTICE` | 基础信息 | `62445` | `RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo` | `creator -> thing1`，`time -> time2` | `pages/notifications/index` |
+| `PRICE_PUBLISHED` | 报价变更通知 | 微信后台模板编号 | 由微信后台复制到配置 | `type -> phrase2`，`tip -> thing4` | `pages/home/index` |
+| `SYSTEM_NOTICE` | 基础信息 | 微信后台模板编号 | 由微信后台复制到配置 | `creator -> thing1`，`time -> time2` | `pages/notifications/index` |
 
 3. **配置诊断**
 
@@ -913,14 +913,14 @@ CREATE TABLE notification_provider_config (
 
 ```json
 {
-  "appId": "wx00c7266dd35d3ab7",
+  "appId": "WECHAT_MINI_APP_ID",
   "timeoutMs": 5000,
   "defaultPage": "pages/notifications/index",
   "templates": {
     "PRICE_PUBLISHED": {
       "templateName": "报价变更通知",
       "templateNo": "28968",
-      "templateId": "T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk",
+      "templateId": "WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED",
       "page": "pages/home/index",
       "enabled": true,
       "fields": {
@@ -931,7 +931,7 @@ CREATE TABLE notification_provider_config (
     "SYSTEM_NOTICE": {
       "templateName": "基础信息",
       "templateNo": "62445",
-      "templateId": "RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo",
+      "templateId": "WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE",
       "page": "pages/notifications/index",
       "enabled": true,
       "fields": {
@@ -1266,10 +1266,10 @@ PC 是完整消息工作台入口。
 
 | 配置项 | 环境变量 | 默认值处理 |
 | --- | --- | --- |
-| 小程序 AppID | `WECHAT_MINI_APP_ID` | 默认 `wx00c7266dd35d3ab7`，可由环境变量覆盖 |
+| 小程序 AppID | `WECHAT_MINI_APP_ID` | 默认空，需由环境变量或 PC 渠道配置提供 |
 | 小程序 AppSecret | `WECHAT_MINI_APP_SECRET` | 空则 Provider `NOT_CONFIGURED` |
-| 价格发布模板 ID | `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 默认 `T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk`，可由环境变量覆盖 |
-| 系统公告模板 ID | `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 默认 `RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo`，可由环境变量覆盖 |
+| 价格发布模板 ID | `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 默认空，需由环境变量或 PC 渠道配置提供 |
+| 系统公告模板 ID | `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 默认空，需由环境变量或 PC 渠道配置提供 |
 | 价格发布字段映射 | `WECHAT_MINI_PRICE_FIELD_TYPE` / `WECHAT_MINI_PRICE_FIELD_TIP` | 默认 `phrase2` / `thing4` |
 | 系统公告字段映射 | `WECHAT_MINI_NOTICE_FIELD_CREATOR` / `WECHAT_MINI_NOTICE_FIELD_TIME` | 默认 `thing1` / `time2` |
 | 小程序跳转页 | `WECHAT_MINI_PRICE_PAGE` / `WECHAT_MINI_NOTICE_PAGE` | 默认 `pages/home/index` / `pages/notifications/index` |

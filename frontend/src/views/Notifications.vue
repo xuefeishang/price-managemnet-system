@@ -3,27 +3,34 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { showToast } from 'vant'
 import {
   cancelSystemNotice,
+  createMiniProgramTemplate,
   createSystemNotice,
+  disableMiniProgramTemplate,
   getAdminNotificationDeliveryLogs,
   getAdminNotificationRecipients,
   getAdminNotifications,
   getMiniProgramCoverage,
   getMiniProgramSubscriptionDetail,
   getMiniProgramSubscriptions,
+  getMiniProgramTemplates,
   getNotificationChannelConfig,
   getNotificationDashboard,
   getNotificationProviderHealth,
   getNotificationThrottleRules,
   getSystemNotices,
+  publishMiniProgramTemplate,
+  rollbackMiniProgramTemplate,
   publishSystemNotice,
   retryAdminNotificationDelivery,
   resolveMiniProgramSubscription,
   saveNotificationChannelConfig,
   sendMiniProgramAuthorizationGuide,
   sendMiniProgramAuthorizationGuides,
+  validateMiniProgramTemplate,
   testNotificationChannelConfig,
   testNotificationChannelDelivery,
-  testNotificationChannelToken
+  testNotificationChannelToken,
+  updateMiniProgramTemplate
 } from '@/api/notifications'
 import { getDictOptions, getDictValue, loadAllDicts } from '@/composables/useDict'
 import { Permission, usePermission } from '@/composables/usePermission'
@@ -36,6 +43,10 @@ import type {
   NotificationDashboard,
   NotificationDeliveryLog,
   NotificationMiniProgramCoverage,
+  NotificationMiniProgramTemplateCatalog,
+  NotificationMiniProgramTemplateGroup,
+  NotificationMiniProgramTemplateItem,
+  NotificationMiniProgramTemplateRequest,
   NotificationProviderHealth,
   NotificationRecipient,
   NotificationThrottleRule,
@@ -71,19 +82,25 @@ const showNoticeEditor = ref(false)
 const userStore = useUserStore()
 const { hasPermission } = usePermission()
 
-type NotificationTab = 'overview' | 'publish' | 'audit' | 'channels' | 'subscriptions'
+type NotificationTab = 'overview' | 'publish' | 'audit' | 'channels' | 'templates' | 'subscriptions'
 
 const activeTab = ref<NotificationTab>('overview')
 const selectedChannel = ref('MINI_PROGRAM')
 const channelEditing = ref(false)
 const channelConfigLoading = ref(false)
 const subscriptionLoading = ref(false)
+const templateLoading = ref(false)
+const miniProgramTemplates = ref<NotificationMiniProgramTemplateCatalog | null>(null)
+const selectedTemplateType = ref('')
+const selectedTemplateId = ref<number | null>(null)
+const templateFormMode = ref<'creating' | 'editing' | 'viewing'>('viewing')
 
 const tabs: Array<{ key: NotificationTab; label: string }> = [
   { key: 'overview', label: '总览' },
   { key: 'publish', label: '消息发布' },
   { key: 'audit', label: '投递审计' },
   { key: 'channels', label: '渠道配置' },
+  { key: 'templates', label: '小程序模板' },
   { key: 'subscriptions', label: '订阅授权' }
 ]
 
@@ -131,7 +148,7 @@ const channelConfigForm = reactive<NotificationChannelConfigUpdateRequest>({
   secret: '',
   timeoutMs: 5000,
   defaultPage: '',
-  templates: []
+  templates: undefined
 })
 
 const deliveryFilters = reactive({
@@ -145,6 +162,14 @@ const deliveryPagination = reactive({
   size: 5,
   totalElements: 0,
   totalPages: 0
+})
+
+const templateForm = reactive({
+  id: null as number | null,
+  notificationType: '',
+  templateId: '',
+  page: '',
+  fields: [] as Array<{ semanticKey: string; fieldName: string }>
 })
 
 const noticeForm = reactive<SystemNoticeCreateRequest>({
@@ -216,6 +241,30 @@ const selectedChannelHealthStatus = computed(() =>
 )
 const selectedChannelDiagnostics = computed(() => selectedChannelConfig.value?.diagnostics || [])
 const selectedChannelTemplates = computed(() => selectedChannelConfig.value?.templates || [])
+const templateGroups = computed(() => miniProgramTemplates.value?.groups || [])
+const selectedTemplateGroup = computed<NotificationMiniProgramTemplateGroup | null>(() =>
+  templateGroups.value.find(group => group.notificationType === selectedTemplateType.value) || templateGroups.value[0] || null
+)
+const selectedTemplateVersions = computed(() => selectedTemplateGroup.value?.versions || [])
+const selectedTemplate = computed<NotificationMiniProgramTemplateItem | null>(() =>
+  selectedTemplateVersions.value.find(item => item.id === selectedTemplateId.value) || selectedTemplateVersions.value[0] || null
+)
+const templateFormEditable = computed(() => templateFormMode.value !== 'viewing')
+const templateSummary = computed(() => miniProgramTemplates.value?.summary || {
+  configuredCount: 0,
+  pendingValidationCount: 0,
+  draftCount: 0,
+  activeCount: 0
+})
+const selectedChannelTemplateSummary = computed(() => {
+  const configured = templateSummary.value.configuredCount || selectedChannelTemplates.value.length
+  const pending = templateSummary.value.pendingValidationCount
+  return {
+    configured,
+    pending,
+    label: `已配置 ${configured} 个模板 / ${pending} 个需验证`
+  }
+})
 const diagnosticPassCount = computed(() =>
   selectedChannelDiagnostics.value.filter(item => item.status === 'PASS').length
 )
@@ -356,52 +405,166 @@ const syncChannelConfigForm = (config: NotificationChannelConfig | null) => {
   channelConfigForm.secret = ''
   channelConfigForm.timeoutMs = config?.timeoutMs || 5000
   channelConfigForm.defaultPage = config?.defaultPage || ''
-  channelConfigForm.templates = (config?.templates || []).map(template => ({
-    notificationType: template.notificationType,
-    templateId: '',
-    page: template.page || '',
-    fields: { ...(template.fields || {}) }
-  }))
+  channelConfigForm.templates = undefined
 }
 
-const applyDefaultTemplateFields = (template: { notificationType: string; fields?: Record<string, string> }) => {
-  if (Object.keys(template.fields || {}).length > 0) return
-  template.fields = { ...(defaultMiniProgramTemplateFields[template.notificationType] || {}) }
-}
-
-const addChannelTemplate = () => {
-  const used = new Set((channelConfigForm.templates || []).map(template => template.notificationType))
-  const nextType = templateNotificationTypeOptions.value.find(option => !used.has(option.value))?.value || ''
-  const template = {
-    notificationType: nextType,
-    templateId: '',
-    page: '',
-    fields: { ...(defaultMiniProgramTemplateFields[nextType] || {}) }
+const syncTemplateSelection = () => {
+  const firstGroup = templateGroups.value[0]
+  if (!selectedTemplateType.value || !templateGroups.value.some(group => group.notificationType === selectedTemplateType.value)) {
+    selectedTemplateType.value = firstGroup?.notificationType || ''
   }
-  channelConfigForm.templates = [...(channelConfigForm.templates || []), template]
+  const versions = selectedTemplateVersions.value
+  if (!versions.some(item => item.id === selectedTemplateId.value)) {
+    selectedTemplateId.value = versions[0]?.id || null
+  }
+  syncTemplateForm(selectedTemplate.value)
 }
 
-const validateChannelConfigForm = () => {
-  const templates = channelConfigForm.templates || []
-  const seen = new Set<string>()
-  for (const template of templates) {
-    const type = template.notificationType?.trim()
-    if (!type) {
-      showToast('请选择模板通知类型')
-      return false
-    }
-    if (seen.has(type)) {
-      showToast('模板通知类型不能重复')
-      return false
-    }
-    seen.add(type)
-    const fields = Object.entries(template.fields || {}).filter(([key, value]) => key && value)
-    if ((template.templateId || '').trim() && fields.length === 0) {
-      showToast('已填写模板ID时必须配置字段映射')
-      return false
-    }
+const syncTemplateForm = (template: NotificationMiniProgramTemplateItem | null) => {
+  templateFormMode.value = template && template.status !== 'ACTIVE' ? 'editing' : 'viewing'
+  templateForm.id = template?.id || null
+  templateForm.notificationType = template?.notificationType || selectedTemplateGroup.value?.notificationType || ''
+  templateForm.templateId = ''
+  templateForm.page = template?.page || ''
+  templateForm.fields = Object.entries(template?.fields || {}).map(([semanticKey, fieldName]) => ({
+    semanticKey,
+    fieldName
+  }))
+  if (!templateForm.fields.length) {
+    const defaults = defaultMiniProgramTemplateFields[templateForm.notificationType] || {}
+    templateForm.fields = Object.entries(defaults).map(([semanticKey, fieldName]) => ({ semanticKey, fieldName }))
+  }
+}
+
+const selectTemplateType = (notificationType: string) => {
+  selectedTemplateType.value = notificationType
+  selectedTemplateId.value = selectedTemplateVersions.value[0]?.id || null
+  syncTemplateForm(selectedTemplate.value)
+}
+
+const selectTemplateVersion = (template: NotificationMiniProgramTemplateItem) => {
+  selectedTemplateId.value = template.id
+  syncTemplateForm(template)
+}
+
+const addTemplateDraft = () => {
+  templateFormMode.value = 'creating'
+  templateForm.id = null
+  templateForm.notificationType = selectedTemplateGroup.value?.notificationType || templateNotificationTypeOptions.value[0]?.value || ''
+  templateForm.templateId = ''
+  templateForm.page = ''
+  const defaults = defaultMiniProgramTemplateFields[templateForm.notificationType] || {}
+  templateForm.fields = Object.entries(defaults).map(([semanticKey, fieldName]) => ({ semanticKey, fieldName }))
+}
+
+const addTemplateFieldRow = () => {
+  templateForm.fields.push({ semanticKey: '', fieldName: '' })
+}
+
+const removeTemplateFieldRow = (index: number) => {
+  templateForm.fields.splice(index, 1)
+}
+
+const templateFieldsToRecord = () => {
+  const fields: Record<string, string> = {}
+  for (const row of templateForm.fields) {
+    const key = row.semanticKey.trim()
+    const value = row.fieldName.trim()
+    if (key && value) fields[key] = value
+  }
+  return fields
+}
+
+const validateTemplateForm = () => {
+  if (!templateForm.notificationType) {
+    showToast('请选择通知类型')
+    return false
+  }
+  if (!templateForm.id && !templateForm.templateId.trim()) {
+    showToast('新建模板必须填写模板ID')
+    return false
+  }
+  if (!Object.keys(templateFieldsToRecord()).length) {
+    showToast('请至少配置一组字段映射')
+    return false
   }
   return true
+}
+
+const loadMiniProgramTemplates = async () => {
+  templateLoading.value = true
+  try {
+    const response = await getMiniProgramTemplates()
+    miniProgramTemplates.value = response.data
+    syncTemplateSelection()
+  } finally {
+    templateLoading.value = false
+  }
+}
+
+const saveTemplateDraft = async () => {
+  if (!canManageChannelConfig.value) {
+    showToast('无权限保存模板')
+    return
+  }
+  if (!templateFormEditable.value) {
+    showToast('已生效模板不能直接编辑，请新建草稿')
+    return
+  }
+  if (!validateTemplateForm()) return
+  const request: NotificationMiniProgramTemplateRequest = {
+    notificationType: templateForm.notificationType,
+    templateId: templateForm.templateId.trim() || undefined,
+    page: templateForm.page || undefined,
+    fields: templateFieldsToRecord()
+  }
+  try {
+    const response = templateForm.id
+      ? await updateMiniProgramTemplate(templateForm.id, request)
+      : await createMiniProgramTemplate(request)
+    selectedTemplateId.value = response.data.id
+    showToast(templateForm.id ? '模板草稿已保存' : '模板草稿已创建')
+    await loadMiniProgramTemplates()
+  } catch (error: any) {
+    showToast(error?.response?.data?.message || error?.message || '模板保存失败')
+  }
+}
+
+const validateSelectedTemplate = async () => {
+  if (!selectedTemplate.value) {
+    showToast('请选择模板版本')
+    return
+  }
+  const response = await validateMiniProgramTemplate(selectedTemplate.value.id)
+  selectedTemplateId.value = response.data.id
+  showToast(response.data.lastTestMessage || '模板校验完成')
+  await loadMiniProgramTemplates()
+}
+
+const publishSelectedTemplate = async () => {
+  if (!selectedTemplate.value) return
+  if (!window.confirm('发布后同通知类型旧模板会停用，新模板需要用户重新授权。是否继续？')) return
+  const response = await publishMiniProgramTemplate(selectedTemplate.value.id)
+  selectedTemplateId.value = response.data.id
+  showToast('模板已发布')
+  await Promise.all([loadMiniProgramTemplates(), loadMiniProgramConfig(), loadMiniProgramCoverage(), loadMiniProgramSubscriptions()])
+}
+
+const disableSelectedTemplate = async () => {
+  if (!selectedTemplate.value) return
+  const response = await disableMiniProgramTemplate(selectedTemplate.value.id)
+  selectedTemplateId.value = response.data.id
+  showToast('模板已停用')
+  await Promise.all([loadMiniProgramTemplates(), loadMiniProgramConfig(), loadMiniProgramCoverage(), loadMiniProgramSubscriptions()])
+}
+
+const rollbackSelectedTemplate = async () => {
+  if (!selectedTemplate.value) return
+  if (!window.confirm('将该历史模板复制为新的生效版本，并停用当前生效模板。是否继续？')) return
+  const response = await rollbackMiniProgramTemplate(selectedTemplate.value.id)
+  selectedTemplateId.value = response.data.id
+  showToast('模板已回滚')
+  await Promise.all([loadMiniProgramTemplates(), loadMiniProgramConfig(), loadMiniProgramCoverage(), loadMiniProgramSubscriptions()])
 }
 
 const loadMiniProgramConfig = async () => {
@@ -629,6 +792,7 @@ const refreshAll = async () => {
     loadNotifications(),
     loadNotices(),
     loadMiniProgramConfig(),
+    loadMiniProgramTemplates(),
     loadMiniProgramCoverage(),
     loadMiniProgramSubscriptions()
   ])
@@ -652,6 +816,9 @@ const retryDelivery = async (delivery: NotificationDeliveryLog) => {
 
 const switchTab = (tab: NotificationTab) => {
   activeTab.value = tab
+  if (tab === 'templates') {
+    loadMiniProgramTemplates()
+  }
 }
 
 const saveChannelConfig = async () => {
@@ -663,7 +830,6 @@ const saveChannelConfig = async () => {
     showPlannedAction(`${getDictValue('notification_channel', selectedChannel.value)}配置`)
     return
   }
-  if (!validateChannelConfigForm()) return
   try {
     const response = await saveNotificationChannelConfig(selectedChannel.value, channelConfigForm)
     miniProgramConfig.value = response.data
@@ -1418,7 +1584,20 @@ onMounted(async () => {
           </div>
           <div class="config-section">
             <div class="panel-header">
-              <h2>模板映射</h2>
+              <h2>模板摘要</h2>
+              <button class="btn-outline compact-button" type="button" @click="switchTab('templates')"><span class="btn-icon">↗</span>进入模板管理</button>
+            </div>
+            <div class="template-summary-grid">
+              <article>
+                <span>生效模板</span>
+                <strong>{{ selectedChannelTemplateSummary.configured }}</strong>
+                <small>Provider 优先读取小程序模板页的已生效版本</small>
+              </article>
+              <article>
+                <span>需验证模板</span>
+                <strong>{{ selectedChannelTemplateSummary.pending }}</strong>
+                <small>{{ selectedChannelTemplateSummary.label }}</small>
+              </article>
             </div>
             <div class="template-table">
               <div class="template-row header"><span>通知类型</span><span>模板名称</span><span>模板ID</span><span>字段映射</span><span>状态</span></div>
@@ -1434,37 +1613,9 @@ onMounted(async () => {
                 <span>{{ getDictValue('notification_type', template.notificationType) }}</span>
                 <span>{{ template.templateIdMasked }}</span>
                 <span>{{ templateFieldsText(template.fields) }}</span>
-                <strong>{{ template.configured ? '完整' : '未配置' }}</strong>
+                <strong>{{ template.configured ? '已生效' : '未配置' }}</strong>
               </div>
-              <div v-if="!channelConfigLoading && !selectedChannelTemplates.length" class="state-inline">暂无模板映射</div>
-            </div>
-            <div v-if="channelEditing && selectedChannel === 'MINI_PROGRAM'" class="template-edit-list">
-              <article v-for="(template, index) in channelConfigForm.templates" :key="template.notificationType" class="template-edit-row">
-                <label>
-                  <span>通知类型</span>
-                  <select v-model="template.notificationType" class="form-input" @change="applyDefaultTemplateFields(template)">
-                    <option value="">请选择通知类型</option>
-                    <option v-for="option in templateNotificationTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                  </select>
-                </label>
-                <label>
-                  <span>模板ID</span>
-                  <input v-model="template.templateId" class="form-input" placeholder="留空保留当前模板ID" />
-                </label>
-                <label>
-                  <span>跳转页</span>
-                  <select v-model="template.page" class="form-input">
-                    <option value="">使用默认跳转页</option>
-                    <option v-for="option in miniProgramPageOptions" :key="option.value" :value="option.value">{{ option.label }}（{{ option.value }}）</option>
-                  </select>
-                </label>
-                <label>
-                  <span>字段映射</span>
-                  <input class="form-input" :value="templateFieldsText(template.fields)" readonly />
-                </label>
-                <button v-if="canManageChannelConfig" class="btn-outline compact-button" type="button" @click="channelConfigForm.templates?.splice(index, 1)"><span class="btn-icon">×</span>删除</button>
-              </article>
-              <button v-if="canManageChannelConfig" class="btn-primary compact-button" type="button" @click="addChannelTemplate"><span class="btn-icon">+</span>新增模板</button>
+              <div v-if="!channelConfigLoading && !selectedChannelTemplates.length" class="state-inline">暂无生效模板</div>
             </div>
           </div>
         </section>
@@ -1500,6 +1651,113 @@ onMounted(async () => {
               <div><span>模板授权</span><strong>{{ miniProgramImpact.authorized }}</strong></div>
               <div><span>预计触达</span><strong>{{ miniProgramImpact.reachable }}</strong></div>
             </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section v-else-if="activeTab === 'templates'" class="tab-panel templates-tab">
+      <div class="template-ops-layout">
+        <aside class="panel template-type-panel">
+          <div class="panel-header">
+            <h2>通知类型</h2>
+            <span class="status-pill ok">{{ templateSummary.activeCount }}</span>
+          </div>
+          <button
+            v-for="group in templateGroups"
+            :key="group.notificationType"
+            type="button"
+            class="channel-config-item"
+            :class="{ active: selectedTemplateGroup?.notificationType === group.notificationType }"
+            @click="selectTemplateType(group.notificationType)"
+          >
+            <strong>{{ getDictValue('notification_type', group.notificationType) }}</strong>
+            <span>{{ group.versions.length }} 个版本 · 需重授权 {{ group.needReauthorizeUsers }}</span>
+          </button>
+          <div v-if="templateLoading" class="state-inline">模板加载中...</div>
+        </aside>
+
+        <section class="panel template-version-panel">
+          <div class="panel-header">
+            <div>
+              <h2>模板版本</h2>
+              <small>{{ selectedTemplateGroup ? getDictValue('notification_type', selectedTemplateGroup.notificationType) : '请选择通知类型' }}</small>
+            </div>
+            <button v-if="canManageChannelConfig" class="btn-primary compact-button" type="button" @click="addTemplateDraft"><span class="btn-icon">+</span>新建草稿</button>
+          </div>
+          <div class="template-version-list">
+            <button
+              v-for="template in selectedTemplateVersions"
+              :key="template.id"
+              type="button"
+              class="template-version-item"
+              :class="{ active: selectedTemplate?.id === template.id }"
+              @click="selectTemplateVersion(template)"
+            >
+              <span class="status-pill" :class="toneClass(template.status)">{{ getDictValue('notification_mini_template_status', template.status) }}</span>
+              <strong>{{ template.templateIdMasked }}</strong>
+              <small>{{ formatTime(template.updatedTime) }} · {{ template.lastTestStatus || '未测试' }}</small>
+            </button>
+            <div v-if="!templateLoading && !selectedTemplateVersions.length" class="state-inline">当前通知类型暂无模板版本</div>
+          </div>
+        </section>
+
+        <aside class="panel template-detail-panel">
+          <div class="config-detail-header">
+            <div>
+              <h2>模板详情</h2>
+              <p>字段映射保存为语义字段到微信字段编号，发布后用于小程序订阅消息投递。</p>
+            </div>
+          </div>
+          <div class="template-impact-grid">
+            <article><span>已授权用户</span><strong>{{ selectedTemplate?.authorizedUsers || selectedTemplateGroup?.authorizedUsers || 0 }}</strong></article>
+            <article><span>需重新授权</span><strong>{{ selectedTemplate?.needReauthorizeUsers || selectedTemplateGroup?.needReauthorizeUsers || 0 }}</strong></article>
+            <article><span>预计触达</span><strong>{{ selectedTemplate?.estimatedReachableUsers || selectedTemplateGroup?.estimatedReachableUsers || 0 }}</strong></article>
+          </div>
+          <div class="template-form">
+            <label>
+              <span>通知类型</span>
+              <select v-model="templateForm.notificationType" class="form-input" :disabled="Boolean(templateForm.id)">
+                <option value="">请选择通知类型</option>
+                <option v-for="option in templateNotificationTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
+            <label>
+              <span>模板ID</span>
+              <input v-model="templateForm.templateId" class="form-input" :placeholder="templateForm.id ? '留空保留当前模板ID' : '填写微信模板ID'" :disabled="!templateFormEditable" />
+            </label>
+            <label>
+              <span>跳转页</span>
+              <select v-model="templateForm.page" class="form-input" :disabled="!templateFormEditable">
+                <option value="">使用渠道默认页</option>
+                <option v-for="option in miniProgramPageOptions" :key="option.value" :value="option.value">{{ option.label }}（{{ option.value }}）</option>
+              </select>
+            </label>
+            <div class="field-editor">
+              <div class="panel-header">
+                <h2>字段映射</h2>
+                <button v-if="templateFormEditable" class="btn-outline compact-button" type="button" @click="addTemplateFieldRow"><span class="btn-icon">+</span>添加字段</button>
+              </div>
+              <div v-for="(field, index) in templateForm.fields" :key="index" class="field-row">
+                <input v-model="field.semanticKey" class="form-input" placeholder="语义字段，如 title" :disabled="!templateFormEditable" />
+                <input v-model="field.fieldName" class="form-input" placeholder="微信字段，如 thing1" :disabled="!templateFormEditable" />
+                <button v-if="templateFormEditable" class="btn-outline compact-button" type="button" @click="removeTemplateFieldRow(index)"><span class="btn-icon">×</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="template-actions">
+            <button v-if="canManageChannelConfig && templateFormEditable" class="btn-primary" type="button" @click="saveTemplateDraft"><span class="btn-icon">✓</span>保存草稿</button>
+            <button v-if="canTestDelivery && selectedTemplate && templateFormMode !== 'creating'" class="btn-outline" type="button" @click="validateSelectedTemplate"><span class="btn-icon">⚡</span>测试校验</button>
+            <button v-if="canManageChannelConfig && selectedTemplate && templateFormMode !== 'creating' && selectedTemplate.status !== 'ACTIVE'" class="btn-primary" type="button" @click="publishSelectedTemplate"><span class="btn-icon">↗</span>发布生效</button>
+            <button v-if="canManageChannelConfig && selectedTemplate && templateFormMode !== 'creating' && selectedTemplate.status === 'ACTIVE'" class="btn-outline" type="button" @click="disableSelectedTemplate"><span class="btn-icon">×</span>停用</button>
+            <button v-if="canManageChannelConfig && selectedTemplate && templateFormMode !== 'creating' && selectedTemplate.status === 'DISABLED'" class="btn-outline" type="button" @click="rollbackSelectedTemplate"><span class="btn-icon">↺</span>回滚生效</button>
+          </div>
+          <section class="mini-program-advisory" :class="{ ready: selectedTemplate?.lastTestStatus === 'PASS' }">
+            <div>
+              <strong>{{ selectedTemplate?.lastTestStatus === 'PASS' ? '最近校验通过' : '等待测试校验' }}</strong>
+              <span>{{ selectedTemplate?.lastTestMessage || '发布前需要完成模板结构校验；真实微信投递仍需测试账号验证。' }}</span>
+            </div>
+            <small>最近校验：{{ formatTime(selectedTemplate?.lastTestTime) }}</small>
           </section>
         </aside>
       </div>
@@ -2941,6 +3199,126 @@ label,
   padding: 10px;
 }
 
+.template-summary-grid,
+.template-impact-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.template-impact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.template-summary-grid article,
+.template-impact-grid article {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 74px;
+  padding: 12px;
+}
+
+.template-summary-grid span,
+.template-summary-grid small,
+.template-impact-grid span {
+  color: var(--gray-500);
+  font-size: var(--font-size-xs);
+}
+
+.template-summary-grid strong,
+.template-impact-grid strong {
+  color: var(--gray-900);
+  font-size: var(--font-size-lg);
+}
+
+.template-ops-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 260px minmax(320px, 0.45fr) minmax(520px, 1fr);
+}
+
+.template-type-panel,
+.template-version-panel,
+.template-detail-panel {
+  min-height: 520px;
+}
+
+.template-version-list,
+.template-form,
+.template-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-version-item {
+  align-items: flex-start;
+  background: white;
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.template-version-item.active {
+  background: color-mix(in srgb, var(--primary-color) 7%, white);
+  border-color: color-mix(in srgb, var(--primary-color) 36%, var(--gray-200));
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+
+.template-version-item strong {
+  color: var(--gray-900);
+  overflow-wrap: anywhere;
+}
+
+.template-version-item small {
+  color: var(--gray-500);
+  font-size: var(--font-size-xs);
+}
+
+.template-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.template-form label span,
+.field-editor h2 {
+  color: var(--gray-700);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+}
+
+.field-editor {
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.field-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1fr) auto;
+}
+
+.template-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
 .config-grid article {
   background: var(--gray-50);
   border: 1px solid var(--gray-100);
@@ -2992,9 +3370,25 @@ label,
 }
 
 .status-pill.down,
-.status-pill.failed {
+.status-pill.failed,
+.status-pill.disabled {
   background: rgba(239, 68, 68, 0.12);
   color: var(--error-color);
+}
+
+.status-pill.draft {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--gray-600);
+}
+
+.status-pill.testing {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning-color);
+}
+
+.status-pill.active {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--success-color);
 }
 
 .compact-button {

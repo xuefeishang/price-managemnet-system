@@ -23,6 +23,7 @@ public class PricePublishService {
     private final PriceDraftItemRepository itemRepository;
     private final PricePublishLogRepository publishLogRepository;
     private final PriceService priceService;
+    private final ProductAnnualBudgetService annualBudgetService;
     private final NotificationEventService notificationEventService;
 
     @Transactional
@@ -66,7 +67,9 @@ public class PricePublishService {
                 price.setOriginalPrice(draftItem.getOriginalPrice());
                 price.setCurrentPrice(draftItem.getCurrentPrice());
                 price.setCostPrice(draftItem.getCostPrice());
-                price.setBudgetPrice(draftItem.getBudgetPrice());
+                price.setBudgetPrice(annualBudgetService
+                        .getBudgetPrice(draftItem.getProduct().getId(), draftItem.getEffectiveDate())
+                        .orElse(null));
                 price.setEffectiveDate(draftItem.getEffectiveDate());
                 price.setExpiryDate(draftItem.getExpiryDate());
                 price.setUnit(draftItem.getUnit());

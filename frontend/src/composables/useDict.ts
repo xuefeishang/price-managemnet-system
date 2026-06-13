@@ -58,6 +58,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   notification_mini_subscription_row_status: '小程序订阅用户行状态',
   notification_mini_resolution_status: '小程序订阅异常处理状态',
   notification_mini_program_page: '小程序通知跳转页',
+  notification_mini_template_status: '小程序模板状态',
   notification_frequency_rule: '通知聚合频控规则',
   system_notice_status: '系统公告状态',
   scheduled_task_type: '定时任务类型',

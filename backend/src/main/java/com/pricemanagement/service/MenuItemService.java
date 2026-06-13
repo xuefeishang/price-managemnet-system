@@ -212,7 +212,8 @@ public class MenuItemService {
             // Create child menus under 产品管理
             createMenuItem(productMgmt, "产品列表", "/products", null, 1, true, null);
             createMenuItem(productMgmt, "价格维护", "/price-maintenance", "price", 2, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
-            createMenuItem(productMgmt, "价格查询", "/price-query", "price", 3, true,
+            createMenuItem(productMgmt, "预算管理", "/budget-management", "price", 3, true, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
+            createMenuItem(productMgmt, "价格查询", "/price-query", "price", 4, true,
                     toJsonRoles(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER));
 
             // Create child menus under 基础运维
@@ -261,7 +262,7 @@ public class MenuItemService {
         canonicalMenu.setParentId(productMgmt.getId());
         canonicalMenu.setName("价格查询");
         canonicalMenu.setIcon("price");
-        canonicalMenu.setSortOrder(3);
+        canonicalMenu.setSortOrder(4);
         canonicalMenu.setVisible(true);
         canonicalMenu.setRoles(toJsonRoles(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER));
         menuItemRepository.save(canonicalMenu);
@@ -273,8 +274,26 @@ public class MenuItemService {
         }
 
         log.info("Normalized price query menu");
+        ensureChildMenu(productMgmt, "/budget-management", "预算管理", "price", 3, toJsonRoles(User.Role.ADMIN, User.Role.EDITOR));
         ensureMenu("/scheduled-tasks", "定时任务", "clock", 5, toJsonRoles(User.Role.ADMIN));
         ensureMenu("/notifications", "通知管理", "bell", 6, toJsonRoles(User.Role.ADMIN));
+    }
+
+    private void ensureChildMenu(MenuItem parent, String path, String name, String icon, int sortOrder, String roles) {
+        List<MenuItem> menus = menuItemRepository.findAllByPathOrderByIdAsc(path);
+        if (menus.isEmpty()) {
+            createMenuItem(parent, name, path, icon, sortOrder, true, roles);
+            log.info("Added menu: {}", name);
+            return;
+        }
+        MenuItem menu = menus.get(0);
+        menu.setParentId(parent.getId());
+        menu.setName(name);
+        menu.setIcon(icon);
+        menu.setSortOrder(sortOrder);
+        menu.setVisible(true);
+        menu.setRoles(roles);
+        menuItemRepository.save(menu);
     }
 
     private void ensureMenu(String path, String name, String icon, int sortOrder, String roles) {

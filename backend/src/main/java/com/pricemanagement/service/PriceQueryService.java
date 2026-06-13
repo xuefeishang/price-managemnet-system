@@ -53,6 +53,7 @@ public class PriceQueryService {
     private final ProductRepository productRepository;
     private final PriceRepository priceRepository;
     private final SysDictRepository sysDictRepository;
+    private final ProductAnnualBudgetService annualBudgetService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -157,19 +158,16 @@ public class PriceQueryService {
             return List.of();
         }
 
-        Map<Long, Price> currentPriceMap = toLatestCreatedPriceMap(
-                priceRepository.findValidPricesByProductIdsAndDate(productIds, date));
-        Map<Long, Price> yesterdayPriceMap = toLatestCreatedPriceMap(
-                priceRepository.findValidPricesByProductIdsAndDate(productIds, date.minusDays(1)));
         Map<Long, BigDecimal> monthlyAverageMap = toMonthlyAverageMap(productIds, date);
         Map<Long, Price> latestPriceMap = toLatestEffectivePriceMap(
                 priceRepository.findLatestPricesBeforeDate(productIds, date));
+        Map<Long, BigDecimal> annualBudgetMap = annualBudgetService.getBudgetPriceMap(productIds, date);
 
         return products.stream()
-                .map(product -> toRow(product, date, currentPriceMap.get(product.getId()),
-                        yesterdayPriceMap.get(product.getId()),
+                .map(product -> toRow(product, date,
                         monthlyAverageMap.get(product.getId()),
-                        latestPriceMap.get(product.getId())))
+                        latestPriceMap.get(product.getId()),
+                        annualBudgetMap.get(product.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -179,18 +177,6 @@ public class PriceQueryService {
         for (Object[] row : priceRepository.findAveragePricesByProductIdsAndMonth(productIds, monthStart, date)) {
             Long productId = (Long) row[0];
             toBigDecimal(row[1]).ifPresent(value -> result.put(productId, value));
-        }
-        return result;
-    }
-
-    private Map<Long, Price> toLatestCreatedPriceMap(List<Price> prices) {
-        Map<Long, Price> result = new HashMap<>();
-        for (Price price : prices) {
-            Long productId = price.getProduct().getId();
-            Price existing = result.get(productId);
-            if (existing == null || isCreatedAfter(price, existing)) {
-                result.put(productId, price);
-            }
         }
         return result;
     }
@@ -222,11 +208,11 @@ public class PriceQueryService {
         return Optional.empty();
     }
 
-    private PriceQueryRowDTO toRow(Product product, LocalDate date, Price currentPrice, Price yesterdayPrice,
-                                   BigDecimal monthlyAveragePrice, Price latestPrice) {
-        BigDecimal current = currentPrice != null ? currentPrice.getCurrentPrice() : null;
-        BigDecimal yesterday = yesterdayPrice != null ? yesterdayPrice.getCurrentPrice() : null;
-        BigDecimal changeAmount = calculateChangeAmount(current, yesterday);
+    private PriceQueryRowDTO toRow(Product product, LocalDate date,
+                                   BigDecimal monthlyAveragePrice, Price latestPrice, BigDecimal annualBudgetPrice) {
+        BigDecimal recent = latestPrice != null ? latestPrice.getCurrentPrice() : null;
+        BigDecimal budget = annualBudgetPrice;
+        BigDecimal changeAmount = calculateChangeAmount(recent, budget);
 
         return PriceQueryRowDTO.builder()
                 .productId(product.getId())
@@ -236,22 +222,18 @@ public class PriceQueryService {
                 .originIds(product.getOriginIds())
                 .specification(product.getSpecs())
                 .unit(firstNonBlank(
-                        currentPrice != null ? currentPrice.getUnit() : null,
                         latestPrice != null ? latestPrice.getUnit() : null,
                         product.getUnit()))
                 .currency(firstNonBlank(product.getCurrency(), SystemConstants.DEFAULT_CURRENCY))
                 .effectiveDate(date)
-                .currentPrice(current)
-                .yesterdayPrice(yesterday)
+                .currentPrice(recent)
+                .yesterdayPrice(budget)
                 .changeAmount(changeAmount)
-                .changePercent(calculateChangePercent(changeAmount, yesterday))
-                .budgetPrice(firstNonNull(
-                        currentPrice != null ? currentPrice.getBudgetPrice() : null,
-                        product.getBudgetPrice(),
-                        latestPrice != null ? latestPrice.getBudgetPrice() : null))
+                .changePercent(calculateChangePercent(changeAmount, budget))
+                .budgetPrice(budget)
                 .monthlyAveragePrice(monthlyAveragePrice)
-                .latestPrice(latestPrice != null ? latestPrice.getCurrentPrice() : null)
-                .hasPrice(current != null)
+                .latestPrice(recent)
+                .hasPrice(recent != null)
                 .build();
     }
 
@@ -266,14 +248,6 @@ public class PriceQueryService {
         }
         return changeAmount.multiply(BigDecimal.valueOf(100))
                 .divide(yesterday, 4, RoundingMode.HALF_UP);
-    }
-
-    @SafeVarargs
-    private final <T> T firstNonNull(T... values) {
-        for (T value : values) {
-            if (value != null) return value;
-        }
-        return null;
     }
 
     private String firstNonBlank(String... values) {

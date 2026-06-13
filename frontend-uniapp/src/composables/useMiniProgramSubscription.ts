@@ -6,6 +6,8 @@ import {
 import { getDictValue } from '@/composables/useDict'
 import type { NotificationMiniProgramSubscription } from '@/types'
 
+const WECHAT_SUBSCRIBE_BATCH_SIZE = 3
+
 const defaultSubscription = (): NotificationMiniProgramSubscription => ({
   enabled: false,
   configured: false,
@@ -50,28 +52,49 @@ const loadMiniSubscriptions = async () => {
   }
 }
 
+const chunks = <T>(items: T[], size: number): T[][] => {
+  const result: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    result.push(items.slice(index, index + size))
+  }
+  return result
+}
+
 const requestMiniProgramSubscribe = async () => {
   if (!canRequestSubscribe.value) {
     uni.showToast({ title: subscribeDescription.value, icon: 'none' })
     return false
   }
 
-  const tmplIds = miniSubscription.value.templates.map(item => item.templateId)
+  const templates = miniSubscription.value.templates.filter(item => item.templateId)
 
   // #ifdef MP-WEIXIN
+  const results: Array<{ notificationType: string; templateId: string; result: string }> = []
   try {
-    const result = await uni.requestSubscribeMessage({ tmplIds })
-    const responseMap = result as unknown as Record<string, string>
-    const results = miniSubscription.value.templates.map(template => ({
-      notificationType: template.notificationType,
-      templateId: template.templateId,
-      result: responseMap[template.templateId] || 'unknown'
-    }))
+    for (const batch of chunks(templates, WECHAT_SUBSCRIBE_BATCH_SIZE)) {
+      const result = await uni.requestSubscribeMessage({ tmplIds: batch.map(item => item.templateId) })
+      const responseMap = result as unknown as Record<string, string>
+      batch.forEach(template => {
+        results.push({
+          notificationType: template.notificationType,
+          templateId: template.templateId,
+          result: responseMap[template.templateId] || 'unknown'
+        })
+      })
+    }
     const response = await updateMiniProgramSubscriptions({ results })
     miniSubscription.value = response.data || miniSubscription.value
     uni.showToast({ title: '订阅状态已更新', icon: 'success' })
     return true
   } catch {
+    if (results.length > 0) {
+      try {
+        const response = await updateMiniProgramSubscriptions({ results })
+        miniSubscription.value = response.data || miniSubscription.value
+      } catch {
+        await loadMiniSubscriptions()
+      }
+    }
     uni.showToast({ title: '订阅授权未完成', icon: 'none' })
     return false
   }

@@ -158,6 +158,24 @@ CREATE TABLE IF NOT EXISTS price (
     UNIQUE KEY uk_product_effective_date (product_id, effective_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='价格表';
 
+-- 1.4.1 产品年度预算表
+CREATE TABLE IF NOT EXISTS product_annual_budget (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '年度预算ID',
+    product_id BIGINT NOT NULL COMMENT '产品ID',
+    budget_year INT NOT NULL COMMENT '预算年度',
+    budget_price DECIMAL(15, 4) COMMENT '年度预算价格',
+    created_by BIGINT COMMENT '创建人',
+    updated_by BIGINT COMMENT '更新人',
+    remark VARCHAR(500) COMMENT '备注',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    UNIQUE KEY uk_product_budget_year (product_id, budget_year),
+    INDEX idx_product_annual_budget_year (budget_year),
+    INDEX idx_product_annual_budget_product (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产品年度预算表';
+
 -- 1.5 价格历史表
 CREATE TABLE IF NOT EXISTS price_history (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '历史记录ID',
@@ -307,6 +325,14 @@ AND NOT EXISTS (SELECT 1 FROM price WHERE product_id = p.id);
 
 SELECT CONCAT('价格数据: ', IF(@has_price > 0, '已存在，跳过', '初始化完成')) AS status;
 
+INSERT INTO product_annual_budget (product_id, budget_year, budget_price, created_time, updated_time)
+SELECT p.id, YEAR(CURDATE()), p.budget_price, NOW(), NOW()
+FROM product p
+WHERE p.budget_price IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM product_annual_budget b WHERE b.product_id = p.id AND b.budget_year = YEAR(CURDATE())
+  );
+
 -- =====================================================
 -- 6. 菜单项表初始化（如不存在）
 -- =====================================================
@@ -347,7 +373,8 @@ INSERT INTO menu_item (id, parent_id, name, path, icon, sort_order, visible, rol
 SELECT * FROM (
     SELECT 10 AS id, 2 AS parent_id, '产品列表' AS name, '/products' AS path, NULL AS icon, 1 AS sort_order, TRUE AS visible, NULL AS roles, NOW() AS created_time, NOW() AS updated_time
     UNION ALL SELECT 11, 2, '价格维护', '/price-maintenance', 'price', 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
-    UNION ALL SELECT 12, 2, '价格查询', '/price-query', 'price', 3, TRUE, '["ADMIN","EDITOR","VIEWER"]', NOW(), NOW()
+    UNION ALL SELECT 12, 2, '预算管理', '/budget-management', 'price', 3, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
+    UNION ALL SELECT 13, 2, '价格查询', '/price-query', 'price', 4, TRUE, '["ADMIN","EDITOR","VIEWER"]', NOW(), NOW()
     UNION ALL SELECT 20, 3, '产品维护', '/product-edit', NULL, 1, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 21, 3, '分类管理', '/categories', NULL, 2, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
     UNION ALL SELECT 22, 3, '导入导出', '/import', NULL, 3, TRUE, '["ADMIN","EDITOR"]', NOW(), NOW()
@@ -1301,6 +1328,47 @@ CREATE TABLE IF NOT EXISTS notification_mini_program_resolution (
     CONSTRAINT fk_notification_mini_resolution_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅异常处理记录';
 
+CREATE TABLE IF NOT EXISTS notification_mini_program_template (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '小程序订阅模板版本ID',
+    notification_type VARCHAR(50) NOT NULL COMMENT '通知类型',
+    template_id VARCHAR(100) NOT NULL COMMENT '微信订阅消息模板ID',
+    page VARCHAR(200) COMMENT '小程序跳转页',
+    fields_json TEXT NOT NULL COMMENT '字段映射JSON',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' COMMENT '模板状态',
+    last_test_status VARCHAR(20) COMMENT '最近测试状态',
+    last_test_message VARCHAR(500) COMMENT '最近测试说明',
+    last_test_delivery_id BIGINT COMMENT '最近测试投递ID',
+    last_test_time DATETIME COMMENT '最近测试时间',
+    published_by BIGINT COMMENT '发布人',
+    published_time DATETIME COMMENT '发布时间',
+    active_notification_type VARCHAR(50) GENERATED ALWAYS AS (CASE WHEN status = 'ACTIVE' THEN notification_type ELSE NULL END) STORED COMMENT '生效模板唯一约束辅助列',
+    created_by BIGINT COMMENT '创建人',
+    updated_by BIGINT COMMENT '更新人',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    version BIGINT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    CONSTRAINT uk_notification_mini_template_active_type UNIQUE (active_notification_type),
+    INDEX idx_notification_mini_template_type_status (notification_type, status),
+    INDEX idx_notification_mini_template_template_id (template_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅消息模板版本表';
+
+CREATE TABLE IF NOT EXISTS notification_mini_program_template_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '小程序订阅模板运维历史ID',
+    template_id_ref BIGINT NOT NULL COMMENT '模板版本ID',
+    notification_type VARCHAR(50) NOT NULL COMMENT '通知类型',
+    action VARCHAR(20) NOT NULL COMMENT '操作类型',
+    operator_id BIGINT COMMENT '操作人',
+    status_before VARCHAR(20) COMMENT '操作前状态',
+    status_after VARCHAR(20) COMMENT '操作后状态',
+    template_id_masked VARCHAR(120) COMMENT '脱敏模板ID',
+    message VARCHAR(500) COMMENT '操作说明',
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    INDEX idx_notification_mini_template_history_template (template_id_ref),
+    INDEX idx_notification_mini_template_history_type (notification_type),
+    CONSTRAINT fk_notification_mini_template_history_template FOREIGN KEY (template_id_ref)
+        REFERENCES notification_mini_program_template(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序订阅消息模板运维历史表';
+
 CREATE TABLE IF NOT EXISTS notification_channel_config (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '通知渠道配置ID',
     channel VARCHAR(50) NOT NULL COMMENT '通知渠道',
@@ -1466,6 +1534,10 @@ SELECT * FROM (
     UNION ALL SELECT 'notification_mini_subscription_status', 'ACCEPT', '已授权', '#10B981', 2, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
     UNION ALL SELECT 'notification_mini_subscription_status', 'REJECT', '已拒绝', '#EF4444', 3, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
     UNION ALL SELECT 'notification_mini_subscription_status', 'BAN', '已禁用', '#64748B', 4, 'ACTIVE', '小程序订阅授权状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_template_status', 'DRAFT', '草稿', '#64748B', 1, 'ACTIVE', '小程序模板状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_template_status', 'TESTING', '测试中', '#F59E0B', 2, 'ACTIVE', '小程序模板状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_template_status', 'ACTIVE', '已生效', '#10B981', 3, 'ACTIVE', '小程序模板状态', NOW(), NOW()
+    UNION ALL SELECT 'notification_mini_template_status', 'DISABLED', '已停用', '#9CA3AF', 4, 'ACTIVE', '小程序模板状态', NOW(), NOW()
     UNION ALL SELECT 'notification_mini_subscription_row_status', 'NORMAL', '正常', '#10B981', 1, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
     UNION ALL SELECT 'notification_mini_subscription_row_status', 'LOW_BALANCE', '低余量', '#F59E0B', 2, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
     UNION ALL SELECT 'notification_mini_subscription_row_status', 'UNBOUND', '未绑定', '#9CA3AF', 3, 'ACTIVE', '小程序订阅用户行状态', NOW(), NOW()
@@ -1513,6 +1585,24 @@ SELECT 'PRICE_AUTO_PUBLISH',
        NOW(),
        NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_scheduled_task WHERE task_code = 'PRICE_AUTO_PUBLISH');
+
+-- PC 端走势图统一使用 30天 / 180天 / 12个月。
+DELETE FROM sys_dict
+WHERE category = 'chart_range'
+  AND dict_key IN ('7d', '90d');
+
+INSERT INTO sys_dict (category, dict_key, dict_value, extra_value, sort_order, status, remark, created_time, updated_time)
+VALUES
+    ('chart_range', '30d', '30天', '30', 1, 'ACTIVE', '30天趋势', NOW(), NOW()),
+    ('chart_range', '180d', '180天', '180', 2, 'ACTIVE', '180天趋势', NOW(), NOW()),
+    ('chart_range', '1y', '12个月', '365', 3, 'ACTIVE', '近12个月趋势', NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+    dict_value = VALUES(dict_value),
+    extra_value = VALUES(extra_value),
+    sort_order = VALUES(sort_order),
+    status = VALUES(status),
+    remark = VALUES(remark),
+    updated_time = NOW();
 
 -- =====================================================
 -- 初始化完成提示（更新）

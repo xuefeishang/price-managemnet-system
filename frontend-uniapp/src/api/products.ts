@@ -10,13 +10,17 @@ export const getProducts = async (params: PageRequest): Promise<ApiResponse<Page
 }
 
 // 获取产品详情
-export const getProductById = async (id: number): Promise<ApiResponse<Product>> => {
-  return await get(`/api/products/${id}`)
+export const getProductById = async (id: number, showLoading = true): Promise<ApiResponse<Product>> => {
+  return await get(`/api/products/${id}`, undefined, { showLoading })
 }
 
 // 获取产品当前价格（含时间信息）
-export const getCurrentPrice = async (productId: number): Promise<ApiResponse<Price>> => {
-  return await get(`/api/products/${productId}/current-price`)
+export const getCurrentPrice = async (productId: number, showLoading = true): Promise<ApiResponse<Price>> => {
+  return await get(`/api/products/${productId}/current-price`, undefined, { showLoading })
+}
+
+export const getProductPriceYears = async (productId: number, showLoading = true): Promise<ApiResponse<number[]>> => {
+  return await get(`/api/products/${productId}/price-years`, undefined, { showLoading })
 }
 
 // 创建产品
@@ -95,6 +99,12 @@ export interface PriceTrendPoint {
 }
 
 // 获取某产品的价格走势数据
-export const getPriceTrend = async (productId: number, days: number): Promise<ApiResponse<PriceTrendPoint[]>> => {
-  return await get(`/api/products/${productId}/price-trend`, { days })
+export const getPriceTrend = async (
+  productId: number,
+  days: number,
+  showLoading = true,
+  endDate?: string,
+  startDate?: string
+): Promise<ApiResponse<PriceTrendPoint[]>> => {
+  return await get(`/api/products/${productId}/price-trend`, { days, startDate, endDate }, { showLoading })
 }

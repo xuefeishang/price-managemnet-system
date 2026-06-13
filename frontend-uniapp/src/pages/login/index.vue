@@ -61,9 +61,9 @@
       <!-- 网络模式切换入口 -->
       <view class="network-switch-section">
         <text class="network-status" @click="openNetworkSettings">
-          当前网络：{{ currentNetworkLabel }}
+          当前环境：{{ currentNetworkLabel }}
         </text>
-        <text class="network-hint" @click="openNetworkSettings">点击切换内外网</text>
+        <text class="network-hint" @click="openNetworkSettings">点击切换测试/正式环境</text>
       </view>
     </view>
 
@@ -98,19 +98,19 @@
         </view>
 
         <!-- 高级设置：手动输入 IP 和端口 -->
-        <view class="advanced-section">
+        <view v-if="manualServerEnabled" class="advanced-section">
           <text class="advanced-toggle" @click="showAdvanced = !showAdvanced">
             {{ showAdvanced ? '收起高级设置' : '展开高级设置（手动输入）' }}
           </text>
 
           <view v-if="showAdvanced" class="advanced-fields">
             <view class="settings-field">
-              <text class="settings-label">IP 地址</text>
+              <text class="settings-label">域名或 IP 地址</text>
               <input
                 v-model="manualServerForm.ip"
                 class="settings-input"
                 type="text"
-                placeholder="例如 10.7.5.175"
+                placeholder="例如 price.jlmining.com"
                 placeholder-class="placeholder"
               />
             </view>
@@ -121,7 +121,7 @@
                 v-model="manualServerForm.port"
                 class="settings-input"
                 type="number"
-                placeholder="例如 32080"
+                placeholder="HTTPS 默认 443"
                 placeholder-class="placeholder"
               />
             </view>
@@ -155,7 +155,9 @@ import {
   initNetworkDetection,
   getInternalBaseUrl,
   getExternalBaseUrl,
+  getLocalTestBaseUrl,
   getApiBaseUrl,
+  isMiniProgramEnvironmentSwitchEnabled,
   type ServerConfig,
   type NetworkMode
 } from '@/utils/serverConfig'
@@ -174,43 +176,76 @@ const showAdvanced = ref(false)
 const detecting = ref(false)
 const selectedNetworkMode = ref<NetworkMode>('auto')
 const manualServerForm = ref<ServerConfig>({ ip: '', port: '' })
+const networkStateVersion = ref(0)
+const miniProgramEnvironmentSwitchEnabled = isMiniProgramEnvironmentSwitchEnabled()
+const manualServerEnabled = import.meta.env.DEV && !miniProgramEnvironmentSwitchEnabled
+let miniProgramRealDevice = false
+// #ifdef MP-WEIXIN
+miniProgramRealDevice = uni.getSystemInfoSync().platform !== 'devtools'
+// #endif
 
 const logoUrl = computed(() => themeConfig.value.logoUrlLogin || themeConfig.value.logoUrl)
 const logoSizeClass = computed(() => `logo-${themeConfig.value.logoSizeLogin || themeConfig.value.logoSize || 'medium'}`)
 
 // 网络选项配置
-const networkOptions = computed<Array<{ value: NetworkMode; label: string; description: string }>>(() => [
-  {
-    value: 'auto',
-    label: '自动检测',
-    description: '系统自动检测网络环境，优先使用内网'
-  },
-  {
-    value: 'internal',
-    label: '内网模式',
-    description: `公司 WiFi 内网访问 (${getInternalBaseUrl()})`
-  },
-  {
-    value: 'external',
-    label: '外网模式',
-    description: `外网远程访问 (${getExternalBaseUrl()})`
+const networkOptions = computed<Array<{ value: NetworkMode; label: string; description: string }>>(() => {
+  if (miniProgramEnvironmentSwitchEnabled) {
+    return [
+      {
+        value: 'dev',
+        label: '本地测试',
+        description: `仅开发者工具模拟器 (${getLocalTestBaseUrl()})`
+      },
+      {
+        value: 'internal',
+        label: '内网正式环境',
+        description: `正式服务器内网地址 (${getInternalBaseUrl()})`
+      },
+      {
+        value: 'external',
+        label: '公网正式环境',
+        description: `手机预览与正式使用 (${getExternalBaseUrl()})`
+      }
+    ]
   }
-])
+
+  return [
+    {
+      value: 'auto',
+      label: '自动检测',
+      description: '系统自动检测网络环境，优先使用内网'
+    },
+    {
+      value: 'internal',
+      label: '内网模式',
+      description: `公司 WiFi 内网访问 (${getInternalBaseUrl()})`
+    },
+    {
+      value: 'external',
+      label: '外网模式',
+      description: `外网远程访问 (${getExternalBaseUrl()})`
+    }
+  ]
+})
 
 // 当前网络模式标签
 const currentNetworkLabel = computed(() => {
+  networkStateVersion.value
   const mode = getNetworkMode()
   const labels: Record<NetworkMode, string> = {
     'auto': '自动检测',
-    'internal': '内网',
-    'external': '外网',
-    'dev': '开发'
+    'internal': miniProgramEnvironmentSwitchEnabled ? '内网正式环境' : '内网',
+    'external': miniProgramEnvironmentSwitchEnabled ? '公网正式环境' : '外网',
+    'dev': miniProgramEnvironmentSwitchEnabled ? '本地测试' : '开发'
   }
   return labels[mode] || '自动检测'
 })
 
 // 当前服务器地址
-const currentServerAddress = computed(() => getApiBaseUrl())
+const currentServerAddress = computed(() => {
+  networkStateVersion.value
+  return getApiBaseUrl()
+})
 
 const openNetworkSettings = () => {
   selectedNetworkMode.value = getNetworkMode()
@@ -224,14 +259,31 @@ const closeNetworkSettings = () => {
 }
 
 const selectNetworkMode = (mode: NetworkMode) => {
+  if (miniProgramRealDevice && mode === 'dev') {
+    uni.showToast({
+      title: '真机无法访问本地测试环境',
+      icon: 'none'
+    })
+    return
+  }
   selectedNetworkMode.value = mode
 }
 
 const handleApplyNetwork = async () => {
+  if (miniProgramRealDevice && selectedNetworkMode.value === 'dev') {
+    selectedNetworkMode.value = 'internal'
+    uni.showToast({
+      title: '真机请选择内网正式或公网正式环境',
+      icon: 'none'
+    })
+    return
+  }
+
   detecting.value = true
 
   try {
     await switchNetworkMode(selectedNetworkMode.value)
+    networkStateVersion.value += 1
     closeNetworkSettings()
     uni.showToast({
       title: `已切换到${currentNetworkLabel.value}`,
@@ -249,7 +301,7 @@ const handleApplyNetwork = async () => {
 
 const handleSaveManualServer = () => {
   if (!isValidServerConfig(manualServerForm.value)) {
-    uni.showToast({ title: '请输入正确的IP和端口', icon: 'none' })
+    uni.showToast({ title: '请输入正确的域名/IP和端口', icon: 'none' })
     return
   }
 
@@ -289,6 +341,12 @@ const handleLogin = async () => {
 }
 
 onMounted(async () => {
+  // 127.0.0.1 在真机上指向手机自身，不能沿用开发者工具保存的测试环境。
+  if (miniProgramRealDevice && getNetworkMode() === 'dev') {
+    await switchNetworkMode('internal')
+    networkStateVersion.value += 1
+  }
+
   // 加载主题配置（获取Logo）
   loadThemeConfig()
 

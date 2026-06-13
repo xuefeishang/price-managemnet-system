@@ -254,7 +254,9 @@
       "mcp__codegraph__codegraph_files",
       "mcp__codegraph__codegraph_explore",
       "Bash(grep *)",
-      "Skill(git-version)"
+      "Skill(git-version)",
+      "Bash({t})",
+      "Bash(' + t + ')"
     ]
   },
   "enabledMcpjsonServers": [

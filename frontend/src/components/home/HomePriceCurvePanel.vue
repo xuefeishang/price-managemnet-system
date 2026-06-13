@@ -6,10 +6,12 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
+import { useTheme } from '@/composables/useTheme'
 import type { ProductTrendItem } from './TrendAnalysisChart.vue'
 
 use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer])
 const { chartAutoresize } = useSafeChartAutoresize()
+const { themeConfig } = useTheme()
 
 const props = defineProps<{
   product: ProductTrendItem | null
@@ -25,6 +27,10 @@ const validPoints = computed(() =>
   (props.product?.points || [])
     .filter((point): point is { date: string; price: number } => point.price != null)
 )
+const chartPoints = computed(() =>
+  (props.product?.points || []).filter(point => point.date && (point.price != null || point.budgetPrice != null))
+)
+const hasChartData = computed(() => chartPoints.value.length > 0)
 
 const stats = computed(() => {
   if (validPoints.value.length === 0) {
@@ -61,18 +67,24 @@ const formatDate = (dateValue: string) => {
 
 const chartOption = computed(() => {
   const product = props.product
-  if (!product || validPoints.value.length === 0) return {}
+  if (!product || !hasChartData.value) return {}
 
-  const dates = validPoints.value.map(point => {
+  const dates = chartPoints.value.map(point => {
     const date = new Date(point.date)
     return Number.isNaN(date.getTime()) ? point.date : `${date.getMonth() + 1}/${date.getDate()}`
   })
-  const prices = validPoints.value.map(point => point.price)
-  const min = Math.min(...prices)
-  const max = Math.max(...prices)
+  const prices = chartPoints.value.map(point => point.price == null ? null : Number(point.price))
+  const budgets = chartPoints.value.map(point => point.budgetPrice == null ? null : Number(point.budgetPrice))
+  const values = [
+    ...prices.filter((value): value is number => value != null),
+    ...budgets.filter((value): value is number => value != null)
+  ]
+  const min = Math.min(...values)
+  const max = Math.max(...values)
   const padding = Math.max((max - min) * 0.18, max * 0.02, 1)
   const lineColor = product.lineColor || '#0D6E6E'
   const areaColor = product.areaColor || `${lineColor}24`
+  const budgetColor = themeConfig.value.chartBudgetColor || '#F59E0B'
 
   return {
     grid: { left: 52, right: 28, top: 28, bottom: 34 },
@@ -108,39 +120,56 @@ const chartOption = computed(() => {
       borderColor: '#D0D5DD',
       textStyle: { color: '#344054', fontSize: 12 },
       formatter: (params: any) => {
-        const point = params?.[0]
-        return point
-          ? `${point.axisValue}<br/><span style="color:${lineColor}">●</span> ${product.name}: ${formatPrice(point.value)}`
-          : ''
+        const items = Array.isArray(params) ? params : []
+        if (!items.length) return ''
+        return [
+          items[0].axisValue,
+          ...items
+            .filter((item: any) => item.value != null)
+            .map((item: any) => `${item.marker}${item.seriesName}: ${formatPrice(item.value)}`)
+        ].join('<br/>')
       }
     },
-    series: [{
-      type: 'line',
-      data: prices,
-      smooth: true,
-      connectNulls: true,
-      symbol: 'circle',
-      symbolSize: 5,
-      itemStyle: { color: lineColor },
-      lineStyle: { width: 2.6, color: lineColor },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: areaColor },
-            { offset: 1, color: 'rgba(255,255,255,0)' }
-          ]
+    series: [
+      {
+        name: '价格',
+        type: 'line',
+        data: prices,
+        smooth: true,
+        connectNulls: true,
+        symbol: validPoints.value.length <= 1 ? 'circle' : 'none',
+        symbolSize: 5,
+        itemStyle: { color: lineColor },
+        lineStyle: { width: 2.6, color: lineColor },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: areaColor },
+              { offset: 1, color: 'rgba(255,255,255,0)' }
+            ]
+          }
+        },
+        markLine: {
+          symbol: 'none',
+          silent: true,
+          lineStyle: { color: '#D0D5DD', type: 'dashed', width: 1 },
+          label: { color: '#667085', fontSize: 10, formatter: '均价' },
+          data: stats.value.average != null ? [{ yAxis: stats.value.average }] : []
         }
       },
-      markLine: {
+      {
+        name: '预算',
+        type: 'line',
+        data: budgets,
+        smooth: true,
+        connectNulls: true,
         symbol: 'none',
-        silent: true,
-        lineStyle: { color: '#D0D5DD', type: 'dashed', width: 1 },
-        label: { color: '#667085', fontSize: 10, formatter: '均价' },
-        data: stats.value.average != null ? [{ yAxis: stats.value.average }] : []
+        itemStyle: { color: budgetColor },
+        lineStyle: { width: 1.8, color: budgetColor, type: 'dashed', opacity: 0.76 }
       }
-    }]
+    ]
   }
 })
 </script>
@@ -185,7 +214,7 @@ const chartOption = computed(() => {
     </div>
 
     <div class="curve-chart-shell">
-      <v-chart v-if="product && validPoints.length > 0" class="curve-chart" :option="chartOption" :autoresize="chartAutoresize" />
+      <v-chart v-if="product && hasChartData" class="curve-chart" :option="chartOption" :autoresize="chartAutoresize" />
       <div v-else class="curve-empty">暂无可展示曲线的产品</div>
     </div>
 

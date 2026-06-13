@@ -35,6 +35,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByStatus(com.pricemanagement.constants.CommonStatus status);
 
     @Query("""
+            SELECT COUNT(u)
+            FROM User u
+            WHERE u.status = :status
+              AND u.wechatOpenid IS NOT NULL
+              AND u.wechatOpenid <> ''
+            """)
+    long countActiveUsersWithWechatOpenid(@Param("status") com.pricemanagement.constants.CommonStatus status);
+
+    @Query("""
             SELECT u FROM User u
             WHERE u.status = :status
               AND (:role IS NULL OR u.role = :role)

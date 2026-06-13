@@ -102,13 +102,15 @@ EXIT;
 > 首页产品产地展示复用既有 `product.origin_ids` 与 `origin` 字典数据，不需要新增数据库迁移；升级时重新打包后端和前端即可。
 > 首页产品表新增 `home_layout.product_list_mode` 与 `home_layout.product_table_page_size` 配置项，由启动初始化补齐；如生产环境已有字典数据，升级后重启后端即可自动补充缺失项。
 > 日常价格查询功能通过 Flyway 执行 `V15__daily_price_query_permissions.sql` 补充“价格查询”菜单和 `price:export` 权限；新环境执行 `init.sql` 时已包含同样的菜单和权限数据。
+
+> 年度预算管理通过 Flyway 执行 `V44__product_annual_budget.sql` 新增 `product_annual_budget` 表和“预算管理”菜单；新环境执行 `init.sql` 时已包含同样表结构与菜单数据。
 > `V16__normalize_price_query_menu.sql` 会将 `/price-query` 归一化为“产品管理”下唯一的“价格查询”二级菜单，避免历史环境出现同路径重复菜单或普通用户可见但菜单管理不可见的情况。
 > `V17__external_api_auth_phase1.sql` 会新增外部 API 授权管理表、字典、菜单和 `/api/external/v1/**` 端点权限。该功能默认关闭，不影响当前内部 JWT 功能。
 > `V19__external_api_endpoint_code_examples.sql` 会为外部 API 端点补充结构化示例、参数 schema 和可复制代码元数据。
 > `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
 > `V22__personal_profile_management.sql` 会扩展 Refresh Token 设备信息，并新增登录历史与个人偏好表，用于个人中心账号运维。
 > `V23__price_draft_publish_notification.sql` 会新增价格草稿/发布日志、站内通知、通用定时任务表和相关字典项。默认价格自动发布任务为停用状态，升级后需管理员在“系统管理 -> 定时任务”确认后手动启用。
-> `V28__notification_phase3_frequency_rules.sql` 会新增通知聚合频控默认规则字典；`V29__notification_provider_health_status_dict.sql` 会新增 Provider 健康状态字典；`V30__notification_aggregate_event_count.sql` 会为通知消息增加聚合事件计数字段；`V31__notification_mini_program_subscription.sql` 会新增小程序订阅授权表和授权状态字典；`V35__notification_mini_program_resolution.sql` 会新增用户级订阅异常处理表；`V36__notification_operations_hardening.sql` 会增加测试投递隔离字段、异常处理乐观锁、细粒度权限并清理历史敏感操作参数；`V37__notification_mini_resolution_status_dict.sql` 会增加异常处理状态字典；`V38__notification_mini_program_eligibility.sql` 会增加小程序订阅用户资格查询快照及状态分页索引；`V39__system_setting_permission_backfill.sql` 会补齐并启用 `system:setting` 权限及 ADMIN 授权，修复历史库保存通知渠道配置时的 403；`V40__notification_mini_program_page_dict.sql` 会补充小程序通知跳转页字典。升级后需完成 Flyway 校验并重新打包前端。
+> `V28__notification_phase3_frequency_rules.sql` 会新增通知聚合频控默认规则字典；`V29__notification_provider_health_status_dict.sql` 会新增 Provider 健康状态字典；`V30__notification_aggregate_event_count.sql` 会为通知消息增加聚合事件计数字段；`V31__notification_mini_program_subscription.sql` 会新增小程序订阅授权表和授权状态字典；`V35__notification_mini_program_resolution.sql` 会新增用户级订阅异常处理表；`V36__notification_operations_hardening.sql` 会增加测试投递隔离字段、异常处理乐观锁、细粒度权限并清理历史敏感操作参数；`V37__notification_mini_resolution_status_dict.sql` 会增加异常处理状态字典；`V38__notification_mini_program_eligibility.sql` 会增加小程序订阅用户资格查询快照及状态分页索引；`V39__system_setting_permission_backfill.sql` 会补齐并启用 `system:setting` 权限及 ADMIN 授权，修复历史库保存通知渠道配置时的 403；`V40__notification_mini_program_page_dict.sql` 会补充小程序通知跳转页字典；`V41__notification_mini_program_template_window.sql` 会新增小程序模板版本/历史表和模板状态字典；`V42__notification_mini_program_template_active_unique.sql` 会停用同通知类型的历史重复 ACTIVE，并增加生成列唯一索引。升级后需完成 Flyway 校验并重新打包前端。
 > 字典管理分类页签、使用说明和效果展示升级仅涉及前端页面与静态分类元数据，不需要新增数据库迁移；升级时重新打包前端即可。
 > Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
 
@@ -242,18 +244,18 @@ Provider 调用会使用 `delivery-{notification_delivery_log.id}` 作为幂等�
 1. 登录微信公众平台 `https://mp.weixin.qq.com`，选择对应小程序。
 2. 在小程序后台的开发设置/开发者 ID 中获取 `AppID`；`AppSecret` 由具备权限的管理员生成或重置，生成后必须按密钥处理。
 3. 在小程序后台进入订阅消息，选择公共模板或申请模板，加入“我的模板”后获取模板 ID 和字段编号，例如 `phrase2`、`thing4`、`thing1`、`time2`。
-4. 将 AppID、AppSecret、模板 ID 和字段映射配置到后端环境变量中。PC `/notifications` 只能显示 Provider 是否启用、是否配置完整和投递健康状态，不会也不应明文展示 `AppSecret`。
+4. 将 AppID、AppSecret、模板 ID 和字段映射配置到后端环境变量或 PC `/notifications -> 渠道配置` 中。PC 页面只能显示 Provider 是否启用、是否配置完整、脱敏 ID 和投递健康状态，不会也不应明文展示 `AppSecret`。
 
-当前项目已按你提供的小程序信息预置非敏感默认值：AppID 为 `wx00c7266dd35d3ab7`，价格发布模板为报价变更通知模板，系统公告模板为基础信息模板。AppSecret 不会写入配置文件；对话中已暴露过的 AppSecret 必须在微信公众平台重置后，再通过 `WECHAT_MINI_APP_SECRET` 注入运行环境。
+`application.yml` 不再预置具体 AppID 或正式模板 ID，新环境默认显示未配置。对话、截图或历史介质中暴露过的 AppSecret 必须在微信公众平台重置后，再通过 `WECHAT_MINI_APP_SECRET` 或 PC 密钥托管入口注入运行环境。
 
 | 环境变量 | 说明 | 默认值 |
 |----------|------|--------|
 | `WECHAT_MINI_NOTIFY_ENABLED` | 是否启用小程序订阅消息 Provider | `false` |
 | `WECHAT_MINI_ELIGIBILITY_RECONCILE_CRON` | 小程序订阅资格快照每日校准 Cron | `0 30 3 * * ?` |
-| `WECHAT_MINI_APP_ID` | 微信小程序 AppID | `wx00c7266dd35d3ab7` |
+| `WECHAT_MINI_APP_ID` | 微信小程序 AppID | 空 |
 | `WECHAT_MINI_APP_SECRET` | 微信小程序 AppSecret | 空 |
-| `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 价格发布订阅模板 ID，报价变更通知 | `T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk` |
-| `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 系统公告订阅模板 ID，基础信息模板 | `RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo` |
+| `WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED` | 价格发布订阅模板 ID | 空 |
+| `WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE` | 系统公告订阅模板 ID | 空 |
 | `WECHAT_MINI_PRICE_FIELD_TYPE` | 价格发布模板“类型”字段 | `phrase2` |
 | `WECHAT_MINI_PRICE_FIELD_TIP` | 价格发布模板“温馨提示”字段 | `thing4` |
 | `WECHAT_MINI_NOTICE_FIELD_CREATOR` | 系统公告模板“创建人”字段 | `thing1` |
@@ -265,12 +267,14 @@ Provider 调用会使用 `delivery-{notification_delivery_log.id}` 作为幂等�
 推荐在 IDEA 后端 Run Configuration 的 Environment variables 中至少追加：
 
 ```text
-WECHAT_MINI_NOTIFY_ENABLED=true;WECHAT_MINI_APP_SECRET=重置后的微信小程序密钥
+WECHAT_MINI_NOTIFY_ENABLED=true;WECHAT_MINI_APP_ID=微信小程序AppID;WECHAT_MINI_APP_SECRET=重置后的微信小程序密钥
 ```
 
 如微信后台更换了模板或字段编号，再覆盖对应 `WECHAT_MINI_TEMPLATE_*`、`WECHAT_MINI_PRICE_FIELD_*`、`WECHAT_MINI_NOTICE_FIELD_*` 环境变量。不要把 `WECHAT_MINI_APP_SECRET` 写入 `application.yml`、前端代码、文档或普通日志。
 
-`MINI_PROGRAM` 投递依赖用户授权次数。未配置、未绑定 openid、未授权模板会记录为 `SKIPPED`；微信接口超时、HTTP 非 2xx 或微信错误码会记录为 `FAILED` 并走 Outbox 重试状态机。PC `/notifications` 仍是统一发布入口，小程序只负责授权和接收，站内通知始终兜底。
+`MINI_PROGRAM` 投递依赖用户授权次数。未配置、未绑定 openid、未授权模板会记录为 `SKIPPED`；微信接口超时、HTTP 非 2xx 或临时错误会记录为 `FAILED` 并走 Outbox 重试状态机；模板无效、字段错误、用户拒绝/授权失效等永久错误会记录为 `SKIPPED`，授权失效会同步清空本地次数。PC `/notifications` 仍是统一发布入口，小程序只负责授权和接收，站内通知始终兜底。
+
+公网正式微信小程序请求地址为 `https://price.jlmining.com:32080`，生产机由 `price-management-frontend` Nginx 容器在 32080 端口终止 TLS。公司内网真机调试可使用独立 HTTP 入口 `http://10.7.5.175:32801`，该入口不能配置为微信 request 合法域名，只能在真机调试开启“不校验合法域名”时使用。证书与私钥部署在项目 `certs/` 目录并只读挂载，不得提交仓库。
 
 通知三期新增 SSE 轻事件接口 `/api/notifications/events`。生产反向代理需要允许长连接和流式响应；若代理或浏览器断开连接，PC 前端会自动回退到轮询，不影响站内消息列表。
 

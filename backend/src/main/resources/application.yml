@@ -131,7 +131,7 @@ notification:
   mini-program:
     enabled: ${WECHAT_MINI_NOTIFY_ENABLED:false}
     eligibility-reconcile-cron: "${WECHAT_MINI_ELIGIBILITY_RECONCILE_CRON:0 30 3 * * ?}"
-    app-id: ${WECHAT_MINI_APP_ID:wx00c7266dd35d3ab7}
+    app-id: ${WECHAT_MINI_APP_ID:}
     app-secret: ${WECHAT_MINI_APP_SECRET:}
     timeout-ms: ${WECHAT_MINI_NOTIFY_TIMEOUT_MS:5000}
     token-url: ${WECHAT_MINI_TOKEN_URL:https://api.weixin.qq.com/cgi-bin/token}
@@ -139,13 +139,13 @@ notification:
     default-page: ${WECHAT_MINI_DEFAULT_PAGE:pages/notifications/index}
     templates:
       PRICE_PUBLISHED:
-        template-id: ${WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED:T4Zs2s8aFbRFAwae0aHwUtlfyRpck19LBHrdQGL94sk}
+        template-id: ${WECHAT_MINI_TEMPLATE_PRICE_PUBLISHED:}
         page: ${WECHAT_MINI_PRICE_PAGE:pages/home/index}
         fields:
           type: ${WECHAT_MINI_PRICE_FIELD_TYPE:phrase2}
           tip: ${WECHAT_MINI_PRICE_FIELD_TIP:thing4}
       SYSTEM_NOTICE:
-        template-id: ${WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE:RXjKjpNwlRBa1G6bfJMu0u1DDMa0jqlDIU8sZ6gUOPo}
+        template-id: ${WECHAT_MINI_TEMPLATE_SYSTEM_NOTICE:}
         page: ${WECHAT_MINI_NOTICE_PAGE:pages/notifications/index}
         fields:
           creator: ${WECHAT_MINI_NOTICE_FIELD_CREATOR:thing1}

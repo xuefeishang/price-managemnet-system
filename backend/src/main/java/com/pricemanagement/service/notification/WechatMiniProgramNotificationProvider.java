@@ -100,10 +100,11 @@ public class WechatMiniProgramNotificationProvider implements NotificationChanne
         if (user == null || !StringUtils.hasText(user.getWechatOpenid())) {
             return DeliveryResult.skipped("USER_NOT_BOUND", "用户未绑定微信小程序openid");
         }
-        if (!subscriptionService.isAuthorized(user.getId(), message.getType(), templateId)) {
+        if (!subscriptionService.consume(user.getId(), message.getType(), templateId)) {
             return DeliveryResult.skipped("SUBSCRIBE_NOT_AUTHORIZED", "用户未授权该订阅消息模板或授权次数已用完");
         }
 
+        boolean consumed = true;
         try {
             String accessToken = accessToken(runtimeConfig);
             Map<String, Object> payload = buildPayload(user.getWechatOpenid(), template, message);
@@ -120,23 +121,38 @@ public class WechatMiniProgramNotificationProvider implements NotificationChanne
                                     .build(),
                             HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                subscriptionService.releaseConsumed(user.getId(), message.getType(), templateId);
+                consumed = false;
                 return DeliveryResult.failed("WECHAT_HTTP_" + response.statusCode(),
                         "微信订阅消息接口返回非成功状态: " + response.statusCode());
             }
             JsonNode result = objectMapper.readTree(response.body());
             int errcode = result.path("errcode").asInt(-1);
             if (errcode == 0) {
-                subscriptionService.consume(user.getId(), message.getType(), templateId);
                 return DeliveryResult.success("delivery-" + delivery.getId());
             }
             String errmsg = result.path("errmsg").asText("微信订阅消息接口返回失败");
-            if (errcode == 43101) {
+            if (isAuthorizationInvalid(errcode)) {
+                consumed = false;
+                subscriptionService.markUnauthorized(user.getId(), message.getType(), templateId, true);
                 return DeliveryResult.skipped("WECHAT_USER_REFUSED", errmsg);
             }
+            if (isPermanentWechatError(errcode)) {
+                subscriptionService.releaseConsumed(user.getId(), message.getType(), templateId);
+                consumed = false;
+                return DeliveryResult.skipped("WECHAT_PERMANENT_ERR_" + errcode, errmsg);
+            }
+            subscriptionService.releaseConsumed(user.getId(), message.getType(), templateId);
+            consumed = false;
             return DeliveryResult.failed("WECHAT_ERR_" + errcode, errmsg);
         } catch (java.net.http.HttpTimeoutException ex) {
+            subscriptionService.releaseConsumed(user.getId(), message.getType(), templateId);
+            consumed = false;
             return DeliveryResult.failed("WECHAT_TIMEOUT", "微信订阅消息接口调用超时");
         } catch (Exception ex) {
+            if (consumed) {
+                subscriptionService.releaseConsumed(user.getId(), message.getType(), templateId);
+            }
             log.warn("Wechat mini program notification failed: deliveryId={}, exception={}",
                     delivery.getId(), ex.getClass().getSimpleName());
             return DeliveryResult.failed("WECHAT_EXCEPTION", "微信订阅消息接口调用异常");
@@ -240,19 +256,35 @@ public class WechatMiniProgramNotificationProvider implements NotificationChanne
     }
 
     private String resolvePage(NotificationMessage message, NotificationMiniProgramProperties.Template template) {
+        String page;
         if (StringUtils.hasText(template.getPage())) {
-            return template.getPage();
+            page = template.getPage();
+        } else if (NotificationService.LINK_TYPE_PRICE_QUERY.equals(message.getLinkType())) {
+            page = "pages/home/index";
+        } else {
+            String defaultPage = runtimeConfigService.activeConfig().getDefaultPage();
+            page = StringUtils.hasText(defaultPage) ? defaultPage : "pages/notifications/index";
         }
-        if (NotificationService.LINK_TYPE_PRICE_QUERY.equals(message.getLinkType())) {
-            return "pages/home/index";
+        return appendMessageId(page, message.getId());
+    }
+
+    private String appendMessageId(String page, Long messageId) {
+        if (!StringUtils.hasText(page) || messageId == null || !page.startsWith("pages/notifications/index")) {
+            return page;
         }
-        String defaultPage = runtimeConfigService.activeConfig().getDefaultPage();
-        if (NotificationService.LINK_TYPE_SYSTEM_NOTICE.equals(message.getLinkType())) {
-            return defaultPage;
-        }
-        return StringUtils.hasText(defaultPage)
-                ? defaultPage
-                : "pages/notifications/index";
+        String separator = page.contains("?") ? "&" : "?";
+        return page + separator + "messageId=" + URLEncoder.encode(String.valueOf(messageId), StandardCharsets.UTF_8);
+    }
+
+    private boolean isAuthorizationInvalid(int errcode) {
+        return errcode == 43101;
+    }
+
+    private boolean isPermanentWechatError(int errcode) {
+        return switch (errcode) {
+            case 40003, 40037, 41030, 43101, 47003 -> true;
+            default -> false;
+        };
     }
 
     private Map<String, String> value(String value) {

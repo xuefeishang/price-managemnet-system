@@ -8,6 +8,9 @@ import type {
   NotificationChannelConfigUpdateRequest,
   NotificationDeliveryLog,
   NotificationMiniProgramCoverage,
+  NotificationMiniProgramTemplateCatalog,
+  NotificationMiniProgramTemplateItem,
+  NotificationMiniProgramTemplateRequest,
   NotificationMessage,
   NotificationPreference,
   NotificationProviderHealth,
@@ -143,6 +146,47 @@ export const testNotificationChannelDelivery = async (
   request: { userId: number; notificationType: string }
 ): Promise<ApiResponse<number>> => {
   return await http.post(`/api/admin/notifications/channels/${channel}/test-delivery`, request)
+}
+
+export const getMiniProgramTemplates = async (): Promise<ApiResponse<NotificationMiniProgramTemplateCatalog>> => {
+  return await http.get('/api/admin/notifications/mini-program/templates')
+}
+
+export const createMiniProgramTemplate = async (
+  request: NotificationMiniProgramTemplateRequest
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.post('/api/admin/notifications/mini-program/templates', request)
+}
+
+export const updateMiniProgramTemplate = async (
+  id: number,
+  request: NotificationMiniProgramTemplateRequest
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.put(`/api/admin/notifications/mini-program/templates/${id}`, request)
+}
+
+export const validateMiniProgramTemplate = async (
+  id: number
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.post(`/api/admin/notifications/mini-program/templates/${id}/validate`)
+}
+
+export const publishMiniProgramTemplate = async (
+  id: number
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.post(`/api/admin/notifications/mini-program/templates/${id}/publish`)
+}
+
+export const disableMiniProgramTemplate = async (
+  id: number
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.post(`/api/admin/notifications/mini-program/templates/${id}/disable`)
+}
+
+export const rollbackMiniProgramTemplate = async (
+  id: number
+): Promise<ApiResponse<NotificationMiniProgramTemplateItem>> => {
+  return await http.post(`/api/admin/notifications/mini-program/templates/${id}/rollback`)
 }
 
 export const getMiniProgramCoverage = async (params?: {

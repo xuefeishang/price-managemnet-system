@@ -11,6 +11,8 @@ import com.pricemanagement.dto.NotificationProviderHealthDTO;
 import com.pricemanagement.dto.NotificationProviderTestResultDTO;
 import com.pricemanagement.dto.NotificationMiniProgramCoverageDTO;
 import com.pricemanagement.dto.NotificationMiniProgramResolveRequest;
+import com.pricemanagement.dto.NotificationMiniProgramTemplateDTO;
+import com.pricemanagement.dto.NotificationMiniProgramTemplateRequest;
 import com.pricemanagement.dto.NotificationMiniProgramTestDeliveryRequest;
 import com.pricemanagement.dto.NotificationRecipientDTO;
 import com.pricemanagement.dto.NotificationThrottleRuleDTO;
@@ -21,6 +23,7 @@ import com.pricemanagement.entity.OperationLog.OperationType;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.service.AdminMiniProgramSubscriptionManagementService;
 import com.pricemanagement.service.NotificationMiniProgramRuntimeConfigService;
+import com.pricemanagement.service.NotificationMiniProgramTemplateService;
 import com.pricemanagement.service.NotificationService;
 import com.pricemanagement.service.NotificationObservabilityService;
 import com.pricemanagement.service.notification.WechatMiniProgramNotificationProvider;
@@ -47,6 +50,7 @@ public class AdminNotificationController {
     private final NotificationService notificationService;
     private final NotificationObservabilityService notificationObservabilityService;
     private final NotificationMiniProgramRuntimeConfigService miniProgramRuntimeConfigService;
+    private final NotificationMiniProgramTemplateService miniProgramTemplateService;
     private final AdminMiniProgramSubscriptionManagementService miniProgramSubscriptionManagementService;
     private final WechatMiniProgramNotificationProvider miniProgramNotificationProvider;
 
@@ -88,6 +92,62 @@ public class AdminNotificationController {
     public Result<NotificationProviderTestResultDTO> testChannelConfig(@PathVariable String channel) {
         requireMiniProgram(channel);
         return Result.success("渠道配置诊断完成", miniProgramRuntimeConfigService.testConfig());
+    }
+
+    @GetMapping("/mini-program/templates")
+    public Result<NotificationMiniProgramTemplateDTO> miniProgramTemplates() {
+        return Result.success("获取小程序模板成功", miniProgramTemplateService.list());
+    }
+
+    @PostMapping("/mini-program/templates")
+    @PreAuthorize("hasAuthority('system:setting')")
+    @OperationLog(module = "通知中心", type = OperationType.CREATE, description = "创建小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> createMiniProgramTemplate(
+            @RequestBody NotificationMiniProgramTemplateRequest request) {
+        return Result.success("小程序模板草稿已创建",
+                miniProgramTemplateService.create(request, SecurityUtils.getCurrentUserId()));
+    }
+
+    @PutMapping("/mini-program/templates/{id}")
+    @PreAuthorize("hasAuthority('system:setting')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "更新小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> updateMiniProgramTemplate(
+            @PathVariable Long id,
+            @RequestBody NotificationMiniProgramTemplateRequest request) {
+        return Result.success("小程序模板已更新",
+                miniProgramTemplateService.update(id, request, SecurityUtils.getCurrentUserId()));
+    }
+
+    @PostMapping("/mini-program/templates/{id}/validate")
+    @PreAuthorize("hasAuthority('notification:test-delivery')")
+    @OperationLog(module = "通知中心", type = OperationType.VIEW, description = "校验小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> validateMiniProgramTemplate(@PathVariable Long id) {
+        return Result.success("小程序模板校验完成",
+                miniProgramTemplateService.validate(id, SecurityUtils.getCurrentUserId()));
+    }
+
+    @PostMapping("/mini-program/templates/{id}/publish")
+    @PreAuthorize("hasAuthority('system:setting')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "发布小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> publishMiniProgramTemplate(@PathVariable Long id) {
+        return Result.success("小程序模板已发布",
+                miniProgramTemplateService.publish(id, SecurityUtils.getCurrentUserId()));
+    }
+
+    @PostMapping("/mini-program/templates/{id}/disable")
+    @PreAuthorize("hasAuthority('system:setting')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "停用小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> disableMiniProgramTemplate(@PathVariable Long id) {
+        return Result.success("小程序模板已停用",
+                miniProgramTemplateService.disable(id, SecurityUtils.getCurrentUserId()));
+    }
+
+    @PostMapping("/mini-program/templates/{id}/rollback")
+    @PreAuthorize("hasAuthority('system:setting')")
+    @OperationLog(module = "通知中心", type = OperationType.UPDATE, description = "回滚小程序订阅模板", logParams = false)
+    public Result<NotificationMiniProgramTemplateDTO.Item> rollbackMiniProgramTemplate(@PathVariable Long id) {
+        return Result.success("小程序模板已回滚",
+                miniProgramTemplateService.rollback(id, SecurityUtils.getCurrentUserId()));
     }
 
     @PostMapping("/channels/{channel}/test-token")

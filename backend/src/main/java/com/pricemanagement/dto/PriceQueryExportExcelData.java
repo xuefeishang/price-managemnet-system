@@ -29,16 +29,16 @@ public class PriceQueryExportExcelData {
     @ExcelProperty("币种")
     private String currency;
 
-    @ExcelProperty("当日售价")
+    @ExcelProperty("近期价格")
     private BigDecimal currentPrice;
 
-    @ExcelProperty("昨日售价")
+    @ExcelProperty("预算价格")
     private BigDecimal yesterdayPrice;
 
-    @ExcelProperty("较昨日")
+    @ExcelProperty("较预算")
     private BigDecimal changeAmount;
 
-    @ExcelProperty("较昨日比例")
+    @ExcelProperty("较预算比例")
     private String changePercent;
 
     @ExcelProperty("预算价")
@@ -47,9 +47,9 @@ public class PriceQueryExportExcelData {
     @ExcelProperty("月均价")
     private BigDecimal monthlyAveragePrice;
 
-    @ExcelProperty("最近有效价")
+    @ExcelProperty("最后维护价")
     private BigDecimal latestPrice;
 
-    @ExcelProperty("当日是否报价")
+    @ExcelProperty("是否有近期价格")
     private String hasPrice;
 }

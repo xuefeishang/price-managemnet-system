@@ -8,7 +8,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { showToast } from 'vant'
 import { useRoute, useRouter } from 'vue-router'
 import { getCategories } from '@/api/categories'
-import { getPriceTrend, type PriceTrendPoint } from '@/api/products'
+import { getPriceTrend, getProductPriceYears, type PriceTrendPoint } from '@/api/products'
 import { exportPriceQueryRows, getPriceQueryRows, type PriceQueryParams } from '@/api/priceQuery'
 import type { PageResponse, PriceQueryRow, ProductCategory } from '@/types'
 import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
@@ -44,6 +44,8 @@ const tableTotalElements = ref(0)
 const tableTotalPages = ref(0)
 const jumpPage = ref('1')
 const activeTrendDays = ref(30)
+const selectedTrendYear = ref('rolling')
+const availableTrendYears = ref<number[]>([])
 const trendRequestSeq = ref(0)
 const dateInputRef = ref<HTMLInputElement | null>(null)
 const listPanelRef = ref<HTMLElement | null>(null)
@@ -59,6 +61,14 @@ const AUTO_PAGE_SIZE_HEIGHT_OFFSET = 430
 const AUTO_PAGE_SIZE_ROW_HEIGHT = 64
 const AUTO_PAGE_SIZE_HEADER_HEIGHT = 45
 
+const displayedTableSize = computed(() => (
+  tableSizeMode.value === 'auto' ? String(adaptiveTableSize.value) : String(tableSize.value)
+))
+const visiblePageSizes = computed(() => (
+  [...new Set([...pageSizes, adaptiveTableSize.value])]
+    .filter(size => Number.isFinite(size) && size > 0)
+    .sort((a, b) => a - b)
+))
 const canExport = computed(() => hasPermission(Permission.PRICE_EXPORT))
 const paginationItems = computed<Array<number | string>>(() => {
   const total = tableTotalPages.value
@@ -109,6 +119,7 @@ const trendRanges = computed(() =>
     }))
     .filter(option => Number.isFinite(option.days) && option.days > 0)
 )
+const trendYearOptions = computed(() => availableTrendYears.value)
 
 const formatLocalDate = (date: Date) => {
   const year = date.getFullYear()
@@ -315,7 +326,12 @@ const loadTrend = async () => {
   const seq = ++trendRequestSeq.value
   trendLoading.value = true
   try {
-    const response = await getPriceTrend(row.productId, activeTrendDays.value)
+    const selectedYear = selectedTrendYear.value === 'rolling' ? null : Number(selectedTrendYear.value)
+    const endDate = selectedYear
+      ? (selectedYear === new Date().getFullYear() ? formatLocalDate(new Date()) : `${selectedYear}-12-31`)
+      : undefined
+    const startDate = selectedYear && activeTrendDays.value === 365 ? `${selectedYear}-01-01` : undefined
+    const response = await getPriceTrend(row.productId, activeTrendDays.value, endDate, startDate)
     if (seq !== trendRequestSeq.value) return
     trendData.value = response.data || []
   } catch (error) {
@@ -327,6 +343,26 @@ const loadTrend = async () => {
     if (seq === trendRequestSeq.value) {
       trendLoading.value = false
     }
+  }
+}
+
+const loadTrendYears = async () => {
+  const row = selectedRow.value
+  if (!row) {
+    availableTrendYears.value = []
+    selectedTrendYear.value = 'rolling'
+    return
+  }
+  try {
+    const response = await getProductPriceYears(row.productId)
+    availableTrendYears.value = response.data ?? []
+    if (selectedTrendYear.value !== 'rolling' && !availableTrendYears.value.includes(Number(selectedTrendYear.value))) {
+      selectedTrendYear.value = 'rolling'
+    }
+  } catch (error) {
+    console.error('Failed to load price years:', error)
+    availableTrendYears.value = []
+    selectedTrendYear.value = 'rolling'
   }
 }
 
@@ -376,9 +412,11 @@ const onCategoryChange = (event: Event) => {
 }
 
 const onTableSizeChange = (event: Event) => {
-  const value = (event.target as HTMLSelectElement).value
-  tableSizeMode.value = value
-  tableSize.value = value === 'auto' ? adaptiveTableSize.value : Number(value)
+  const value = Number((event.target as HTMLSelectElement).value)
+  if (!Number.isFinite(value) || value <= 0) return
+  if (tableSizeMode.value === 'auto' && value === adaptiveTableSize.value) return
+  tableSizeMode.value = String(value)
+  tableSize.value = value
   tablePage.value = 0
   loadRows()
 }
@@ -410,6 +448,11 @@ const viewSelectedProductDetail = () => {
 const handleTrendRangeChange = (days: number) => {
   if (activeTrendDays.value === days) return
   activeTrendDays.value = days
+  loadTrend()
+}
+
+const handleTrendYearChange = () => {
+  if (selectedTrendYear.value !== 'rolling') activeTrendDays.value = 365
   loadTrend()
 }
 
@@ -448,6 +491,9 @@ const handleExport = async () => {
 const validTrendPoints = computed(() =>
   trendData.value.filter((point): point is PriceTrendPoint & { currentPrice: number } => point.currentPrice != null)
 )
+const hasTrendChartData = computed(() =>
+  trendData.value.some(point => point.currentPrice != null || point.budgetPrice != null)
+)
 
 const trendStats = computed(() => {
   const prices = validTrendPoints.value.map(point => Number(point.currentPrice))
@@ -479,7 +525,7 @@ const findTrendPriceBefore = (daysBefore: number) => {
 const changeExplanations = computed(() => {
   const row = selectedRow.value
   if (!row) return []
-  const current = row.currentPrice
+  const current = row.currentPrice ?? row.latestPrice ?? null
   const build = (label: string, comparePrice: number | null, dateLabel: string) => {
     if (current == null || comparePrice == null) {
       return { label, value: null, percent: null, className: 'flat', dateLabel }
@@ -489,7 +535,7 @@ const changeExplanations = computed(() => {
     return { label, value: diff, percent, className: getChangeClass(diff), dateLabel }
   }
   return [
-    build('较昨日', row.yesterdayPrice ?? null, getRelativeDateLabel(1)),
+    build('较预算', row.budgetPrice ?? null, '年度预算'),
     build('较上周', findTrendPriceBefore(7), getRelativeDateLabel(7)),
     build('较上月', findTrendPriceBefore(30), getRelativeDateLabel(30))
   ]
@@ -497,8 +543,8 @@ const changeExplanations = computed(() => {
 
 const chartOption = computed(() => {
   const row = selectedRow.value
-  const points = validTrendPoints.value
-  if (!row || points.length === 0) return {}
+  const points = trendData.value
+  if (!row || !hasTrendChartData.value) return {}
   const colors = chartTheme.value
   const categoryVisual = getCategoryVisual(row.categoryId)
   const lineColor = categoryVisual.chartLineColor || categoryVisual.primaryColor || colors.primary
@@ -507,15 +553,20 @@ const chartOption = computed(() => {
   const areaColor = categoryVisual.chartAreaColor || categoryVisual.glowColor || `${categoryVisual.primaryColor || '#0D6E6E'}24`
 
   const dates = points.map(point => formatAxisDate(point.date))
-  const prices = points.map(point => Number(point.currentPrice))
-  const budgets = points.map(point => point.budgetPrice == null ? row.budgetPrice ?? null : Number(point.budgetPrice))
+  const prices = points.map(point => point.currentPrice == null ? null : Number(point.currentPrice))
+  const budgets = points.map(point => point.budgetPrice == null ? null : Number(point.budgetPrice))
   const averageLineValue = trendStats.value.average
   const budgetLineValue = row.budgetPrice ?? null
   const referenceLines = [
     averageLineValue == null ? null : Number(averageLineValue),
     budgetLineValue == null ? null : Number(budgetLineValue)
   ].filter((value): value is number => value != null)
-  const comparableValues = [...prices, ...budgets.filter((value): value is number => value != null), ...referenceLines]
+  const comparableValues = [
+    ...prices.filter((value): value is number => value != null),
+    ...budgets.filter((value): value is number => value != null),
+    ...referenceLines
+  ]
+  if (comparableValues.length === 0) return {}
   const min = Math.min(...comparableValues)
   const max = Math.max(...comparableValues)
   const padding = Math.max((max - min) * 0.18, max * 0.02, 1)
@@ -584,7 +635,7 @@ const chartOption = computed(() => {
     },
     series: [
       {
-        name: '当日售价',
+        name: '近期价格',
         type: 'line',
         data: prices,
         smooth: true,
@@ -655,7 +706,9 @@ watch(() => route.query.date, () => {
   }
 })
 
-watch(selectedRow, () => {
+watch(selectedRow, async () => {
+  selectedTrendYear.value = 'rolling'
+  await loadTrendYears()
   loadTrend()
 })
 
@@ -721,9 +774,8 @@ onUnmounted(() => {
                   {{ category.name }}
                 </option>
               </select>
-              <select class="table-select size-select" :value="tableSizeMode" @change="onTableSizeChange">
-                <option value="auto">自适应（{{ adaptiveTableSize }}条/页）</option>
-                <option v-for="size in pageSizes" :key="size" :value="size">{{ size }}条/页</option>
+              <select class="table-select size-select" :value="displayedTableSize" @change="onTableSizeChange">
+                <option v-for="size in visiblePageSizes" :key="size" :value="size">{{ size }}条/页</option>
               </select>
             </div>
             <button class="export-btn" type="button" :disabled="exporting || !canExport" @click="handleExport">
@@ -749,9 +801,9 @@ onUnmounted(() => {
             <thead>
               <tr>
                 <th>产品名称</th>
-                <th>当日售价</th>
-                <th>昨日售价</th>
-                <th>较昨日</th>
+                <th>近期价格</th>
+                <th>预算价格</th>
+                <th>较预算</th>
               </tr>
             </thead>
             <tbody>
@@ -786,8 +838,8 @@ onUnmounted(() => {
                       <span class="product-spec" :title="row.specification || ''">{{ row.specification || '--' }}</span>
                     </div>
                   </td>
-                  <td class="price-cell current">{{ displayPrice(row, row.currentPrice) }}</td>
-                  <td class="price-cell">{{ displayPrice(row, row.yesterdayPrice) }}</td>
+                  <td class="price-cell current">{{ displayPrice(row, row.currentPrice ?? row.latestPrice) }}</td>
+                  <td class="price-cell">{{ displayPrice(row, row.budgetPrice ?? row.yesterdayPrice) }}</td>
                   <td>
                     <span class="change-pill" :class="getChangeClass(row.changeAmount)">
                       <span class="change-value">{{ formatChange(row, row.changeAmount) }}</span>
@@ -845,17 +897,26 @@ onUnmounted(() => {
           <div class="selected-name-row trend-title-row muted" v-else>
             <strong>暂无选中产品</strong>
           </div>
-          <div class="range-tabs" aria-label="走势时间范围">
-            <button
-              v-for="range in trendRanges"
-              :key="range.key"
-              type="button"
-              class="range-tab"
-              :class="{ active: activeTrendDays === range.days }"
-              @click="handleTrendRangeChange(range.days)"
-            >
-              {{ range.label }}
-            </button>
+          <div class="trend-controls">
+            <div class="range-tabs" aria-label="走势时间范围">
+              <button
+                v-for="range in trendRanges"
+                :key="range.key"
+                type="button"
+                class="range-tab"
+                :class="{ active: activeTrendDays === range.days }"
+                @click="handleTrendRangeChange(range.days)"
+              >
+                {{ range.label }}
+              </button>
+            </div>
+            <label class="trend-year-control">
+              <span>查看年份</span>
+              <select v-model="selectedTrendYear" :disabled="trendLoading" @change="handleTrendYearChange">
+                <option value="rolling">滚动区间</option>
+                <option v-for="year in trendYearOptions" :key="year" :value="String(year)">{{ year }} 年</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -876,7 +937,7 @@ onUnmounted(() => {
           <div class="trend-chart-shell">
             <div v-if="trendLoading" class="chart-state">正在加载趋势...</div>
             <v-chart
-              v-else-if="validTrendPoints.length > 0"
+              v-else-if="hasTrendChartData"
               class="trend-chart"
               :option="chartOption"
               :autoresize="chartAutoresize"
@@ -902,13 +963,13 @@ onUnmounted(() => {
               <strong>{{ formatPrice(selectedRow, selectedRow.budgetPrice) }}</strong>
             </div>
             <div class="stat-item stat-latest">
-              <span>最新价</span>
+              <span>近期价</span>
               <strong>{{ formatPrice(selectedRow, selectedRow.latestPrice ?? trendStats.latest) }}</strong>
             </div>
           </div>
 
           <div class="change-explain">
-            <h3>价格变化说明</h3>
+              <h3>价格变化说明</h3>
             <div v-for="item in changeExplanations" :key="item.label" class="explain-row" :class="item.className">
               <span class="explain-dot" :class="item.className"></span>
               <span class="explain-label">{{ item.label }}</span>
@@ -1477,6 +1538,34 @@ onUnmounted(() => {
   gap: var(--spacing-md);
 }
 
+.trend-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  flex: 0 0 auto;
+}
+
+.trend-year-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trend-year-control select {
+  height: 38px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+}
+
 .trend-title-area {
   display: flex;
   align-items: center;
@@ -1902,6 +1991,20 @@ onUnmounted(() => {
   .range-tabs {
     width: 100%;
     overflow-x: hidden;
+  }
+
+  .trend-controls {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .trend-year-control {
+    justify-content: space-between;
+  }
+
+  .trend-year-control select {
+    flex: 1;
   }
 
   .trend-title-row {

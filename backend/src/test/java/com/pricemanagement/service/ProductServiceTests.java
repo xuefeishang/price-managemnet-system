@@ -20,6 +20,7 @@ import org.springframework.data.jpa.domain.Specification;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -107,6 +108,20 @@ class ProductServiceTests {
 
         assertNotNull(result);
         assertEquals("更新后的产品", result.getName());
+    }
+
+    @Test
+    void updateProductIgnoresLegacyBudgetPrice() {
+        testProduct.setBudgetPrice(new BigDecimal("100.00"));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Product updatedProduct = new Product();
+        updatedProduct.setBudgetPrice(new BigDecimal("999.00"));
+
+        Product result = productService.updateProduct(1L, updatedProduct);
+
+        assertEquals(new BigDecimal("100.00"), result.getBudgetPrice());
     }
 
     @Test

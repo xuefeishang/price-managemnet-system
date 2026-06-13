@@ -9,6 +9,7 @@ import com.pricemanagement.dto.NotificationChannelConfigUpdateRequest;
 import com.pricemanagement.dto.NotificationProviderTestResultDTO;
 import com.pricemanagement.entity.NotificationChannelConfig;
 import com.pricemanagement.repository.NotificationChannelConfigRepository;
+import com.pricemanagement.repository.NotificationMiniProgramTemplateRepository;
 import com.pricemanagement.repository.SysDictRepository;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class NotificationMiniProgramRuntimeConfigService {
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final SysDictRepository sysDictRepository;
+    private final NotificationMiniProgramTemplateRepository templateRepository;
 
     @Transactional(readOnly = true)
     public RuntimeConfig activeConfig() {
@@ -130,6 +132,13 @@ public class NotificationMiniProgramRuntimeConfigService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, NotificationMiniProgramProperties.Template> storedChannelTemplates() {
+        return configRepository.findByChannel(CHANNEL)
+                .map(config -> readStoredConfig(config.getConfigJson()).getTemplates())
+                .orElseGet(LinkedHashMap::new);
+    }
+
     private RuntimeConfig fromProperties() {
         RuntimeConfig config = new RuntimeConfig();
         config.setEnabled(properties.isEnabled());
@@ -139,8 +148,11 @@ public class NotificationMiniProgramRuntimeConfigService {
         config.setTokenUrl(properties.getTokenUrl());
         config.setSendUrl(properties.getSendUrl());
         config.setDefaultPage(properties.getDefaultPage());
-        config.setTemplates(properties.configuredTemplates());
-        config.setSource("ENV");
+        config.setTemplates(mergeActiveTemplates(properties.configuredTemplates()));
+        config.setSource(templateRepository.findByStatusOrderByNotificationTypeAscUpdatedTimeDesc(
+                com.pricemanagement.entity.NotificationMiniProgramTemplate.TemplateStatus.ACTIVE).isEmpty()
+                ? "ENV"
+                : "DATABASE+ENV");
         config.setSecretConfigured(StringUtils.hasText(properties.getAppSecret()));
         config.setSecretSource(StringUtils.hasText(properties.getAppSecret()) ? "ENV" : "NONE");
         config.setSecretFingerprint(fingerprint(properties.getAppSecret()));
@@ -151,12 +163,12 @@ public class NotificationMiniProgramRuntimeConfigService {
         StoredConfig stored = readStoredConfig(dbConfig.getConfigJson());
         RuntimeConfig config = new RuntimeConfig();
         config.setEnabled(Boolean.TRUE.equals(dbConfig.getEnabled()));
-        config.setAppId(firstText(dbConfig.getAppId(), properties.getAppId()));
+        config.setAppId(dbConfig.getAppId());
         config.setTimeoutMs(dbConfig.getTimeoutMs() == null ? properties.getTimeoutMs() : dbConfig.getTimeoutMs());
         config.setTokenUrl(firstText(stored.getTokenUrl(), properties.getTokenUrl()));
         config.setSendUrl(firstText(stored.getSendUrl(), properties.getSendUrl(), dbConfig.getEndpointUrl()));
-        config.setDefaultPage(firstText(dbConfig.getDefaultPage(), properties.getDefaultPage()));
-        config.setTemplates(stored.getTemplates().isEmpty() ? properties.configuredTemplates() : stored.getTemplates());
+        config.setDefaultPage(dbConfig.getDefaultPage());
+        config.setTemplates(mergeActiveTemplates(stored.getTemplates()));
         config.setSource("DATABASE");
         config.setUpdatedTime(dbConfig.getUpdatedTime());
 
@@ -167,10 +179,9 @@ public class NotificationMiniProgramRuntimeConfigService {
             config.setSecretSource("DATABASE");
             config.setSecretFingerprint(firstText(dbConfig.getSecretFingerprint(), fingerprint(config.getAppSecret())));
         } else {
-            config.setAppSecret(properties.getAppSecret());
-            config.setSecretConfigured(StringUtils.hasText(properties.getAppSecret()));
-            config.setSecretSource(StringUtils.hasText(properties.getAppSecret()) ? "ENV" : "NONE");
-            config.setSecretFingerprint(fingerprint(properties.getAppSecret()));
+            config.setSecretConfigured(false);
+            config.setSecretSource("NONE");
+            config.setSecretFingerprint(null);
         }
         return config;
     }
@@ -264,7 +275,7 @@ public class NotificationMiniProgramRuntimeConfigService {
         } else {
             stored.setSendUrl(firstText(request.getEndpointUrl(), current.getSendUrl(), properties.getSendUrl()));
         }
-        Map<String, NotificationMiniProgramProperties.Template> templates = new LinkedHashMap<>(current.getTemplates());
+        Map<String, NotificationMiniProgramProperties.Template> templates = new LinkedHashMap<>();
         if (request.getTemplates() != null) {
             Set<String> seenTypes = new HashSet<>();
             for (NotificationChannelConfigUpdateRequest.TemplateMappingRequest item : request.getTemplates()) {
@@ -274,8 +285,13 @@ public class NotificationMiniProgramRuntimeConfigService {
                 String key = normalizeKey(item.getNotificationType());
                 validateTemplateMapping(key, item, seenTypes);
                 NotificationMiniProgramProperties.Template existing = templates.get(key);
+                if (existing == null) {
+                    existing = current.getTemplates().get(key);
+                }
                 NotificationMiniProgramProperties.Template template = new NotificationMiniProgramProperties.Template();
-                template.setTemplateId(firstText(item.getTemplateId(), existing == null ? null : existing.getTemplateId()));
+                template.setTemplateId(Boolean.TRUE.equals(item.getClearTemplateId())
+                        ? null
+                        : firstText(item.getTemplateId(), existing == null ? null : existing.getTemplateId()));
                 template.setPage(item.getPage() == null
                         ? (existing == null ? null : existing.getPage())
                         : (StringUtils.hasText(item.getPage()) ? normalize(item.getPage()) : null));
@@ -284,8 +300,10 @@ public class NotificationMiniProgramRuntimeConfigService {
                         : item.getFields());
                 templates.put(key, template);
             }
+        } else {
+            templates.putAll(current.getTemplates());
         }
-        stored.setTemplates(templates.isEmpty() ? properties.configuredTemplates() : templates);
+        stored.setTemplates(templates);
         return stored;
     }
 
@@ -337,9 +355,6 @@ public class NotificationMiniProgramRuntimeConfigService {
         }
         if (!StringUtils.hasText(stored.getSendUrl())) {
             stored.setSendUrl(firstText(config.getEndpointUrl(), properties.getSendUrl()));
-        }
-        if (stored.getTemplates().isEmpty()) {
-            stored.setTemplates(properties.configuredTemplates());
         }
         return stored;
     }
@@ -415,6 +430,45 @@ public class NotificationMiniProgramRuntimeConfigService {
                 .orElse(false);
         if (!activePage) {
             throw new IllegalArgumentException(fieldName + "不存在或未启用: " + page);
+        }
+    }
+
+    public void validateMiniProgramPageForTemplate(String page, String fieldName) {
+        validateMiniProgramPage(page, fieldName);
+    }
+
+    private Map<String, NotificationMiniProgramProperties.Template> mergeActiveTemplates(
+            Map<String, NotificationMiniProgramProperties.Template> fallback) {
+        Map<String, NotificationMiniProgramProperties.Template> templates = new LinkedHashMap<>();
+        templateRepository.findByStatusOrderByNotificationTypeAscUpdatedTimeDesc(
+                com.pricemanagement.entity.NotificationMiniProgramTemplate.TemplateStatus.ACTIVE
+        ).forEach(template -> templates.putIfAbsent(
+                normalizeKey(template.getNotificationType()),
+                toRuntimeTemplate(template)));
+        if (fallback != null) {
+            fallback.forEach((type, template) -> templates.putIfAbsent(normalizeKey(type), template));
+        }
+        return templates;
+    }
+
+    private NotificationMiniProgramProperties.Template toRuntimeTemplate(
+            com.pricemanagement.entity.NotificationMiniProgramTemplate source) {
+        NotificationMiniProgramProperties.Template template = new NotificationMiniProgramProperties.Template();
+        template.setTemplateId(source.getTemplateId());
+        template.setPage(source.getPage());
+        template.setFields(readFields(source.getFieldsJson()));
+        return template;
+    }
+
+    private Map<String, String> readFields(String fieldsJson) {
+        if (!StringUtils.hasText(fieldsJson)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(fieldsJson, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, String>>() {
+            });
+        } catch (Exception ex) {
+            return new LinkedHashMap<>();
         }
     }
 

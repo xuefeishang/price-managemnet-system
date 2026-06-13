@@ -72,19 +72,25 @@ public class NotificationMiniProgramSubscriptionService {
 
     @Transactional
     public boolean consume(Long userId, String notificationType, String templateId) {
-        NotificationMiniProgramSubscription subscription = subscriptionRepository
-                .findByUserIdAndNotificationTypeAndTemplateId(userId, notificationType, templateId)
-                .orElse(null);
-        if (subscription == null
-                || subscription.getStatus() != NotificationMiniProgramSubscription.SubscriptionStatus.ACCEPT
-                || subscription.getAvailableCount() == null
-                || subscription.getAvailableCount() <= 0) {
-            return false;
+        boolean consumed = subscriptionRepository.consumeOne(userId, notificationType, templateId) == 1;
+        if (consumed) {
+            eligibilityService.requestRefresh(userId);
         }
-        subscription.setAvailableCount(subscription.getAvailableCount() - 1);
-        subscriptionRepository.save(subscription);
-        eligibilityService.requestRefresh(userId);
-        return true;
+        return consumed;
+    }
+
+    @Transactional
+    public void releaseConsumed(Long userId, String notificationType, String templateId) {
+        if (subscriptionRepository.releaseOne(userId, notificationType, templateId) == 1) {
+            eligibilityService.requestRefresh(userId);
+        }
+    }
+
+    @Transactional
+    public void markUnauthorized(Long userId, String notificationType, String templateId, boolean refreshEligibility) {
+        if (subscriptionRepository.markRejected(userId, notificationType, templateId) == 1 && refreshEligibility) {
+            eligibilityService.requestRefresh(userId);
+        }
     }
 
     @Transactional(readOnly = true)

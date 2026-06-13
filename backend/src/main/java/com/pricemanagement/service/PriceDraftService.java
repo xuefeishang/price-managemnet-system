@@ -38,6 +38,7 @@ public class PriceDraftService {
     private final PriceDraftItemRepository itemRepository;
     private final ProductRepository productRepository;
     private final PriceRepository priceRepository;
+    private final ProductAnnualBudgetService annualBudgetService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -86,7 +87,7 @@ public class PriceDraftService {
             item.setOriginalPrice(itemRequest.getOriginalPrice());
             item.setCurrentPrice(itemRequest.getCurrentPrice());
             item.setCostPrice(itemRequest.getCostPrice());
-            item.setBudgetPrice(itemRequest.getBudgetPrice());
+            item.setBudgetPrice(annualBudgetService.getBudgetPrice(product.getId(), request.getEffectiveDate()).orElse(null));
             item.setEffectiveDate(request.getEffectiveDate());
             item.setExpiryDate(itemRequest.getExpiryDate());
             item.setUnit(itemRequest.getUnit() != null ? itemRequest.getUnit() : product.getUnit());

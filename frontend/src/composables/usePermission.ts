@@ -31,6 +31,8 @@ export const Permission = {
   PRICE_EDIT: 'price:edit',
   PRICE_EXPORT: 'price:export',
   PRICE_APPROVE: 'price:approve',
+  BUDGET_VIEW: 'budget:view',
+  BUDGET_EDIT: 'budget:edit',
 
   // 用户相关
   USER_VIEW: 'user:view',

@@ -233,10 +233,9 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("price_alert", "price_low", "价格低于预算10%", "{\"type\":\"budget_diff\",\"threshold\":-10,\"severity\":\"warning\"}", 6, "价格低于预算预警"));
 
             // 图表时间范围 chart_range
-            dicts.add(createDict("chart_range", "7d", "7日", "7", 1, "7天趋势"));
-            dicts.add(createDict("chart_range", "30d", "30日", "30", 2, "30天趋势"));
-            dicts.add(createDict("chart_range", "90d", "90日", "90", 3, "90天趋势"));
-            dicts.add(createDict("chart_range", "1y", "年度", "365", 4, "年度趋势"));
+            dicts.add(createDict("chart_range", "30d", "30天", "30", 1, "30天趋势"));
+            dicts.add(createDict("chart_range", "180d", "180天", "180", 2, "180天趋势"));
+            dicts.add(createDict("chart_range", "1y", "12个月", "365", 3, "近12个月趋势"));
 
             // 个人中心偏好与安全记录
             dicts.add(createDict("profile_table_density", "COMPACT", "紧凑", null, 1, "个人表格密度"));
@@ -309,6 +308,10 @@ public class DataInitializer implements CommandLineRunner {
             dicts.add(createDict("notification_mini_subscription_status", "ACCEPT", "已授权", "#10B981", 2, "小程序订阅授权状态"));
             dicts.add(createDict("notification_mini_subscription_status", "REJECT", "已拒绝", "#EF4444", 3, "小程序订阅授权状态"));
             dicts.add(createDict("notification_mini_subscription_status", "BAN", "已禁用", "#64748B", 4, "小程序订阅授权状态"));
+            dicts.add(createDict("notification_mini_template_status", "DRAFT", "草稿", "#64748B", 1, "小程序模板状态"));
+            dicts.add(createDict("notification_mini_template_status", "TESTING", "测试中", "#F59E0B", 2, "小程序模板状态"));
+            dicts.add(createDict("notification_mini_template_status", "ACTIVE", "已生效", "#10B981", 3, "小程序模板状态"));
+            dicts.add(createDict("notification_mini_template_status", "DISABLED", "已停用", "#9CA3AF", 4, "小程序模板状态"));
             dicts.add(createDict("notification_frequency_rule", "TASK_FAILED", "任务失败聚合频控", "{\"enabled\":true,\"windowMinutes\":30,\"maxCount\":5}", 1, "任务失败消息在时间窗内超过阈值后聚合"));
             dicts.add(createDict("notification_frequency_rule", "API_LIMIT_WARNING", "API告警聚合频控", "{\"enabled\":true,\"windowMinutes\":30,\"maxCount\":5}", 2, "API告警消息在时间窗内超过阈值后聚合"));
             dicts.add(createDict("notification_frequency_rule", "IMPORT_EXPORT_FINISHED", "导入导出完成聚合频控", "{\"enabled\":true,\"windowMinutes\":60,\"maxCount\":10}", 3, "导入导出完成消息在时间窗内超过阈值后聚合"));

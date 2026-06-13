@@ -15,6 +15,7 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer
 export interface ProductTrendPoint {
   date: string
   price: number | null
+  budgetPrice?: number | null
 }
 
 export interface ProductTrendItem {
@@ -62,6 +63,9 @@ const formatPrice = (value: number | null | undefined, currencySymbol = '') => {
 
 const getValidPoints = (product: ProductTrendItem) =>
   product.points.filter(point => point.price != null) as Array<{ date: string; price: number }>
+
+const hasProductChartData = (product: ProductTrendItem) =>
+  product.points.some(point => point.date && (point.price != null || point.budgetPrice != null))
 
 const getProductStats = (product: ProductTrendItem) => {
   const validPoints = getValidPoints(product)
@@ -139,23 +143,28 @@ const chartOption = computed(() => {
 })
 
 const generateProductChartOption = (product: ProductTrendItem) => {
-  const points = product.points || []
+  const points = (product.points || []).filter(point => point.date && (point.price != null || point.budgetPrice != null))
   const dates = points.map(point => {
     const d = new Date(point.date)
     return Number.isNaN(d.getTime()) ? point.date : `${d.getMonth() + 1}/${d.getDate()}`
   })
   const prices = points.map(point => point.price)
+  const budgets = points.map(point => point.budgetPrice ?? null)
   const validPrices = prices.filter((price): price is number => price != null)
+  const validBudgets = budgets.filter((price): price is number => price != null)
   const lineColor = product.lineColor || themeConfig.value.chartPrimaryColor || '#0D6E6E'
   const areaColor = product.areaColor || `${lineColor}24`
+  const budgetColor = themeConfig.value.chartBudgetColor || '#F59E0B'
   const stats = getProductStats(product)
 
-  if (validPrices.length === 0) return {}
+  if (validPrices.length === 0 && validBudgets.length === 0) return {}
 
-  const markData: any[] = [
-    { type: 'max', name: '最高价', label: { formatter: (params: any) => `高 ${formatPrice(params.value, product.currencySymbol)}` } },
-    { type: 'min', name: '最低价', label: { formatter: (params: any) => `低 ${formatPrice(params.value, product.currencySymbol)}` } }
-  ]
+  const markData: any[] = validPrices.length > 0
+    ? [
+        { type: 'max', name: '最高价', label: { formatter: (params: any) => `高 ${formatPrice(params.value, product.currencySymbol)}` } },
+        { type: 'min', name: '最低价', label: { formatter: (params: any) => `低 ${formatPrice(params.value, product.currencySymbol)}` } }
+      ]
+    : []
 
   if (stats.latest) {
     markData.push({
@@ -170,8 +179,9 @@ const generateProductChartOption = (product: ProductTrendItem) => {
     })
   }
 
-  const min = Math.min(...validPrices)
-  const max = Math.max(...validPrices)
+  const chartValues = [...validPrices, ...validBudgets]
+  const min = Math.min(...chartValues)
+  const max = Math.max(...chartValues)
   const padding = Math.max((max - min) * 0.16, max * 0.02, 1)
 
   return {
@@ -207,48 +217,67 @@ const generateProductChartOption = (product: ProductTrendItem) => {
       borderColor: '#E5E5E5',
       textStyle: { color: '#333', fontSize: 12 },
       formatter: (params: any) => {
-        const p = params?.[0]
-        return p ? `${p.axisValue}<br/><span style="color:${lineColor}">●</span> ${product.name}: ${formatPrice(p.value, product.currencySymbol)}` : ''
+        const items = Array.isArray(params) ? params : []
+        if (!items.length) return ''
+        return [
+          items[0].axisValue,
+          ...items
+            .filter((item: any) => item.value != null)
+            .map((item: any) => `${item.marker}${item.seriesName}: ${formatPrice(item.value, product.currencySymbol)}`)
+        ].join('<br/>')
       }
     },
-    series: [{
-      type: 'line',
-      data: prices,
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 5,
-      connectNulls: true,
-      itemStyle: { color: lineColor },
-      lineStyle: { width: 2.2, color: lineColor },
-      label: {
-        show: true,
-        position: 'top',
-        formatter: (params: any) => params.dataIndex === prices.length - 1
-          ? formatPrice(params.value, product.currencySymbol)
-          : '',
-        color: lineColor,
-        fontSize: 10,
-        fontWeight: 600
-      },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: areaColor },
-            { offset: 1, color: 'rgba(255,255,255,0)' }
-          ]
+    series: [
+      {
+        name: '价格',
+        type: 'line',
+        data: prices,
+        smooth: true,
+        symbol: validPrices.length <= 1 ? 'circle' : 'none',
+        symbolSize: 5,
+        connectNulls: true,
+        itemStyle: { color: lineColor },
+        lineStyle: { width: 2.2, color: lineColor },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: (params: any) => params.dataIndex === prices.length - 1
+            ? formatPrice(params.value, product.currencySymbol)
+            : '',
+          color: lineColor,
+          fontSize: 10,
+          fontWeight: 600
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: areaColor },
+              { offset: 1, color: 'rgba(255,255,255,0)' }
+            ]
+          }
+        },
+        markPoint: {
+          symbolSize: 42,
+          label: {
+            color: '#fff',
+            fontSize: 9
+          },
+          data: markData
         }
       },
-      markPoint: {
-        symbolSize: 42,
-        label: {
-          color: '#fff',
-          fontSize: 9
-        },
-        data: markData
+      {
+        name: '预算',
+        type: 'line',
+        data: budgets,
+        smooth: true,
+        connectNulls: true,
+        symbol: 'none',
+        itemStyle: { color: budgetColor },
+        lineStyle: { width: 1.8, type: 'dashed', color: budgetColor, opacity: 0.82 }
       }
-    }]
+    ]
   }
 }
 
@@ -330,7 +359,7 @@ watch(() => props.trend, (newTrend) => {
 
         <div class="product-chart">
           <v-chart
-            v-if="getValidPoints(product).length > 0"
+            v-if="hasProductChartData(product)"
             class="product-line-chart"
             :option="generateProductChartOption(product)"
             :autoresize="chartAutoresize"

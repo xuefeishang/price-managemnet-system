@@ -1,6 +1,7 @@
 
 package com.pricemanagement.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.constants.SystemConstants;
@@ -40,6 +41,7 @@ public class Product {
     private BigDecimal sellingPrice;
 
     @Column(name = "budget_price", precision = 15, scale = 4)
+    @JsonIgnore
     private BigDecimal budgetPrice;  // 预算价格
 
     @ManyToOne(fetch = FetchType.EAGER)

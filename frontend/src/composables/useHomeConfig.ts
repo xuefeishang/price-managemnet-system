@@ -32,9 +32,9 @@ const defaultWidgets: HomeWidget[] = [
 ]
 
 const defaultChartRanges = [
-  { key: '7d', label: '7日', days: 7 },
-  { key: '30d', label: '30日', days: 30 },
-  { key: '90d', label: '90日', days: 90 }
+  { key: '30d', label: '30天', days: 30 },
+  { key: '180d', label: '180天', days: 180 },
+  { key: '1y', label: '12个月', days: 365 }
 ]
 
 const layoutConfig = ref<HomeLayoutConfig>({ ...defaultLayoutConfig })

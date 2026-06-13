@@ -20,8 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,7 +46,9 @@ public class PriceService {
     private final PriceHistoryRepository priceHistoryRepository;
     private final ApprovalWorkflowRepository workflowRepository;
     private final ApprovalRequestRepository requestRepository;
+    private final ProductAnnualBudgetService annualBudgetService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final long MAX_TREND_RANGE_DAYS = 370L;
 
     @Transactional(readOnly = true)
     public List<PriceHistory> getProductPriceHistory(Long productId) {
@@ -55,26 +59,30 @@ public class PriceService {
 
     @Transactional(readOnly = true)
     public Optional<Price> getPriceById(Long id) {
-        return priceRepository.findById(id);
+        return priceRepository.findById(id)
+                .map(price -> applyAnnualBudget(price, price.getEffectiveDate()));
     }
 
     @Transactional(readOnly = true)
     public Optional<Price> getCurrentPriceByProductId(Long productId) {
-        return priceRepository.findFirstByProductIdOrderByCreatedTimeDesc(productId);
+        LocalDate today = LocalDate.now();
+        return getEffectivePriceByProductIdAndDate(productId, today);
     }
 
     /**
      * 获取指定日期有效的所有价格
      */
     public List<Price> getValidPricesByDate(LocalDate date) {
-        return priceRepository.findValidPricesByDate(date);
+        return priceRepository.findValidPricesByDate(date).stream()
+                .map(price -> applyAnnualBudget(price, date))
+                .toList();
     }
 
     /**
      * 获取某产品在指定日期有效的价格
      */
     public Optional<Price> getValidPriceByProductIdAndDate(Long productId, LocalDate date) {
-        return priceRepository.findValidPriceByProductIdAndDate(productId, date);
+        return getEffectivePriceByProductIdAndDate(productId, date);
     }
 
     /**
@@ -82,7 +90,8 @@ public class PriceService {
      */
     public Optional<Price> getYesterdayPriceByProductId(Long productId) {
         LocalDate yesterday = LocalDate.now().minusDays(1);
-        return priceRepository.findValidPriceByProductIdAndDate(productId, yesterday);
+        return priceRepository.findValidPriceByProductIdAndDate(productId, yesterday)
+                .map(price -> applyAnnualBudget(price, yesterday));
     }
 
     /**
@@ -174,33 +183,7 @@ public class PriceService {
             }
         }
 
-        // 7. 查找继承的预算价格：当天Price没有budgetPrice时，取最近一次有budgetPrice的记录
-        // 对于所有产品，如果当天价格没有预算价格，查找最近有预算价格的记录
-        Map<Long, BigDecimal> inheritedBudgetPriceMap = new HashMap<>();
-        Set<Long> productsNeedingBudgetInherit = allProductIds.stream()
-                .filter(pid -> {
-                    Price todayP = todayPriceMap.get(pid);
-                    return todayP == null || todayP.getBudgetPrice() == null;
-                })
-                .collect(Collectors.toSet());
-
-        if (!productsNeedingBudgetInherit.isEmpty()) {
-            // 继承价格Map中可能已经包含了有budgetPrice的历史价格
-            for (Long pid : productsNeedingBudgetInherit) {
-                // 先从继承价格Map中找
-                Price inheritedPrice = inheritedPriceMap.get(pid);
-                if (inheritedPrice != null && inheritedPrice.getBudgetPrice() != null) {
-                    inheritedBudgetPriceMap.put(pid, inheritedPrice.getBudgetPrice());
-                }
-                // 如果继承价格Map中也没有预算价格，从昨天价格中找
-                else if (yesterdayPriceMap.containsKey(pid)) {
-                    Price yp = yesterdayPriceMap.get(pid);
-                    if (yp.getBudgetPrice() != null) {
-                        inheritedBudgetPriceMap.put(pid, yp.getBudgetPrice());
-                    }
-                }
-            }
-        }
+        Map<Long, BigDecimal> annualBudgetMap = annualBudgetService.getBudgetPriceMap(allProductIds, date);
 
         // 8. 组装结果：覆盖所有活跃产品
         return activeProducts.stream()
@@ -216,19 +199,24 @@ public class PriceService {
                         inheritedPrice = inheritedPriceMap.get(productId).getCurrentPrice();
                     }
 
-                    // 继承的预算价格：当天没有预算价格时取最近一次预算价格
-                    BigDecimal inheritedBudgetPrice = inheritedBudgetPriceMap.get(productId);
+                    BigDecimal annualBudgetPrice = annualBudgetMap.get(productId);
 
                     if (todayPrice != null) {
+                        if (annualBudgetMap.containsKey(productId)) {
+                            todayPrice.setBudgetPrice(annualBudgetMap.get(productId));
+                        } else {
+                            todayPrice.setBudgetPrice(null);
+                        }
                         // 当天有价格记录
-                        return new PriceWithStatsDTO(todayPrice, yp, avg, null, inheritedBudgetPrice);
+                        return new PriceWithStatsDTO(todayPrice, yp, avg, null, annualBudgetPrice);
                     } else {
                         // 当天没有价格记录，创建一个空价格对象关联产品，附带继承价格
                         Price emptyPrice = new Price();
                         emptyPrice.setProduct(product);
                         emptyPrice.setEffectiveDate(date);
                         emptyPrice.setUnit(product.getUnit());
-                        return new PriceWithStatsDTO(emptyPrice, yp, avg, inheritedPrice, inheritedBudgetPrice);
+                        emptyPrice.setBudgetPrice(annualBudgetPrice);
+                        return new PriceWithStatsDTO(emptyPrice, yp, avg, inheritedPrice, annualBudgetPrice);
                     }
                 })
                 .collect(Collectors.toList());
@@ -270,7 +258,6 @@ public class PriceService {
             changeData.put("originalPrice", price.getOriginalPrice());
             changeData.put("currentPrice", price.getCurrentPrice());
             changeData.put("costPrice", price.getCostPrice());
-            changeData.put("budgetPrice", price.getBudgetPrice());
             changeData.put("effectiveDate", price.getEffectiveDate());
             changeData.put("expiryDate", price.getExpiryDate());
             changeData.put("unit", price.getUnit());
@@ -328,7 +315,7 @@ public class PriceService {
             existing.setOriginalPrice(price.getOriginalPrice());
             existing.setCurrentPrice(price.getCurrentPrice());
             existing.setCostPrice(price.getCostPrice());
-            existing.setBudgetPrice(price.getBudgetPrice());
+            existing.setBudgetPrice(resolveAnnualBudget(product.getId(), effectiveDate));
             existing.setUnit(price.getUnit());
             existing.setPriceSpec(price.getPriceSpec());
             savedPrice = priceRepository.save(existing);
@@ -340,6 +327,7 @@ public class PriceService {
                 oldPrice = lastPrice.map(Price::getCurrentPrice).orElse(null);
             }
 
+            price.setBudgetPrice(resolveAnnualBudget(product.getId(), effectiveDate));
             savedPrice = priceRepository.save(price);
             log.debug("Added new price for product: {} on date: {}", product.getName(), effectiveDate);
         }
@@ -364,6 +352,28 @@ public class PriceService {
         return savedPrice;
     }
 
+    private Price applyAnnualBudget(Price price, LocalDate date) {
+        if (price == null) {
+            return null;
+        }
+        Long productId = price.getProduct() != null ? price.getProduct().getId() : null;
+        price.setBudgetPrice(resolveAnnualBudget(productId, date));
+        return price;
+    }
+
+    private BigDecimal resolveAnnualBudget(Long productId, LocalDate date) {
+        if (productId == null || date == null) {
+            return null;
+        }
+        return annualBudgetService.getBudgetPrice(productId, date).orElse(null);
+    }
+
+    private Optional<Price> getEffectivePriceByProductIdAndDate(Long productId, LocalDate date) {
+        return priceRepository.findLatestPriceBeforeDate(productId, date)
+                .filter(price -> price.getExpiryDate() == null || !price.getExpiryDate().isBefore(date))
+                .map(price -> applyAnnualBudget(price, date));
+    }
+
     @Transactional
     public Price updatePrice(Long id, Price price, Long applicantId) {
         Price existingPrice = priceRepository.findById(id)
@@ -383,7 +393,6 @@ public class PriceService {
             changeData.put("originalPrice", price.getOriginalPrice() != null ? price.getOriginalPrice() : existingPrice.getOriginalPrice());
             changeData.put("currentPrice", price.getCurrentPrice() != null ? price.getCurrentPrice() : existingPrice.getCurrentPrice());
             changeData.put("costPrice", price.getCostPrice() != null ? price.getCostPrice() : existingPrice.getCostPrice());
-            changeData.put("budgetPrice", price.getBudgetPrice() != null ? price.getBudgetPrice() : existingPrice.getBudgetPrice());
             changeData.put("effectiveDate", price.getEffectiveDate() != null ? price.getEffectiveDate() : existingPrice.getEffectiveDate());
             changeData.put("expiryDate", price.getExpiryDate() != null ? price.getExpiryDate() : existingPrice.getExpiryDate());
             changeData.put("unit", price.getUnit() != null ? price.getUnit() : existingPrice.getUnit());
@@ -422,9 +431,6 @@ public class PriceService {
         }
         if (price.getCostPrice() != null) {
             existingPrice.setCostPrice(price.getCostPrice());
-        }
-        if (price.getBudgetPrice() != null) {
-            existingPrice.setBudgetPrice(price.getBudgetPrice());
         }
         if (price.getUnit() != null) {
             existingPrice.setUnit(price.getUnit());
@@ -521,23 +527,41 @@ public class PriceService {
      * @return 每日价格数据点列表，同一天只保留最新记录
      */
     public List<PriceTrendDTO> getPriceTrend(Long productId, int days) {
-        return getPriceTrend(productId, days, null);
+        return getPriceTrend(productId, days, null, null);
+    }
+
+    public List<Integer> getPriceYears(Long productId) {
+        java.util.Set<Integer> years = new java.util.TreeSet<>(java.util.Comparator.reverseOrder());
+        years.addAll(priceRepository.findPriceYearsByProductId(productId));
+        years.addAll(annualBudgetService.getBudgetYears(productId));
+        return new java.util.ArrayList<>(years);
     }
 
     public List<PriceTrendDTO> getPriceTrend(Long productId, int days, LocalDate requestedEndDate) {
-        LocalDate endDate = requestedEndDate == null ? LocalDate.now() : requestedEndDate;
-        LocalDate startDate = endDate.minusDays(days - 1);
+        return getPriceTrend(productId, days, null, requestedEndDate);
+    }
 
-        List<Price> prices = priceRepository.findByProductIdAndDateRange(productId, startDate, endDate);
-
-        // 当前趋势无数据时保留原有降级；历史趋势必须严格限制在基准日内。
-        if (prices.isEmpty() && requestedEndDate == null) {
-            prices = priceRepository.findByProductIdOrderByCreatedTimeDesc(productId);
-            // 只取最近 'days' 条记录
-            if (prices.size() > days) {
-                prices = prices.subList(0, days);
-            }
+    public List<PriceTrendDTO> getPriceTrend(
+            Long productId,
+            int days,
+            LocalDate requestedStartDate,
+            LocalDate requestedEndDate) {
+        if (days <= 0) {
+            throw new IllegalArgumentException("趋势天数必须大于 0");
         }
+        LocalDate endDate = requestedEndDate == null ? LocalDate.now() : requestedEndDate;
+        LocalDate startDate = requestedStartDate == null ? endDate.minusDays(days - 1) : requestedStartDate;
+        if (startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("趋势开始日期不能晚于结束日期");
+        }
+
+        long rangeDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (rangeDays > MAX_TREND_RANGE_DAYS) {
+            throw new IllegalArgumentException("趋势日期范围不能超过 " + MAX_TREND_RANGE_DAYS + " 天");
+        }
+
+        List<Price> prices = new ArrayList<>(priceRepository.findByProductIdAndDateRange(productId, startDate, endDate));
+        priceRepository.findLatestPriceBeforeDate(productId, startDate.minusDays(1)).ifPresent(prices::add);
 
         // 去重：同一天只保留createdTime最新的一条，过滤掉 effectiveDate 为 null 的记录
         Map<LocalDate, Price> latestByDate = new HashMap<>();
@@ -553,14 +577,34 @@ public class PriceService {
             }
         }
 
-        // 按日期排序后转为DTO
-        return latestByDate.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> {
-                    Price p = entry.getValue();
-                    return new PriceTrendDTO(p.getEffectiveDate(), p.getCurrentPrice(), p.getBudgetPrice());
-                })
-                .collect(Collectors.toList());
+        Set<Integer> years = new HashSet<>();
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            years.add(date.getYear());
+        }
+        Map<Integer, BigDecimal> annualBudgetByYear = annualBudgetService.getBudgetPriceMapByYears(
+                productId,
+                years.stream().sorted().toList()
+        );
+
+        List<Price> effectivePrices = latestByDate.values().stream()
+                .sorted(java.util.Comparator.comparing(Price::getEffectiveDate))
+                .toList();
+        int priceIndex = 0;
+        Price effectivePrice = null;
+        List<PriceTrendDTO> trend = new ArrayList<>();
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            while (priceIndex < effectivePrices.size()
+                    && !effectivePrices.get(priceIndex).getEffectiveDate().isAfter(date)) {
+                effectivePrice = effectivePrices.get(priceIndex++);
+            }
+            BigDecimal currentPrice = effectivePrice == null
+                    || (effectivePrice.getExpiryDate() != null && effectivePrice.getExpiryDate().isBefore(date))
+                    ? null
+                    : effectivePrice.getCurrentPrice();
+            BigDecimal annualBudgetPrice = annualBudgetByYear.get(date.getYear());
+            trend.add(new PriceTrendDTO(date, currentPrice, annualBudgetPrice));
+        }
+        return trend;
     }
 }
 

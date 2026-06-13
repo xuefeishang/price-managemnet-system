@@ -30,12 +30,16 @@ public class ExternalProductDTO {
     private LocalDateTime updatedTime;
 
     public static ExternalProductDTO from(Product product) {
+        return from(product, null);
+    }
+
+    public static ExternalProductDTO from(Product product, BigDecimal annualBudgetPrice) {
         ExternalProductDTO dto = new ExternalProductDTO();
         dto.setId(product.getId());
         dto.setCode(product.getCode());
         dto.setName(product.getName());
         dto.setSellingPrice(product.getSellingPrice());
-        dto.setBudgetPrice(product.getBudgetPrice());
+        dto.setBudgetPrice(annualBudgetPrice);
         if (product.getCategory() != null) {
             dto.setCategoryId(product.getCategory().getId());
             dto.setCategoryName(product.getCategory().getName());
