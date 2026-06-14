@@ -35,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -158,23 +159,52 @@ public class PriceQueryService {
             return List.of();
         }
 
-        Map<Long, BigDecimal> monthlyAverageMap = toMonthlyAverageMap(productIds, date);
         Map<Long, Price> latestPriceMap = toLatestEffectivePriceMap(
                 priceRepository.findLatestPricesBeforeDate(productIds, date));
-        Map<Long, BigDecimal> annualBudgetMap = annualBudgetService.getBudgetPriceMap(productIds, date);
+        Map<Long, Price> previousPriceMap = toLatestEffectivePriceMap(
+                priceRepository.findPreviousEffectivePricesBeforeDate(productIds, date));
+        Map<Long, BigDecimal> monthlyAverageMap = new HashMap<>();
+        Map<Long, BigDecimal> previousMonthAverageMap = new HashMap<>();
+        Map<Long, BigDecimal> lastYearSamePeriodAverageMap = new HashMap<>();
+        Map<Long, BigDecimal> annualBudgetMap = new HashMap<>();
+
+        Map<LocalDate, List<Long>> productIdsByMetricBaseDate = latestPriceMap.values().stream()
+                .collect(Collectors.groupingBy(
+                        Price::getEffectiveDate,
+                        LinkedHashMap::new,
+                        Collectors.mapping(price -> price.getProduct().getId(), Collectors.toList())));
+        productIdsByMetricBaseDate.forEach((metricBaseDate, ids) -> {
+            monthlyAverageMap.putAll(toAverageMap(ids, metricBaseDate.withDayOfMonth(1), metricBaseDate));
+            LocalDate previousMonth = metricBaseDate.minusMonths(1);
+            previousMonthAverageMap.putAll(toAverageMap(
+                    ids, previousMonth.withDayOfMonth(1), previousMonth.withDayOfMonth(previousMonth.lengthOfMonth())));
+            LocalDate lastYearSamePeriod = metricBaseDate.minusYears(1);
+            lastYearSamePeriodAverageMap.putAll(toAverageMap(
+                    ids, lastYearSamePeriod.withDayOfMonth(1), lastYearSamePeriod));
+        });
+
+        latestPriceMap.values().stream()
+                .collect(Collectors.groupingBy(
+                        price -> price.getEffectiveDate().getYear(),
+                        LinkedHashMap::new,
+                        Collectors.mapping(price -> price.getProduct().getId(), Collectors.toList())))
+                .forEach((budgetYear, ids) -> annualBudgetMap.putAll(
+                        annualBudgetService.getBudgetPriceMap(ids, LocalDate.of(budgetYear, 1, 1))));
 
         return products.stream()
                 .map(product -> toRow(product, date,
                         monthlyAverageMap.get(product.getId()),
+                        previousMonthAverageMap.get(product.getId()),
+                        lastYearSamePeriodAverageMap.get(product.getId()),
                         latestPriceMap.get(product.getId()),
+                        previousPriceMap.get(product.getId()),
                         annualBudgetMap.get(product.getId())))
                 .collect(Collectors.toList());
     }
 
-    private Map<Long, BigDecimal> toMonthlyAverageMap(List<Long> productIds, LocalDate date) {
-        LocalDate monthStart = date.withDayOfMonth(1);
+    private Map<Long, BigDecimal> toAverageMap(List<Long> productIds, LocalDate startDate, LocalDate endDate) {
         Map<Long, BigDecimal> result = new HashMap<>();
-        for (Object[] row : priceRepository.findAveragePricesByProductIdsAndMonth(productIds, monthStart, date)) {
+        for (Object[] row : priceRepository.findAveragePricesByProductIdsAndMonth(productIds, startDate, endDate)) {
             Long productId = (Long) row[0];
             toBigDecimal(row[1]).ifPresent(value -> result.put(productId, value));
         }
@@ -209,10 +239,19 @@ public class PriceQueryService {
     }
 
     private PriceQueryRowDTO toRow(Product product, LocalDate date,
-                                   BigDecimal monthlyAveragePrice, Price latestPrice, BigDecimal annualBudgetPrice) {
+                                   BigDecimal monthlyAveragePrice,
+                                   BigDecimal previousMonthAveragePrice,
+                                   BigDecimal lastYearSamePeriodAveragePrice,
+                                   Price latestPrice,
+                                   Price previousPrice,
+                                   BigDecimal annualBudgetPrice) {
         BigDecimal recent = latestPrice != null ? latestPrice.getCurrentPrice() : null;
+        BigDecimal previous = previousPrice != null ? previousPrice.getCurrentPrice() : null;
         BigDecimal budget = annualBudgetPrice;
-        BigDecimal changeAmount = calculateChangeAmount(recent, budget);
+        BigDecimal previousChangeAmount = calculateChangeAmount(recent, previous);
+        BigDecimal budgetChangeAmount = calculateChangeAmount(recent, budget);
+        BigDecimal monthOverMonthAmount = calculateChangeAmount(monthlyAveragePrice, previousMonthAveragePrice);
+        BigDecimal yearOverYearAmount = calculateChangeAmount(monthlyAveragePrice, lastYearSamePeriodAveragePrice);
 
         return PriceQueryRowDTO.builder()
                 .productId(product.getId())
@@ -228,11 +267,22 @@ public class PriceQueryService {
                 .effectiveDate(date)
                 .currentPrice(recent)
                 .yesterdayPrice(budget)
-                .changeAmount(changeAmount)
-                .changePercent(calculateChangePercent(changeAmount, budget))
+                .changeAmount(budgetChangeAmount)
+                .changePercent(calculateChangePercent(budgetChangeAmount, budget))
                 .budgetPrice(budget)
                 .monthlyAveragePrice(monthlyAveragePrice)
                 .latestPrice(recent)
+                .latestPriceDate(latestPrice != null ? latestPrice.getEffectiveDate() : null)
+                .previousPrice(previous)
+                .previousPriceDate(previousPrice != null ? previousPrice.getEffectiveDate() : null)
+                .previousChangeAmount(previousChangeAmount)
+                .previousChangePercent(calculateChangePercent(previousChangeAmount, previous))
+                .budgetChangeAmount(budgetChangeAmount)
+                .budgetChangePercent(calculateChangePercent(budgetChangeAmount, budget))
+                .previousMonthAveragePrice(previousMonthAveragePrice)
+                .monthOverMonthPercent(calculateChangePercent(monthOverMonthAmount, previousMonthAveragePrice))
+                .lastYearSamePeriodAveragePrice(lastYearSamePeriodAveragePrice)
+                .yearOverYearPercent(calculateChangePercent(yearOverYearAmount, lastYearSamePeriodAveragePrice))
                 .hasPrice(recent != null)
                 .build();
     }
@@ -287,14 +337,25 @@ public class PriceQueryService {
         data.setSpecification(row.getSpecification());
         data.setUnit(row.getUnit());
         data.setCurrency(row.getCurrency());
-        data.setCurrentPrice(row.getCurrentPrice());
-        data.setYesterdayPrice(row.getYesterdayPrice());
-        data.setChangeAmount(row.getChangeAmount());
-        data.setChangePercent(row.getChangePercent() == null ? null : row.getChangePercent().stripTrailingZeros().toPlainString() + "%");
-        data.setBudgetPrice(row.getBudgetPrice());
-        data.setMonthlyAveragePrice(row.getMonthlyAveragePrice());
         data.setLatestPrice(row.getLatestPrice());
+        data.setLatestPriceDate(row.getLatestPriceDate());
+        data.setPreviousPrice(row.getPreviousPrice());
+        data.setPreviousPriceDate(row.getPreviousPriceDate());
+        data.setPreviousChangeAmount(row.getPreviousChangeAmount());
+        data.setPreviousChangePercent(formatPercent(row.getPreviousChangePercent()));
+        data.setBudgetPrice(row.getBudgetPrice());
+        data.setBudgetChangeAmount(row.getBudgetChangeAmount());
+        data.setBudgetChangePercent(formatPercent(row.getBudgetChangePercent()));
+        data.setMonthlyAveragePrice(row.getMonthlyAveragePrice());
+        data.setPreviousMonthAveragePrice(row.getPreviousMonthAveragePrice());
+        data.setMonthOverMonthPercent(formatPercent(row.getMonthOverMonthPercent()));
+        data.setLastYearSamePeriodAveragePrice(row.getLastYearSamePeriodAveragePrice());
+        data.setYearOverYearPercent(formatPercent(row.getYearOverYearPercent()));
         data.setHasPrice(Boolean.TRUE.equals(row.getHasPrice()) ? "是" : "否");
         return data;
+    }
+
+    private String formatPercent(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString() + "%";
     }
 }

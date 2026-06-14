@@ -104,12 +104,14 @@ EXIT;
 > 日常价格查询功能通过 Flyway 执行 `V15__daily_price_query_permissions.sql` 补充“价格查询”菜单和 `price:export` 权限；新环境执行 `init.sql` 时已包含同样的菜单和权限数据。
 
 > 年度预算管理通过 Flyway 执行 `V44__product_annual_budget.sql` 新增 `product_annual_budget` 表和“预算管理”菜单；新环境执行 `init.sql` 时已包含同样表结构与菜单数据。
+> 价格查询指标洞察通过 Flyway 执行 `V45__price_metric_dict.sql` 新增 `price_metric_group` 与 `price_metric` 字典项；升级后可在“基础运维 -> 字典管理”查看并维护指标分组、名称和说明，新环境执行 `init.sql` 时已包含同样数据。
 > `V16__normalize_price_query_menu.sql` 会将 `/price-query` 归一化为“产品管理”下唯一的“价格查询”二级菜单，避免历史环境出现同路径重复菜单或普通用户可见但菜单管理不可见的情况。
 > `V17__external_api_auth_phase1.sql` 会新增外部 API 授权管理表、字典、菜单和 `/api/external/v1/**` 端点权限。该功能默认关闭，不影响当前内部 JWT 功能。
 > `V19__external_api_endpoint_code_examples.sql` 会为外部 API 端点补充结构化示例、参数 schema 和可复制代码元数据。
 > `V20__external_api_runtime_service_switch.sql` 会新增外部 API 运行时服务开关配置，允许后台页面即时暂停/恢复外部 API。
 > `V22__personal_profile_management.sql` 会扩展 Refresh Token 设备信息，并新增登录历史与个人偏好表，用于个人中心账号运维。
 > `V23__price_draft_publish_notification.sql` 会新增价格草稿/发布日志、站内通知、通用定时任务表和相关字典项。默认价格自动发布任务为停用状态，升级后需管理员在“系统管理 -> 定时任务”确认后手动启用。
+> 价格维护“发布全部草稿”升级仅新增后端接口和前端调用，不新增数据库表字段或迁移脚本；升级时重新打包后端、PC 前端和小程序前端即可。
 > `V28__notification_phase3_frequency_rules.sql` 会新增通知聚合频控默认规则字典；`V29__notification_provider_health_status_dict.sql` 会新增 Provider 健康状态字典；`V30__notification_aggregate_event_count.sql` 会为通知消息增加聚合事件计数字段；`V31__notification_mini_program_subscription.sql` 会新增小程序订阅授权表和授权状态字典；`V35__notification_mini_program_resolution.sql` 会新增用户级订阅异常处理表；`V36__notification_operations_hardening.sql` 会增加测试投递隔离字段、异常处理乐观锁、细粒度权限并清理历史敏感操作参数；`V37__notification_mini_resolution_status_dict.sql` 会增加异常处理状态字典；`V38__notification_mini_program_eligibility.sql` 会增加小程序订阅用户资格查询快照及状态分页索引；`V39__system_setting_permission_backfill.sql` 会补齐并启用 `system:setting` 权限及 ADMIN 授权，修复历史库保存通知渠道配置时的 403；`V40__notification_mini_program_page_dict.sql` 会补充小程序通知跳转页字典；`V41__notification_mini_program_template_window.sql` 会新增小程序模板版本/历史表和模板状态字典；`V42__notification_mini_program_template_active_unique.sql` 会停用同通知类型的历史重复 ACTIVE，并增加生成列唯一索引。升级后需完成 Flyway 校验并重新打包前端。
 > 字典管理分类页签、使用说明和效果展示升级仅涉及前端页面与静态分类元数据，不需要新增数据库迁移；升级时重新打包前端即可。
 > Spring Boot 4 需要 `spring-boot-starter-flyway` 才会在启动时自动执行 Flyway。历史库首次接入 Flyway 时会 baseline 到 V12，然后自动执行 V13-V20；空库仍从 V1 开始完整迁移。
@@ -274,7 +276,9 @@ WECHAT_MINI_NOTIFY_ENABLED=true;WECHAT_MINI_APP_ID=微信小程序AppID;WECHAT_M
 
 `MINI_PROGRAM` 投递依赖用户授权次数。未配置、未绑定 openid、未授权模板会记录为 `SKIPPED`；微信接口超时、HTTP 非 2xx 或临时错误会记录为 `FAILED` 并走 Outbox 重试状态机；模板无效、字段错误、用户拒绝/授权失效等永久错误会记录为 `SKIPPED`，授权失效会同步清空本地次数。PC `/notifications` 仍是统一发布入口，小程序只负责授权和接收，站内通知始终兜底。
 
-公网正式微信小程序请求地址为 `https://price.jlmining.com:32080`，生产机由 `price-management-frontend` Nginx 容器在 32080 端口终止 TLS。公司内网真机调试可使用独立 HTTP 入口 `http://10.7.5.175:32801`，该入口不能配置为微信 request 合法域名，只能在真机调试开启“不校验合法域名”时使用。证书与私钥部署在项目 `certs/` 目录并只读挂载，不得提交仓库。
+公网正式微信小程序请求地址为 `https://price.jlmining.com:32080`，生产机由 `price-management-frontend` Nginx 容器在 32080 端口终止 TLS。公司内网真机调试可使用独立 HTTP 入口 `http://10.7.5.175:32801`，该入口不能配置为微信 request 合法域名，只能在真机调试开启“不校验合法域名”时使用。证书与私钥部署在项目 `certs/` 目录并只读挂载，不得提交仓库。部署后必须同时检查宿主机端口映射和容器内部监听，确保容器实际监听 `443`、`32080`、`32801`；仅有 Docker 映射但容器未监听时，小程序请求会报 `ERR_CONNECTION_REFUSED`。
+
+生产环境必须设置 `RESET_PASSWORD_ON_STARTUP=false`。主配置默认值也是 `false`，避免后端重启时重置默认用户密码；仅开发环境可按需显式启用。
 
 通知三期新增 SSE 轻事件接口 `/api/notifications/events`。生产反向代理需要允许长连接和流式响应；若代理或浏览器断开连接，PC 前端会自动回退到轮询，不影响站内消息列表。
 

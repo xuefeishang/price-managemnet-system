@@ -4,8 +4,8 @@ import { useRouter } from 'vue-router'
 import { showToast, showConfirmDialog } from 'vant'
 import { getCategories } from '@/api/categories'
 import { getPricesByDateWithStats, getProducts, batchUpdateProductSort } from '@/api/products'
-import { getPriceDraftByDate, publishPriceDraft, savePriceDraft } from '@/api/priceDraft'
-import type { PageResponse, Price, PriceDraftBatch, Product, ProductCategory } from '@/types'
+import { getPriceDraftByDate, getPriceDraftPublishableSummary, publishAllPriceDrafts, savePriceDraft } from '@/api/priceDraft'
+import type { PageResponse, Price, PriceDraftBatch, PriceDraftPublishableSummary, PricePublishResult, Product, ProductCategory } from '@/types'
 import { eventBus } from '@/utils/eventBus'
 import { useLayout } from '@/composables/useLayout'
 import { getCurrencySymbol, getDictValue, getOriginName, loadAllDicts } from '@/composables/useDict'
@@ -28,6 +28,7 @@ const searchQueryDebounced = ref('')
 const selectedCategoryId = ref<number | ''>('')
 const sorting = ref(false)
 const currentDraft = ref<PriceDraftBatch | null>(null)
+const publishableSummary = ref<PriceDraftPublishableSummary | null>(null)
 const publishing = ref(false)
 const draggingProductId = ref<number | null>(null)
 const dragOverProductId = ref<number | null>(null)
@@ -79,8 +80,50 @@ const hasChanges = computed(() => {
   return false
 })
 
-const hasDraft = computed(() => currentDraft.value?.status === 'DRAFT')
+const hasPublishableDrafts = computed(() => !!publishableSummary.value?.hasPublishableDrafts)
 const draftStatusLabel = computed(() => currentDraft.value ? getDictValue('price_draft_status', currentDraft.value.status) : '')
+const publishableSummaryText = computed(() => {
+  const summary = publishableSummary.value
+  if (!summary?.hasPublishableDrafts) return '暂无待发布草稿'
+  return `待发布：${summary.publishableDateCount || 0} 个日期 / ${summary.publishableBatchCount || 0} 个草稿批次 / ${summary.publishableItemCount || 0} 条`
+})
+
+const buildPublishFailureDetails = (result: PricePublishResult) => {
+  const failedBatches = (result.batchResults || [])
+    .filter(item => item.batchStatus !== 'PUBLISHED' || item.status !== 'SUCCESS')
+    .slice(0, 5)
+    .map(item => {
+      const date = item.effectiveDate || '未知日期'
+      const reason = item.message || '未返回失败原因'
+      return `${date} 批次${item.batchId}：${reason}`
+    })
+  return failedBatches.length ? `\n\n${failedBatches.join('\n')}` : ''
+}
+
+const showPublishResult = async (result: PricePublishResult) => {
+  const successCount = result.successCount || 0
+  const failCount = result.failCount || 0
+  const remainingBatchCount = result.remainingDraftBatchCount || 0
+  if (result.status === 'SUCCESS') {
+    showToast(`发布成功，共 ${successCount} 条`)
+    return
+  }
+  if (result.status === 'PARTIAL') {
+    await showConfirmDialog({
+      title: '部分发布成功',
+      message: `成功 ${successCount} 条，失败 ${failCount} 条，仍有 ${remainingBatchCount} 个草稿批次待处理。${buildPublishFailureDetails(result)}`,
+      confirmButtonText: '知道了',
+      showCancelButton: false
+    })
+    return
+  }
+  await showConfirmDialog({
+    title: '发布失败',
+    message: `失败 ${failCount} 条，请查看失败原因后重试。${buildPublishFailureDetails(result)}`,
+    confirmButtonText: '知道了',
+    showCancelButton: false
+  })
+}
 
 const formatDateDisplay = (dateStr: string) => {
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -238,6 +281,11 @@ const applyDraft = (draft: PriceDraftBatch | null) => {
   }
 }
 
+const loadPublishableSummary = async () => {
+  const response = await getPriceDraftPublishableSummary()
+  publishableSummary.value = response.data || null
+}
+
 const loadPrices = async () => {
   tableLoading.value = true
   try {
@@ -245,6 +293,7 @@ const loadPrices = async () => {
     applyPriceStats(response.data || [])
     const draftResponse = await getPriceDraftByDate(selectedDate.value)
     applyDraft(draftResponse.data || null)
+    await loadPublishableSummary()
   } catch (error) {
     console.error('Failed to load prices:', error)
     showToast('加载价格数据失败')
@@ -479,6 +528,7 @@ const handleSave = async () => {
       items
     })
     applyDraft(response.data)
+    await loadPublishableSummary()
     tablePage.value = Math.min(savedPage, Math.max(tableTotalPages.value - 1, 0))
     showToast(`草稿保存成功，共 ${items.length} 条`)
   } catch (error: any) {
@@ -491,19 +541,20 @@ const handleSave = async () => {
 }
 
 const handlePublish = async () => {
-  if (!currentDraft.value?.id) {
-    showToast('请先保存草稿')
+  if (!hasPublishableDrafts.value) {
+    showToast('暂无可发布草稿')
     return
   }
   if (hasChanges.value) {
     showToast('请先保存当前修改')
     return
   }
+  const summary = publishableSummary.value
   try {
     await showConfirmDialog({
-      title: '确认发布价格',
-      message: `发布后 ${formatDateDisplay(selectedDate.value)} 的价格将对所有用户可见，并生成通知。`,
-      confirmButtonText: '发布',
+      title: '确认发布全部草稿',
+      message: `将发布所有已保存但未发布的价格草稿，涉及 ${summary?.publishableDateCount || 0} 个日期、${summary?.publishableBatchCount || 0} 个草稿批次、${summary?.publishableItemCount || 0} 条价格。发布后成功批次将立即生效，失败批次可修正后重试。`,
+      confirmButtonText: '发布全部',
       cancelButtonText: '取消'
     })
   } catch {
@@ -512,8 +563,8 @@ const handlePublish = async () => {
 
   publishing.value = true
   try {
-    const response = await publishPriceDraft(currentDraft.value.id)
-    showToast(`发布完成，成功 ${response.data.successCount} 条`)
+    const response = await publishAllPriceDrafts()
+    await showPublishResult(response.data)
     await loadPrices()
     eventBus.emit('prices-updated')
     window.dispatchEvent(new Event('price-notifications:refresh'))
@@ -596,7 +647,8 @@ onMounted(async () => {
             <div class="header-text">
               <h1 class="page-title-pc">{{ formatDateDisplay(selectedDate) }} 价格维护</h1>
               <p class="page-subtitle">按当前日期录入当日售价，保留昨日售价、价格变化与月均价对照</p>
-              <p v-if="currentDraft" class="draft-status-line">草稿状态：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</p>
+              <p v-if="currentDraft" class="draft-status-line">当前日期草稿：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</p>
+              <p class="draft-status-line">{{ publishableSummaryText }}</p>
             </div>
           </div>
           <div class="header-actions">
@@ -622,9 +674,9 @@ onMounted(async () => {
               <span v-if="saving" class="btn-spinner"></span>
               {{ saving ? '保存中...' : '保存修改' }}
             </button>
-            <button class="btn-publish" type="button" @click="handlePublish" :disabled="publishing || saving || !hasDraft || hasChanges">
+            <button class="btn-publish" type="button" @click="handlePublish" :disabled="publishing || saving || !hasPublishableDrafts || hasChanges">
               <span v-if="publishing" class="btn-spinner"></span>
-              {{ publishing ? '发布中...' : '发布' }}
+              {{ publishing ? '发布中...' : '发布全部草稿' }}
             </button>
           </div>
         </div>
@@ -778,13 +830,14 @@ onMounted(async () => {
         <button class="save-btn" type="button" @click="handleSave" :disabled="saving || !hasChanges">
           {{ saving ? '保存中...' : '保存' }}
         </button>
-        <button class="save-btn publish-mobile-btn" type="button" @click="handlePublish" :disabled="publishing || saving || !hasDraft || hasChanges">
-          {{ publishing ? '发布中' : '发布' }}
+        <button class="save-btn publish-mobile-btn" type="button" @click="handlePublish" :disabled="publishing || saving || !hasPublishableDrafts || hasChanges">
+          {{ publishing ? '发布中' : '发布全部' }}
         </button>
       </header>
 
       <div class="mobile-toolbar">
-        <div v-if="currentDraft" class="mobile-draft-status">草稿状态：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</div>
+        <div v-if="currentDraft" class="mobile-draft-status">当前日期草稿：{{ draftStatusLabel }}，已保存 {{ currentDraft.savedItemCount || 0 }} 条</div>
+        <div class="mobile-draft-status">{{ publishableSummaryText }}</div>
         <div class="date-nav">
           <button class="date-nav-btn-mobile" type="button" @click="goToPrevDate" title="前一天">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

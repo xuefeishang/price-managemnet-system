@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { showToast, showDialog } from 'vant'
 import { getDicts, createDict, updateDict, deleteDict, getDictCategories } from '@/api/dict'
-import { getStatusLabel, getDictOptions, CATEGORY_LABELS, loadAllDicts, refreshDictCache } from '@/composables/useDict'
+import { getDictByCategory, getStatusLabel, getDictOptions, CATEGORY_LABELS, loadAllDicts, refreshDictCache } from '@/composables/useDict'
 import { useLayout } from '@/composables/useLayout'
 import DictCategoryHelpPanel from '@/components/dict/DictCategoryHelpPanel.vue'
 import DictCategoryPreview from '@/components/dict/DictCategoryPreview.vue'
@@ -37,7 +37,7 @@ const selectedDomain = ref<DomainFilter>('business_dict')
 const togglingId = ref<number | null>(null)
 const showSystemConfig = ref(false)
 const previewExpanded = ref(false)
-const categoryNavExpanded = ref(false)
+const categoryNavExpanded = ref(true)
 const { isPCLayout } = useLayout()
 
 const showEditDialog = ref(false)
@@ -152,11 +152,12 @@ const currentExtraLabel = computed(() => {
 })
 const currentExtraPlaceholder = computed(() => editingCategoryMeta.value?.extraValueRule || '可选，按分类规则填写')
 const isEditKeyDisabled = computed(() => isEditing.value && editingCategoryMeta.value?.keyMutable === false)
+const isStableKeyCategory = (category: string) => getCategoryMeta(category)?.keyMutable === false
 
 const selectDomain = async (domain: DomainFilter) => {
   selectedDomain.value = domain
   selectedCategory.value = categoryTabs.value[0]?.category || ''
-  categoryNavExpanded.value = false
+  categoryNavExpanded.value = true
   previewExpanded.value = false
   await loadDicts()
 }
@@ -295,6 +296,18 @@ const validateExtraValue = (category: string, value: string, errors: string[]) =
     errors.push('扩展值需为合法 JSON')
     validationErrors.value.add('extraValue')
   }
+  if (category === 'price_metric' && isJsonValue(value.trim())) {
+    const parsed = JSON.parse(value.trim()) as { group?: string, valueType?: string }
+    const validGroups = new Set(getDictByCategory('price_metric_group').map(item => item.dictKey))
+    if (!parsed.group || !validGroups.has(parsed.group)) {
+      errors.push('价格指标 group 必须引用已有价格指标分组')
+      validationErrors.value.add('extraValue')
+    }
+    if (!['price', 'change', 'percent', 'date'].includes(parsed.valueType || '')) {
+      errors.push('价格指标 valueType 必须为 price、change、percent 或 date')
+      validationErrors.value.add('extraValue')
+    }
+  }
 }
 
 const handleSave = async () => {
@@ -361,6 +374,10 @@ const handleSave = async () => {
 const handleDelete = async (dict: SysDict) => {
   if (isProtectedCategory(dict.category)) {
     showToast('此分类由专用页面管理，仅支持查看')
+    return
+  }
+  if (isStableKeyCategory(dict.category)) {
+    showToast('稳定编码字典项禁止删除，可通过停用控制页面展示')
     return
   }
 

@@ -76,7 +76,7 @@
             @click="goToDetail(product.id)"
           >
             <view class="featured-main">
-              <text class="product-name">{{ product.name }}</text>
+              <text class="product-name">{{ getProductDisplayName(product) }}</text>
               <text class="product-specs" v-if="product.specs">{{ product.specs }}</text>
             </view>
             <view class="featured-price">
@@ -126,20 +126,20 @@
             @click="goToDetail(product.id)"
           >
             <view class="product-main">
-              <text class="product-name">{{ product.name }}</text>
+              <text class="product-name">{{ getProductDisplayName(product) }}</text>
               <text class="product-specs">{{ getProductMeta(product) }}</text>
             </view>
             <view class="price-columns">
               <view class="price-col current">
-                <text class="price-label">当日</text>
+                <text class="price-label">最新</text>
                 <text class="price-value">{{ formatPriceValue(product, getCurrentPrice(product.id)) }}</text>
               </view>
               <view class="price-col">
-                <text class="price-label">昨日</text>
-                <text class="price-sub">{{ formatPriceValue(product, getYesterdayPrice(product.id)) }}</text>
+                <text class="price-label">上期</text>
+                <text class="price-sub">{{ formatPriceValue(product, getPreviousPrice(product.id)) }}</text>
               </view>
               <view class="price-col diff" :class="getDiffClass(product.id)">
-                <text class="price-label">较昨日</text>
+                <text class="price-label">较上期</text>
                 <text class="price-sub">{{ getDiffText(product) }}</text>
               </view>
             </view>
@@ -163,6 +163,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts, getPricesByDateWithStats } from '@/api/products'
+import { getPriceQueryRows, type PriceQueryRow } from '@/api/priceQuery'
 import { getCategories } from '@/api/categories'
 import { getHomeSummary, getPriceAlerts } from '@/api/home'
 import type { Product, ProductCategory } from '@/types'
@@ -173,6 +174,7 @@ import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 import { getProductCategoryId, sortProductsByHomeOrder } from '@/utils/productOrder'
+import { getProductDisplayName } from '@/utils/productDisplay'
 
 const userStore = useUserStore()
 
@@ -181,6 +183,7 @@ const products = ref<Product[]>([])
 const categories = ref<ProductCategory[]>([])
 const selectedCategoryId = ref<number | null>(null)
 const priceDataMap = ref<Map<number, PriceWithStats>>(new Map())
+const priceQueryRowMap = ref<Map<number, PriceQueryRow>>(new Map())
 const isLoading = ref(false)
 const errorMsg = ref('')
 const searchQuery = ref('')
@@ -219,7 +222,7 @@ const filteredProducts = computed(() => {
   // 按搜索词筛选
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    active = active.filter(p => p.name.toLowerCase().includes(q))
+    active = active.filter(p => getProductSearchText(p).includes(q))
   }
 
   return active
@@ -233,11 +236,15 @@ function getYesterday(): string {
 }
 
 function getCurrentPrice(productId: number): number | null {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.latestPrice != null) return queryRow.latestPrice
   const data = priceDataMap.value.get(productId)
   return data?.price?.currentPrice ?? data?.inheritedPrice ?? null
 }
 
-function getYesterdayPrice(productId: number): number | null {
+function getPreviousPrice(productId: number): number | null {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.previousPrice != null) return queryRow.previousPrice
   const data = priceDataMap.value.get(productId)
   return data?.yesterdayPrice?.currentPrice ?? data?.inheritedPrice ?? null
 }
@@ -248,8 +255,10 @@ function formatPriceValue(product: Product, value: number | null | undefined): s
 }
 
 function getDiffValue(productId: number): number | null {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.previousChangeAmount != null) return Number(queryRow.previousChangeAmount)
   const current = getCurrentPrice(productId)
-  const previous = getYesterdayPrice(productId)
+  const previous = getPreviousPrice(productId)
   if (current == null || previous == null) return null
   return current - previous
 }
@@ -272,6 +281,10 @@ function getDiffClass(productId: number): string {
 function getProductMeta(product: Product): string {
   const parts = [product.category?.name, product.specs, product.unit].filter(Boolean)
   return parts.length ? parts.join(' · ') : '暂无规格'
+}
+
+function getProductSearchText(product: Product): string {
+  return `${getProductDisplayName(product)} ${product.name || ''} ${product.specs || ''} ${product.code || ''}`.toLowerCase()
 }
 
 // 数据加载
@@ -324,9 +337,17 @@ async function loadData() {
 
   try {
     // 并行加载所有数据
-    const [productsRes, pricesRes] = await Promise.all([
+    const [productsRes, pricesRes, priceQueryRes] = await Promise.all([
       getProducts({ page: 0, size: 100, sortBy: 'sortOrder', sortDirection: 'asc' }),
-      getPricesByDateWithStats(selectedDate.value)
+      getPricesByDateWithStats(selectedDate.value),
+      getPriceQueryRows({
+        date: selectedDate.value,
+        page: 0,
+        size: 100,
+        status: 'ACTIVE',
+        sortBy: 'sortOrder',
+        sortDirection: 'asc'
+      })
     ])
 
     products.value = productsRes.data?.content || []
@@ -338,6 +359,7 @@ async function loadData() {
         priceDataMap.value.set(item.price.product.id, item)
       }
     })
+    priceQueryRowMap.value = new Map((priceQueryRes.data?.content || []).map(row => [row.productId, row]))
 
     // 加载新增数据
     loadSummary()

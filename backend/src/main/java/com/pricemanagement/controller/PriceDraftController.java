@@ -1,6 +1,7 @@
 package com.pricemanagement.controller;
 
 import com.pricemanagement.dto.PriceDraftDTO;
+import com.pricemanagement.dto.PriceDraftPublishableSummaryDTO;
 import com.pricemanagement.dto.PriceDraftSaveRequest;
 import com.pricemanagement.dto.PricePublishResultDTO;
 import com.pricemanagement.dto.Result;
@@ -30,6 +31,12 @@ public class PriceDraftController {
     public Result<PriceDraftDTO> getByDate(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return Result.success("获取价格草稿成功", priceDraftService.getActiveDraftByDate(date).orElse(null));
+    }
+
+    @GetMapping("/publishable-summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public Result<PriceDraftPublishableSummaryDTO> getPublishableSummary() {
+        return Result.success("获取待发布草稿汇总成功", pricePublishService.getPublishableSummary());
     }
 
     @PostMapping("/batch-save")
@@ -68,6 +75,20 @@ public class PriceDraftController {
         try {
             return Result.success("价格发布完成",
                     pricePublishService.publishByDate(date, PricePublishLog.PublishType.MANUAL, SecurityUtils.getCurrentUserId()));
+        } catch (IllegalStateException e) {
+            return Result.error(409, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        }
+    }
+
+    @PostMapping("/publish-all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    @OperationLog(module = "价格维护", type = OperationType.UPDATE, description = "发布全部待发布价格草稿")
+    public Result<PricePublishResultDTO> publishAll() {
+        try {
+            return Result.success("价格发布完成",
+                    pricePublishService.publishAllDrafts(PricePublishLog.PublishType.MANUAL, SecurityUtils.getCurrentUserId()));
         } catch (IllegalStateException e) {
             return Result.error(409, e.getMessage());
         } catch (IllegalArgumentException e) {

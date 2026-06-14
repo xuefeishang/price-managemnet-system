@@ -79,22 +79,22 @@
         >
           <view class="card-main">
             <view class="product-info">
-              <text class="product-name">{{ product.name }}</text>
+              <text class="product-name">{{ getProductDisplayName(product) }}</text>
               <text class="product-meta">{{ getProductMeta(product) }}</text>
             </view>
             <view class="price-info">
               <text class="current-price">{{ formatPrice(product, getCurrentPrice(product.id)) }}</text>
-              <text class="price-label">当日价格</text>
+              <text class="price-label">最新价格</text>
             </view>
           </view>
 
           <view class="compare-row">
             <view class="compare-item">
-              <text class="compare-label">昨日</text>
-              <text class="compare-value">{{ formatPrice(product, getYesterdayPrice(product.id)) }}</text>
+              <text class="compare-label">最新</text>
+              <text class="compare-value">{{ formatPrice(product, getCurrentPrice(product.id)) }}</text>
             </view>
             <view class="compare-item">
-              <text class="compare-label">较昨日</text>
+              <text class="compare-label">较上期</text>
               <text class="compare-value" :class="getDiffClass(product.id)">
                 {{ formatDiff(product, product.id) }}
               </text>
@@ -122,10 +122,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getProducts, getPricesByDateWithStats, type PriceWithStats } from '@/api/products'
+import { getPriceQueryRows, type PriceQueryRow } from '@/api/priceQuery'
 import { getCategories } from '@/api/categories'
 import type { PageResponse, Product, ProductCategory } from '@/types'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+import { getProductDisplayName } from '@/utils/productDisplay'
 
 const selectedDate = ref(getYesterday())
 const searchQuery = ref('')
@@ -134,12 +136,13 @@ const loading = ref(false)
 const products = ref<Product[]>([])
 const categories = ref<ProductCategory[]>([])
 const priceDataMap = ref<Map<number, PriceWithStats>>(new Map())
+const priceQueryRowMap = ref<Map<number, PriceQueryRow>>(new Map())
 
 const filteredProducts = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
   return products.value.filter(product => {
     const matchCategory = selectedCategoryId.value === null || product.categoryId === selectedCategoryId.value || product.category?.id === selectedCategoryId.value
-    const haystack = `${product.name || ''} ${product.specs || ''} ${product.code || ''}`.toLowerCase()
+    const haystack = `${getProductDisplayName(product)} ${product.name || ''} ${product.specs || ''} ${product.code || ''}`.toLowerCase()
     const matchKeyword = !keyword || haystack.includes(keyword)
     return matchCategory && matchKeyword
   })
@@ -157,10 +160,18 @@ function getYesterday(): string {
 const loadData = async () => {
   loading.value = true
   try {
-    const [productRes, categoryRes, priceRes] = await Promise.all([
+    const [productRes, categoryRes, priceRes, priceQueryRes] = await Promise.all([
       getProducts({ page: 0, size: 1000, status: 'ACTIVE' }),
       getCategories('ACTIVE'),
-      getPricesByDateWithStats(selectedDate.value)
+      getPricesByDateWithStats(selectedDate.value),
+      getPriceQueryRows({
+        date: selectedDate.value,
+        page: 0,
+        size: 1000,
+        status: 'ACTIVE',
+        sortBy: 'sortOrder',
+        sortDirection: 'asc'
+      })
     ])
 
     const pageData = productRes.data as PageResponse<Product>
@@ -173,6 +184,7 @@ const loadData = async () => {
       if (productId) nextMap.set(productId, item)
     }
     priceDataMap.value = nextMap
+    priceQueryRowMap.value = new Map((priceQueryRes.data?.content || []).map(row => [row.productId, row]))
   } catch (error) {
     console.error('加载历史价格失败:', error)
     uni.showToast({ title: '加载失败', icon: 'none' })
@@ -202,12 +214,16 @@ const getProductMeta = (product: Product) => {
 }
 
 const getCurrentPrice = (productId: number): number | null => {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.latestPrice != null) return queryRow.latestPrice
   const item = priceDataMap.value.get(productId)
   if (item?.price?.currentPrice != null) return item.price.currentPrice
   return item?.inheritedPrice ?? null
 }
 
-const getYesterdayPrice = (productId: number): number | null => {
+const getPreviousPrice = (productId: number): number | null => {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.previousPrice != null) return queryRow.previousPrice
   const item = priceDataMap.value.get(productId)
   if (item?.yesterdayPrice?.currentPrice != null) return item.yesterdayPrice.currentPrice
   return item?.inheritedPrice ?? null
@@ -223,10 +239,12 @@ const formatPrice = (product: Product, price: number | null | undefined) => {
 }
 
 const getDiff = (productId: number): number | null => {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.previousChangeAmount != null) return Number(queryRow.previousChangeAmount)
   const current = getCurrentPrice(productId)
-  const yesterday = getYesterdayPrice(productId)
-  if (current == null || yesterday == null) return null
-  return current - yesterday
+  const previous = getPreviousPrice(productId)
+  if (current == null || previous == null) return null
+  return current - previous
 }
 
 const formatDiff = (product: Product, productId: number) => {

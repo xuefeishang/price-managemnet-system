@@ -77,15 +77,46 @@ public interface PriceRepository extends JpaRepository<Price, Long> {
     /**
      * 查找某产品在指定日期之前（含当天）最近的一条价格记录
      */
-    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id = :productId AND p.effectiveDate <= :date ORDER BY p.effectiveDate DESC, p.createdTime DESC LIMIT 1")
+    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id = :productId AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = :productId AND p2.effectiveDate <= :date) AND (p.expiryDate IS NULL OR p.expiryDate >= :date) ORDER BY p.createdTime DESC LIMIT 1")
     Optional<Price> findLatestPriceBeforeDate(@Param("productId") Long productId, @Param("date") LocalDate date);
 
     /**
      * 批量查找多个产品在指定日期之前（含当天）最近的价格记录
      * 返回每个产品的最新价格
      */
-    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id IN :productIds AND p.effectiveDate <= :date AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = p.product.id AND p2.effectiveDate <= :date)")
+    @Query("SELECT p FROM Price p LEFT JOIN FETCH p.product pr LEFT JOIN FETCH pr.category WHERE p.product.id IN :productIds AND p.effectiveDate = (SELECT MAX(p2.effectiveDate) FROM Price p2 WHERE p2.product.id = p.product.id AND p2.effectiveDate <= :date) AND (p.expiryDate IS NULL OR p.expiryDate >= :date)")
     List<Price> findLatestPricesBeforeDate(@Param("productIds") List<Long> productIds, @Param("date") LocalDate date);
+
+    /**
+     * 批量查找多个产品在最新有效价格日之前的上期有效价格。
+     */
+    @Query("""
+            SELECT p FROM Price p
+            LEFT JOIN FETCH p.product pr
+            LEFT JOIN FETCH pr.category
+            WHERE p.product.id IN :productIds
+              AND p.effectiveDate = (
+                SELECT MAX(p2.effectiveDate) FROM Price p2
+                WHERE p2.product.id = p.product.id
+                  AND p2.effectiveDate < (
+                    SELECT MAX(p3.effectiveDate) FROM Price p3
+                    WHERE p3.product.id = p.product.id
+                      AND p3.effectiveDate <= :date
+                  )
+              )
+              AND EXISTS (
+                SELECT p4.id FROM Price p4
+                WHERE p4.product.id = p.product.id
+                  AND p4.effectiveDate = (
+                    SELECT MAX(p5.effectiveDate) FROM Price p5
+                    WHERE p5.product.id = p.product.id
+                      AND p5.effectiveDate <= :date
+                  )
+                  AND (p4.expiryDate IS NULL OR p4.expiryDate >= :date)
+              )
+            """)
+    List<Price> findPreviousEffectivePricesBeforeDate(@Param("productIds") List<Long> productIds,
+                                                      @Param("date") LocalDate date);
 
     /**
      * 查询某产品在指定日期范围内的价格记录，按生效日期升序排列

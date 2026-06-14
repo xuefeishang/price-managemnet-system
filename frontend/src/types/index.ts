@@ -286,6 +286,15 @@ export interface PriceDraftBatch {
   items: PriceDraftItem[]
 }
 
+export interface PriceDraftPublishableSummary {
+  hasPublishableDrafts: boolean
+  publishableBatchCount: number
+  publishableItemCount: number
+  publishableDateCount: number
+  effectiveDates: string[]
+  publishableBatchIds: number[]
+}
+
 export interface PriceDraftSaveRequest {
   batchId?: number
   batchVersion?: number
@@ -296,10 +305,29 @@ export interface PriceDraftSaveRequest {
 export interface PricePublishResult {
   batchId: number
   publishLogId?: number
+  publishGroupId?: string
   status: PricePublishStatus
   batchStatus: PriceDraftStatus
   successCount: number
   failCount: number
+  attemptedBatchCount?: number
+  publishedBatchCount?: number
+  failedBatchCount?: number
+  remainingDraftBatchCount?: number
+  attemptedDateCount?: number
+  publishedDateCount?: number
+  effectiveDates?: string[]
+  publishLogIds?: number[]
+  batchResults?: Array<{
+    effectiveDate?: string
+    batchId: number
+    publishLogId?: number
+    status: PricePublishStatus
+    batchStatus: PriceDraftStatus
+    successCount: number
+    failCount: number
+    message?: string
+  }>
   notificationMessageId?: number
   message?: string
 }
@@ -709,12 +737,26 @@ export interface PriceQueryRow {
   currency?: string
   effectiveDate: string
   currentPrice?: number | null
+  /** @deprecated v1 兼容字段，等同于 budgetPrice。 */
   yesterdayPrice?: number | null
+  /** @deprecated v1 兼容字段，等同于 budgetChangeAmount。 */
   changeAmount?: number | null
+  /** @deprecated v1 兼容字段，等同于 budgetChangePercent。 */
   changePercent?: number | null
   budgetPrice?: number | null
   monthlyAveragePrice?: number | null
   latestPrice?: number | null
+  latestPriceDate?: string | null
+  previousPrice?: number | null
+  previousPriceDate?: string | null
+  previousChangeAmount?: number | null
+  previousChangePercent?: number | null
+  budgetChangeAmount?: number | null
+  budgetChangePercent?: number | null
+  previousMonthAveragePrice?: number | null
+  monthOverMonthPercent?: number | null
+  lastYearSamePeriodAveragePrice?: number | null
+  yearOverYearPercent?: number | null
   hasPrice: boolean
 }
 

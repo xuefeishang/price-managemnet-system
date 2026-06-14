@@ -41,3 +41,6 @@ Thumbs.db
 
 # Maven
 target/
+
+# Local backup directory (not in version control)
+backup/

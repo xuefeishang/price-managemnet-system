@@ -1,0 +1,2385 @@
+{
+  "version": "2.13",
+  "children": [
+    {
+      "type": "frame",
+      "id": "pIqbD",
+      "x": 0,
+      "y": 0,
+      "name": "价格查询 / 基于现状优化",
+      "clip": true,
+      "width": 1440,
+      "height": 1024,
+      "fill": "#F5F5F5",
+      "children": [
+        {
+          "type": "frame",
+          "id": "fXq0a",
+          "name": "现有PC侧栏",
+          "width": 240,
+          "height": "fill_container",
+          "fill": "#FFFFFF",
+          "stroke": "#E5E7EB",
+          "strokeWidth": {
+            "right": 1
+          },
+          "layout": "vertical",
+          "gap": 14,
+          "padding": [
+            20,
+            16
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "Ladbz",
+              "name": "系统品牌",
+              "fill": "#0D6E6E",
+              "content": "矿产品价格管理系统",
+              "fontFamily": "Inter",
+              "fontSize": 17,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "p3YrPt",
+              "name": "首页菜单",
+              "fill": "#64748B",
+              "content": "首页",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "CZTKR",
+              "name": "产品管理分组",
+              "fill": "#334155",
+              "content": "产品管理",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "K16uG",
+              "name": "价格查询菜单选中",
+              "width": "fill_container",
+              "height": 40,
+              "fill": "#E8F4F2",
+              "cornerRadius": 8,
+              "padding": [
+                0,
+                12
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "yXvTn",
+                  "name": "价格查询菜单文字",
+                  "fill": "#0D6E6E",
+                  "content": "价格查询",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "xGQcu",
+              "name": "产品列表",
+              "fill": "#64748B",
+              "content": "产品列表",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "KJKwu",
+              "name": "价格维护",
+              "fill": "#64748B",
+              "content": "价格维护",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "J1JiLx",
+              "name": "预算管理",
+              "fill": "#64748B",
+              "content": "预算管理",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "w5sxN",
+              "name": "基础运维",
+              "fill": "#64748B",
+              "content": "基础运维",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "mYP5D",
+              "name": "系统管理",
+              "fill": "#64748B",
+              "content": "系统管理",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "Y7N6K",
+              "name": "侧栏弹性空间",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical"
+            },
+            {
+              "type": "frame",
+              "id": "iKNvl",
+              "name": "用户卡片",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "#F8FAFC",
+              "cornerRadius": 8,
+              "stroke": "#E2E8F0",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 3,
+              "padding": [
+                0,
+                12
+              ],
+              "justifyContent": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "i73CH",
+                  "name": "用户名称",
+                  "fill": "#334155",
+                  "content": "Admin",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "kafjh",
+                  "name": "用户角色",
+                  "fill": "#94A3B8",
+                  "content": "管理员",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "tYXYm",
+          "name": "现有主内容区",
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#F5F5F5",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "fcKgt",
+              "name": "现有查询页头",
+              "width": "fill_container",
+              "height": 48,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bUOts",
+                  "name": "页面标题",
+                  "fill": "#1A1A1A",
+                  "content": "价格查询",
+                  "fontFamily": "Inter",
+                  "fontSize": 24,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "B1mv8",
+                  "name": "日期控制",
+                  "height": 38,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 8,
+                  "stroke": "#E5E7EB",
+                  "strokeWidth": 1,
+                  "gap": 12,
+                  "padding": [
+                    0,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ZtZFc",
+                      "name": "日期文字",
+                      "fill": "#475569",
+                      "content": "‹   2026-06-12   ›",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "am9dx",
+              "name": "现有左右双面板",
+              "width": "fill_container",
+              "height": "fill_container",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ogI6Q",
+                  "name": "现有产品价格列表",
+                  "width": 622,
+                  "height": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 10,
+                  "stroke": "#E5E7EB",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "YYnGG",
+                      "name": "现有筛选工具栏",
+                      "width": "fill_container",
+                      "height": 40,
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "rWBCE",
+                          "name": "搜索框",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 8,
+                          "stroke": "#E5E7EB",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "mXzU1",
+                              "name": "搜索提示",
+                              "fill": "#94A3B8",
+                              "content": "搜索产品名称 / 规格",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mW8No",
+                          "name": "全部分类 ▾",
+                          "width": 104,
+                          "height": "fill_container",
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
+                          "stroke": "#E5E7EB",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "rTz3z",
+                              "name": "全部分类 ▾文字",
+                              "fill": "#64748B",
+                              "content": "全部分类 ▾",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "UTZlE",
+                          "name": "自适应/页 ▾",
+                          "width": 104,
+                          "height": "fill_container",
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
+                          "stroke": "#E5E7EB",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "CUGx1",
+                              "name": "自适应/页 ▾文字",
+                              "fill": "#64748B",
+                              "content": "自适应/页 ▾",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bw9vp",
+                          "name": "导出数据按钮",
+                          "width": 92,
+                          "height": "fill_container",
+                          "fill": "#0D6E6E",
+                          "cornerRadius": 8,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "O8SWI",
+                              "name": "导出数据文字",
+                              "fill": "#FFFFFF",
+                              "content": "导出数据",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "W2WP4",
+                      "name": "现有四列表格",
+                      "width": "fill_container",
+                      "height": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "y2DR4f",
+                          "name": "表头",
+                          "width": "fill_container",
+                          "height": 42,
+                          "fill": "#F8FAFC",
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "c1Mz0F",
+                              "name": "产品名称表头",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NYxJG",
+                                  "name": "产品名称表头文字",
+                                  "fill": "#64748B",
+                                  "content": "产品名称",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "yDYF6",
+                              "name": "近期价格表头",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "SkuFd",
+                                  "name": "近期价格表头文字",
+                                  "fill": "#64748B",
+                                  "content": "近期价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "kNAB9",
+                              "name": "预算价格表头",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "K8FOHc",
+                                  "name": "预算价格表头文字",
+                                  "fill": "#64748B",
+                                  "content": "预算价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "RWWiw",
+                              "name": "较预算表头",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "qOId1",
+                                  "name": "较预算表头文字",
+                                  "fill": "#64748B",
+                                  "content": "较预算",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ioeyj",
+                          "name": "价格行 1",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#EFF8F7",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Juv9U",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mKy3z",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "铂金  南非\nPt ≥ 99.95%",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Y8loB2",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "p3MYj",
+                                  "name": "价格内容",
+                                  "fill": "#0D6E6E",
+                                  "content": "¥ 348.50",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "KKnyU",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "w0zE3M",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 340.00",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "S2GwsI",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "j5abE",
+                                  "name": "价格内容",
+                                  "fill": "#C2413B",
+                                  "content": "+8.50",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "uRrBK",
+                          "name": "价格行 2",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#FFFFFF",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "W99fvA",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "uZDHh",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "黄金  上海金交所\nAu ≥ 99.99%",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "uhLaA",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KImjg",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 768.20",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "CVuer",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QwFZt",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 755.00",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "M4ccW",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "yNk2x",
+                                  "name": "价格内容",
+                                  "fill": "#C2413B",
+                                  "content": "+13.20",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "C7x3KS",
+                          "name": "价格行 3",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#FFFFFF",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "iaQtM",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "DeAvJ",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "白银  云南\nAg ≥ 99.9%",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ORWyb",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "EMsMo",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 8.42",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "XUQxz",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "dmWnP",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 8.60",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wmlDH",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Z5sdb",
+                                  "name": "价格内容",
+                                  "fill": "#16825D",
+                                  "content": "-0.18",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "x4PJc",
+                          "name": "价格行 4",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#FFFFFF",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "jzra4",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "am7Ch",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "铜精矿  智利\nCu ≥ 25%",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "FHu4J",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "q6zXEC",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 68,450",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ac2mr",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "T7Al4",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 67,800",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Tz0wM",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "XAhaO",
+                                  "name": "价格内容",
+                                  "fill": "#C2413B",
+                                  "content": "+650",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nAdTm",
+                          "name": "价格行 5",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#FFFFFF",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "q2Erl",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VQPOd",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "氧化铝  山西\n一级品",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "pLd6l",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "P0pFK",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 3,180",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "m8VyG",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "EE6Z4",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 3,250",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "c86zk",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "iIAIY",
+                                  "name": "价格内容",
+                                  "fill": "#16825D",
+                                  "content": "-70",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mP1R8",
+                          "name": "价格行 6",
+                          "width": "fill_container",
+                          "height": 70,
+                          "fill": "#FFFFFF",
+                          "stroke": "#F1F5F9",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Ax7DR",
+                              "name": "价格单元格",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Q7qDP",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "电解镍  印尼\nNi ≥ 99.96%",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "h0OLXf",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "FLEiI",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 126,500",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ctIkz",
+                              "name": "价格单元格",
+                              "width": 105,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "cIq2H",
+                                  "name": "价格内容",
+                                  "fill": "#475569",
+                                  "content": "¥ 125,000",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "eM5PO",
+                              "name": "价格单元格",
+                              "width": 90,
+                              "height": "fill_container",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "vCcMX",
+                                  "name": "价格内容",
+                                  "fill": "#C2413B",
+                                  "content": "+1,500",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "y3ZEo",
+                      "name": "现有分页",
+                      "width": "fill_container",
+                      "height": 34,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Fo8H9",
+                          "name": "总数",
+                          "fill": "#64748B",
+                          "content": "共 36 条",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "uIi5a",
+                          "name": "页码",
+                          "fill": "#64748B",
+                          "content": "‹   1   2   3   …   5   ›     跳至  1  页",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MOWsO",
+                  "name": "现有趋势面板 / 指标优化",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 10,
+                  "stroke": "#E5E7EB",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 24,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "suawE",
+                      "name": "现有趋势顶部",
+                      "width": "fill_container",
+                      "height": 40,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "KN4ph",
+                          "name": "选中产品",
+                          "fill": "#0D6E6E",
+                          "content": "铂金   南非   Pt ≥ 99.95%",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "y5HhV",
+                          "name": "趋势控制",
+                          "fill": "#64748B",
+                          "content": "30天   180天   12个月     查看年份 ▾",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "v4pXM",
+                      "name": "现有选中价格摘要",
+                      "width": "fill_container",
+                      "height": 52,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "wA5rs",
+                          "name": "当前价格",
+                          "fill": "#0D6E6E",
+                          "content": "¥ 348.50 / 克",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 28,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QZt29",
+                          "name": "查看详情按钮",
+                          "height": 30,
+                          "fill": "#0D6E6E",
+                          "cornerRadius": 6,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "KidT1",
+                              "name": "查看详情文字",
+                              "fill": "#FFFFFF",
+                              "content": "查看详情  ›",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "h2RDik",
+                      "name": "现有价格趋势图",
+                      "width": "fill_container",
+                      "height": "fill_container",
+                      "fill": "#FAFCFC",
+                      "cornerRadius": 8,
+                      "stroke": "#EEF2F2",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 14,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zQRqM",
+                          "name": "趋势图标题",
+                          "fill": "#64748B",
+                          "content": "实际价格走势                                      实际价格  —   预算价格  - -",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "wr6RW",
+                          "name": "趋势图示意",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "gap": 10,
+                          "alignItems": "end",
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "n13D8u",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 110
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "MfkL4",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 139
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "s2zd2X",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 119
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "de3ha",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 187
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "Y0tG0m",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 167
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "dMHNz",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 218
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "M06OH",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 204
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "Y4TRQ",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 255
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "OKoTj",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 241
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "Ulu4q",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 280
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "HDTum",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 269
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": [
+                                3,
+                                3,
+                                0,
+                                0
+                              ],
+                              "id": "AJ0CD",
+                              "name": "价格趋势柱",
+                              "fill": "#70B8AF",
+                              "width": "fill_container",
+                              "height": 280
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hxk6z",
+                      "name": "现有五项统计",
+                      "width": "fill_container",
+                      "height": 52,
+                      "stroke": "#F1F5F9",
+                      "strokeWidth": {
+                        "top": 1,
+                        "bottom": 1
+                      },
+                      "gap": 10,
+                      "padding": [
+                        8,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "UKRxZ",
+                          "name": "最低价",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "y49cJ",
+                              "name": "最低价标签",
+                              "fill": "#94A3B8",
+                              "content": "最低价",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "NruUe",
+                              "name": "最低价值",
+                              "fill": "#16825D",
+                              "content": "¥ 339.20",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "C6TYM",
+                          "name": "最高价",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "wLhfJ",
+                              "name": "最高价标签",
+                              "fill": "#94A3B8",
+                              "content": "最高价",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Hqn9o",
+                              "name": "最高价值",
+                              "fill": "#C2413B",
+                              "content": "¥ 350.10",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "cpKAS",
+                          "name": "平均价",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "IwWhQ",
+                              "name": "平均价标签",
+                              "fill": "#94A3B8",
+                              "content": "平均价",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "CmwAO",
+                              "name": "平均价值",
+                              "fill": "#0D6E6E",
+                              "content": "¥ 344.86",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mC9h3",
+                          "name": "预算价",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "g124S8",
+                              "name": "预算价标签",
+                              "fill": "#94A3B8",
+                              "content": "预算价",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "cjcby",
+                              "name": "预算价值",
+                              "fill": "#B7791F",
+                              "content": "¥ 340.00",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Vaku6",
+                          "name": "近期价",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "r492OC",
+                              "name": "近期价标签",
+                              "fill": "#94A3B8",
+                              "content": "近期价",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Ksh5y",
+                              "name": "近期价值",
+                              "fill": "#475569",
+                              "content": "¥ 348.50",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 10,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ULngg",
+                      "name": "优化后的指标标题",
+                      "width": "fill_container",
+                      "height": 30,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "vE96O",
+                          "name": "指标洞察标题",
+                          "fill": "#1A1A1A",
+                          "content": "价格指标洞察",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "800"
+                        },
+                        {
+                          "type": "text",
+                          "id": "JW1t5",
+                          "name": "指标口径提示",
+                          "fill": "#94A3B8",
+                          "content": "口径：最新有效价格日  ·  自动跳过无记录日期",
+                          "fontFamily": "Inter",
+                          "fontSize": 9,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YM2V7",
+                      "name": "Excel PC端分类指标区",
+                      "width": "fill_container",
+                      "height": 220,
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "m4gLzs",
+                          "name": "价格现状  4项",
+                          "clip": true,
+                          "width": "fill_container",
+                          "height": 220,
+                          "fill": "#F3FAF9",
+                          "cornerRadius": 8,
+                          "stroke": "#0D6E6E33",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "I5H08c",
+                              "name": "价格现状  4项标题",
+                              "width": "fill_container",
+                              "height": 30,
+                              "fill": "#0D6E6E14",
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "se0Pg",
+                                  "name": "价格现状  4项文字",
+                                  "fill": "#0D6E6E",
+                                  "content": "价格现状  4项",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "800"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "F5VenT",
+                              "name": "最新价格",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#0D6E6E18",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ALez0",
+                                  "name": "最新价格标签",
+                                  "fill": "#64748B",
+                                  "content": "最新价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "JHdtA",
+                                  "name": "最新价格值",
+                                  "fill": "#0D6E6E",
+                                  "content": "¥ 348.50",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Kdpe3",
+                              "name": "最新价格日期",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#0D6E6E18",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "t08FH",
+                                  "name": "最新价格日期标签",
+                                  "fill": "#64748B",
+                                  "content": "最新价格日期",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "MrwXl",
+                                  "name": "最新价格日期值",
+                                  "fill": "#0D6E6E",
+                                  "content": "2026-06-12",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "rmvoZ",
+                              "name": "上期有效价格",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#0D6E6E18",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "pnGKs",
+                                  "name": "上期有效价格标签",
+                                  "fill": "#64748B",
+                                  "content": "上期有效价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "XqNa9",
+                                  "name": "上期有效价格值",
+                                  "fill": "#0D6E6E",
+                                  "content": "¥ 345.20",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "n7iShc",
+                              "name": "上期价格日期",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#0D6E6E18",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "SEunN",
+                                  "name": "上期价格日期标签",
+                                  "fill": "#64748B",
+                                  "content": "上期价格日期",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "YxMz6",
+                                  "name": "上期价格日期值",
+                                  "fill": "#0D6E6E",
+                                  "content": "2026-06-11",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "VZ7Xq",
+                              "name": "有效价格口径说明",
+                              "width": "fill_container",
+                              "height": 38,
+                              "fill": "#0D6E6E08",
+                              "stroke": "#0D6E6E18",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "DTu7E",
+                                  "name": "有效价格口径标签",
+                                  "fill": "#64748B",
+                                  "content": "有效价格口径",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "lg98r",
+                                  "name": "有效价格口径内容",
+                                  "fill": "#0D6E6E",
+                                  "content": "跳过无记录日期",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Nt5dM",
+                          "name": "短期及预算偏差  5项",
+                          "clip": true,
+                          "width": "fill_container",
+                          "height": 220,
+                          "fill": "#FFF8F3",
+                          "cornerRadius": 8,
+                          "stroke": "#B5470833",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Ffqig",
+                              "name": "短期及预算偏差  5项标题",
+                              "width": "fill_container",
+                              "height": 30,
+                              "fill": "#B5470814",
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Fuiea",
+                                  "name": "短期及预算偏差  5项文字",
+                                  "fill": "#B54708",
+                                  "content": "短期及预算偏差  5项",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "800"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "MtNMi",
+                              "name": "较上期差异额",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#B5470818",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QzDBB",
+                                  "name": "较上期差异额标签",
+                                  "fill": "#64748B",
+                                  "content": "较上期差异额",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "OiTvm",
+                                  "name": "较上期差异额值",
+                                  "fill": "#B54708",
+                                  "content": "+¥ 3.30",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "EFKgi",
+                              "name": "较上期差异率",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#B5470818",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ko3Uo",
+                                  "name": "较上期差异率标签",
+                                  "fill": "#64748B",
+                                  "content": "较上期差异率",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "AvM8Y",
+                                  "name": "较上期差异率值",
+                                  "fill": "#B54708",
+                                  "content": "+0.96%",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "U8hPJY",
+                              "name": "预算价格",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#B5470818",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "BbgiA",
+                                  "name": "预算价格标签",
+                                  "fill": "#64748B",
+                                  "content": "预算价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "mIy2F",
+                                  "name": "预算价格值",
+                                  "fill": "#B54708",
+                                  "content": "¥ 340.00",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "b5eZ5Y",
+                              "name": "较预算差异额",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#B5470818",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "g40SO3",
+                                  "name": "较预算差异额标签",
+                                  "fill": "#64748B",
+                                  "content": "较预算差异额",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "uIysz",
+                                  "name": "较预算差异额值",
+                                  "fill": "#B54708",
+                                  "content": "+¥ 8.50",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "aFjj7",
+                              "name": "较预算差异率",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#B5470818",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KjuCf",
+                                  "name": "较预算差异率标签",
+                                  "fill": "#64748B",
+                                  "content": "较预算差异率",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "kAmY8",
+                                  "name": "较预算差异率值",
+                                  "fill": "#B54708",
+                                  "content": "+2.50%",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "oQbm8",
+                          "name": "月度趋势  5项",
+                          "clip": true,
+                          "width": "fill_container",
+                          "height": 220,
+                          "fill": "#F5F8FC",
+                          "cornerRadius": 8,
+                          "stroke": "#365B8533",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "JMvDH",
+                              "name": "月度趋势  5项标题",
+                              "width": "fill_container",
+                              "height": 30,
+                              "fill": "#365B8514",
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "rGOig",
+                                  "name": "月度趋势  5项文字",
+                                  "fill": "#365B85",
+                                  "content": "月度趋势  5项",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "800"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "JxO2I",
+                              "name": "本月累计平均价",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#365B8518",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "helfi",
+                                  "name": "本月累计平均价标签",
+                                  "fill": "#64748B",
+                                  "content": "本月累计平均价",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "M8crTG",
+                                  "name": "本月累计平均价值",
+                                  "fill": "#365B85",
+                                  "content": "¥ 344.86",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Apu7u",
+                              "name": "上月平均价格",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#365B8518",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "qm3sq",
+                                  "name": "上月平均价格标签",
+                                  "fill": "#64748B",
+                                  "content": "上月平均价格",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "hPJa0",
+                                  "name": "上月平均价格值",
+                                  "fill": "#365B85",
+                                  "content": "¥ 339.20",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ohrzr",
+                              "name": "月均价环比",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#365B8518",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wPxEI",
+                                  "name": "月均价环比标签",
+                                  "fill": "#64748B",
+                                  "content": "月均价环比",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "VYkD3",
+                                  "name": "月均价环比值",
+                                  "fill": "#365B85",
+                                  "content": "+1.67%",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "hzjuK",
+                              "name": "上年同期平均价",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#365B8518",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "P9SvRm",
+                                  "name": "上年同期平均价标签",
+                                  "fill": "#64748B",
+                                  "content": "上年同期平均价",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "cc1UB",
+                                  "name": "上年同期平均价值",
+                                  "fill": "#365B85",
+                                  "content": "¥ 326.40",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "EW43c",
+                              "name": "月均价同比",
+                              "width": "fill_container",
+                              "height": 38,
+                              "stroke": "#365B8518",
+                              "strokeWidth": {
+                                "bottom": 1
+                              },
+                              "gap": 4,
+                              "padding": [
+                                0,
+                                8
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "MygLl",
+                                  "name": "月均价同比标签",
+                                  "fill": "#64748B",
+                                  "content": "月均价同比",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 8,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "MFzVF",
+                                  "name": "月均价同比值",
+                                  "fill": "#365B85",
+                                  "content": "+5.66%",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -32,6 +32,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   home_layout: '首页布局',
   home_widget: '首页组件',
   price_alert: '价格预警',
+  price_metric_group: '价格指标分组',
+  price_metric: '价格指标',
   chart_range: '图表时间范围',
   category_visual_config: '分类视觉配置',
   api_key_status: 'API密钥状态',

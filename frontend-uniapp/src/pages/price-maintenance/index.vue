@@ -68,7 +68,7 @@
             <view class="card-header">
               <text class="card-seq">{{ index + 1 }}</text>
               <view class="card-title">
-                <text class="card-name">{{ product.name }}</text>
+                <text class="card-name">{{ getProductDisplayName(product) }}</text>
                 <text class="card-specs" v-if="product.specs">{{ product.specs }}</text>
               </view>
             </view>
@@ -122,14 +122,17 @@
       <view class="save-info">
         <text class="save-title">{{ hasChanges ? '价格已修改' : currentDraft ? '草稿已保存' : '修改价格后可保存' }}</text>
         <text class="save-desc">
-          {{ currentDraft ? `草稿 ${currentDraft.savedItemCount || 0} 条 · ${selectedDate}` : `尚未保存草稿 · ${selectedDate}` }}
+          {{ currentDraft ? `当前日期草稿 ${currentDraft.savedItemCount || 0} 条 · ${selectedDate}` : `当前日期尚未保存草稿 · ${selectedDate}` }}
+        </text>
+        <text class="save-desc">
+          {{ publishableSummaryText }}
         </text>
       </view>
       <button class="action-btn save-btn" @click="handleSave" :disabled="saving || publishing || !hasChanges">
         {{ saving ? '保存中' : '保存' }}
       </button>
-      <button class="action-btn publish-btn" @click="handlePublish" :disabled="publishing || saving || !currentDraft || hasChanges">
-        {{ publishing ? '发布中' : '发布' }}
+      <button class="action-btn publish-btn" @click="handlePublish" :disabled="publishing || saving || !hasPublishableDrafts || hasChanges">
+        {{ publishing ? '发布中' : '发布全部' }}
       </button>
     </view>
 
@@ -142,11 +145,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts } from '@/api/products'
 import { getPricesByDateWithStats } from '@/api/products'
-import { getPriceDraftByDate, publishPriceDraft, savePriceDraft } from '@/api/priceDraft'
+import { getPriceDraftByDate, getPriceDraftPublishableSummary, publishAllPriceDrafts, savePriceDraft } from '@/api/priceDraft'
 import { getCategories } from '@/api/categories'
-import type { PriceDraftBatch, Product, Price, PageResponse, ProductCategory } from '@/types'
+import type { PriceDraftBatch, PriceDraftPublishableSummary, PricePublishResult, Product, Price, PageResponse, ProductCategory } from '@/types'
 import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
+import { getProductDisplayName } from '@/utils/productDisplay'
 import { refreshNotificationIndicator, showNotificationBubble } from '@/composables/useNotificationIndicator'
 
 const userStore = useUserStore()
@@ -168,12 +172,13 @@ const inheritedBudgetPriceMap = ref<Map<number, number>>(new Map())
 const editingPrices = ref<Map<number, string>>(new Map())
 const originalPriceTextMap = ref<Map<number, string>>(new Map())
 const currentDraft = ref<PriceDraftBatch | null>(null)
+const publishableSummary = ref<PriceDraftPublishableSummary | null>(null)
 
 const filteredProducts = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
   return products.value.filter(product => {
     const matchCategory = selectedCategoryId.value === null || product.categoryId === selectedCategoryId.value || product.category?.id === selectedCategoryId.value
-    const haystack = `${product.name || ''} ${product.specs || ''} ${product.code || ''}`.toLowerCase()
+    const haystack = `${getProductDisplayName(product)} ${product.name || ''} ${product.specs || ''} ${product.code || ''}`.toLowerCase()
     const matchKeyword = !keyword || haystack.includes(keyword)
     return matchCategory && matchKeyword
   })
@@ -188,6 +193,48 @@ const hasChanges = computed(() => {
   }
   return false
 })
+const hasPublishableDrafts = computed(() => !!publishableSummary.value?.hasPublishableDrafts)
+const publishableSummaryText = computed(() => {
+  const summary = publishableSummary.value
+  if (!summary?.hasPublishableDrafts) return '暂无待发布草稿'
+  return `待发布 ${summary.publishableDateCount || 0} 个日期 / ${summary.publishableBatchCount || 0} 个草稿 / ${summary.publishableItemCount || 0} 条`
+})
+
+const getFirstPublishFailureReason = (result: PricePublishResult) => {
+  const failed = (result.batchResults || []).find(item => item.batchStatus !== 'PUBLISHED' || item.status !== 'SUCCESS')
+  return failed?.message ? `\n原因：${failed.message}` : ''
+}
+
+const showPublishResult = async (result: PricePublishResult) => {
+  const successCount = result.successCount || 0
+  const failCount = result.failCount || 0
+  const remainingBatchCount = result.remainingDraftBatchCount || 0
+  if (result.status === 'SUCCESS') {
+    uni.showToast({ title: `发布成功 ${successCount} 条`, icon: 'none' })
+    return
+  }
+  if (result.status === 'PARTIAL') {
+    await new Promise<void>(resolve => {
+      uni.showModal({
+        title: '部分发布成功',
+        content: `成功 ${successCount} 条，失败 ${failCount} 条，仍有 ${remainingBatchCount} 个草稿批次待处理。${getFirstPublishFailureReason(result)}`,
+        showCancel: false,
+        success: () => resolve(),
+        fail: () => resolve()
+      })
+    })
+    return
+  }
+  await new Promise<void>(resolve => {
+    uni.showModal({
+      title: '发布失败',
+      content: `失败 ${failCount} 条，请查看失败原因后重试。${getFirstPublishFailureReason(result)}`,
+      showCancel: false,
+      success: () => resolve(),
+      fail: () => resolve()
+    })
+  })
+}
 
 function getYesterday(): string {
   const date = new Date()
@@ -212,11 +259,12 @@ const applyDraft = (draft: PriceDraftBatch | null) => {
 const loadData = async () => {
   loading.value = true
   try {
-    const [productRes, categoryRes, priceRes, draftRes] = await Promise.all([
+    const [productRes, categoryRes, priceRes, draftRes, summaryRes] = await Promise.all([
       getProducts({ page: 0, size: 1000, status: 'ACTIVE' }),
       getCategories('ACTIVE'),
       getPricesByDateWithStats(selectedDate.value),
-      getPriceDraftByDate(selectedDate.value)
+      getPriceDraftByDate(selectedDate.value),
+      getPriceDraftPublishableSummary()
     ])
 
     const productList = (productRes.data as PageResponse<Product>).content || []
@@ -232,6 +280,7 @@ const loadData = async () => {
     editingPrices.value = new Map()
     originalPriceTextMap.value = new Map()
     currentDraft.value = null
+    publishableSummary.value = summaryRes.data || null
 
     const items = priceRes.data || []
     for (const item of items) {
@@ -388,6 +437,8 @@ const handleSave = async () => {
       items: draftItems
     })
     applyDraft(response.data)
+    const summaryResponse = await getPriceDraftPublishableSummary()
+    publishableSummary.value = summaryResponse.data || null
     uni.showToast({ title: `草稿保存成功 ${draftItems.length} 条`, icon: 'none' })
   } catch (error) {
     console.error('保存草稿失败:', error)
@@ -398,8 +449,8 @@ const handleSave = async () => {
 }
 
 const handlePublish = async () => {
-  if (!currentDraft.value?.id) {
-    uni.showToast({ title: '请先保存草稿', icon: 'none' })
+  if (!hasPublishableDrafts.value) {
+    uni.showToast({ title: '暂无可发布草稿', icon: 'none' })
     return
   }
   if (hasChanges.value) {
@@ -407,11 +458,12 @@ const handlePublish = async () => {
     return
   }
 
+  const summary = publishableSummary.value
   const confirmed = await new Promise<boolean>(resolve => {
     uni.showModal({
-      title: '确认发布价格',
-      content: `发布后 ${selectedDate.value} 的价格将对所有用户可见，并生成通知。`,
-      confirmText: '发布',
+      title: '确认发布全部草稿',
+      content: `将发布所有已保存但未发布的价格草稿，涉及 ${summary?.publishableDateCount || 0} 个日期、${summary?.publishableBatchCount || 0} 个草稿批次、${summary?.publishableItemCount || 0} 条价格。发布后成功批次将立即生效，失败批次可修正后重试。`,
+      confirmText: '发布全部',
       confirmColor: '#0D6E6E',
       success: result => resolve(result.confirm),
       fail: () => resolve(false)
@@ -421,9 +473,11 @@ const handlePublish = async () => {
 
   publishing.value = true
   try {
-    const response = await publishPriceDraft(currentDraft.value.id)
-    uni.showToast({ title: `发布完成 ${response.data.successCount} 条`, icon: 'none' })
-    showNotificationBubble('价格已发布，通知已生成')
+    const response = await publishAllPriceDrafts()
+    await showPublishResult(response.data)
+    if ((response.data.successCount || 0) > 0) {
+      showNotificationBubble('价格更新通知已生成')
+    }
     await refreshNotificationIndicator(false)
     await loadData()
   } catch (error) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -7,6 +7,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { getProducts, getPricesByDateWithStats, getPriceTrend } from '@/api/products'
+import { getPriceQueryRows, type PriceQueryParams } from '@/api/priceQuery'
 import { getCategories } from '@/api/categories'
 import { getHomeDashboard, getHomeSummary, getPriceAlerts } from '@/api/home'
 import { usePermission, Permission } from '@/composables/usePermission'
@@ -27,7 +28,7 @@ import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
 import type { HomeSummary, PriceAlert } from '@/api/home'
 import type { PriceWithStats } from '@/api/products'
 import type { ProductTrendItem } from '@/components/home/TrendAnalysisChart.vue'
-import type { Product, Price, ProductCategory, PageResponse, ProductStatus } from '@/types'
+import type { Product, Price, ProductCategory, PageResponse, ProductStatus, PriceQueryRow } from '@/types'
 
 // ECharts 注册
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -49,6 +50,8 @@ const selectedCategoryIds = ref<number[]>([])
 const tableProducts = ref<Product[]>([])
 const tablePage = ref(0)
 const tableSize = ref(10)
+const tableSizeMode = ref<'auto' | 'manual'>('auto')
+const adaptiveTableSize = ref(10)
 const tableTotalElements = ref(0)
 const tableTotalPages = ref(0)
 const tableSortBy = ref('sortOrder')
@@ -65,6 +68,7 @@ const previousPriceMap = ref<Map<number, Price>>(new Map())
 const currentPriceValueMap = ref<Map<number, number>>(new Map())
 const previousPriceValueMap = ref<Map<number, number>>(new Map())
 const inheritedPriceValueMap = ref<Map<number, number>>(new Map())
+const priceQueryRowMap = ref<Map<number, PriceQueryRow>>(new Map())
 const priceHistoryMap = ref<Map<number, any[]>>(new Map())
 const chartOptionsMap = ref<Map<number, any>>(new Map())
 const homeSummary = ref<HomeSummary | null>(null)
@@ -82,8 +86,15 @@ const pcDateInputRef = ref<HTMLInputElement | null>(null)
 const mobileDateInputRef = ref<HTMLInputElement | null>(null)
 const homeRootRef = ref<HTMLElement | null>(null)
 const homeContentWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+const productTableWorkspaceHeight = ref<number | null>(null)
 let isOpeningDatePicker = false
 let homeResizeObserver: ResizeObserver | null = null
+let homeResizeTimer: ReturnType<typeof setTimeout> | null = null
+
+const HOME_TABLE_MIN_SIZE = 5
+const HOME_TABLE_MAX_SIZE = 20
+const HOME_TABLE_FALLBACK_ROW_HEIGHT = 57
+const HOME_TABLE_FALLBACK_HEADER_HEIGHT = 45
 
 // 计算属性
 const homeViewportTier = computed<'full' | 'middle' | 'h5'>(() => {
@@ -182,6 +193,17 @@ const productListPresentation = computed<'table' | 'cards'>(() => {
   return homeViewportTier.value === 'h5' ? 'cards' : 'table'
 })
 const isProductTableMode = computed(() => productListPresentation.value === 'table')
+const displayedTableSize = computed(() => tableSizeMode.value === 'auto' ? 'auto' : String(tableSize.value))
+const visibleTableSizes = computed(() =>
+  [...new Set([10, 20, 50, adaptiveTableSize.value])].sort((a, b) => a - b)
+)
+const productTableSectionStyle = computed<Record<string, string>>(() => {
+  const style: Record<string, string> = {}
+  if (productTableWorkspaceHeight.value != null) {
+    style['--home-product-workspace-height'] = `${productTableWorkspaceHeight.value}px`
+  }
+  return style
+})
 const showCoreLargeCurve = computed(() =>
   isFullHomeLayout.value && isHomeSectionVisible('trend_chart')
 )
@@ -414,6 +436,14 @@ const selectedTrendItem = computed<ProductTrendItem | null>(() => {
 
 // 方法
 const getPriceChangeInfo = (productId: number) => {
+  const queryRow = priceQueryRowMap.value.get(productId)
+  if (queryRow?.previousChangeAmount != null) {
+    const diff = Number(queryRow.previousChangeAmount)
+    if (diff === 0) return { direction: 'flat', diff: 0, formattedDiff: '0.00' }
+    const formattedDiff = diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)
+    return { direction: diff > 0 ? 'up' : 'down', diff, formattedDiff }
+  }
+
   const currentVal = currentPriceValueMap.value.get(productId)
   const previousVal = toNumber(previousPriceMap.value.get(productId)?.currentPrice)
     ?? inheritedPriceValueMap.value.get(productId)
@@ -447,7 +477,12 @@ const getPriceDisplay = (product: Product) => {
   return lastPrice ? `${getCurrencySymbolLocal(product.currency)}${lastPrice}` : '--'
 }
 
-const getYesterdayPriceDisplay = (product: Product) => {
+const getPreviousPriceDisplay = (product: Product) => {
+  const queryRow = priceQueryRowMap.value.get(product.id)
+  if (queryRow?.previousPrice != null) {
+    return `${getCurrencySymbolLocal(product.currency)}${formatPriceNumber(queryRow.previousPrice)}`
+  }
+
   const previousValue = previousPriceValueMap.value.get(product.id)
   return previousValue != null ? `${getCurrencySymbolLocal(product.currency)}${formatPriceNumber(previousValue)}` : '--'
 }
@@ -474,6 +509,13 @@ const getChangeDisplay = (product: Product) => {
 }
 
 const getChangePercentDisplay = (product: Product) => {
+  const queryRow = priceQueryRowMap.value.get(product.id)
+  if (queryRow?.previousChangePercent != null) {
+    const percent = Number(queryRow.previousChangePercent)
+    const sign = percent > 0 ? '+' : ''
+    return `${sign}${percent.toFixed(2)}%`
+  }
+
   const currentVal = currentPriceValueMap.value.get(product.id)
   const previousVal = toNumber(previousPriceMap.value.get(product.id)?.currentPrice)
     ?? inheritedPriceValueMap.value.get(product.id)
@@ -625,21 +667,40 @@ const loadHomeDashboardData = async () => {
 }
 
 let tableRequestSeq = 0
+
+const buildTableRequestParams = () => ({
+  page: tablePage.value,
+  size: tableSize.value,
+  keyword: searchQueryDebounced.value || undefined,
+  categoryId: selectedCategoryIds.value.length === 1 ? selectedCategoryIds.value[0] : undefined,
+  status: tableStatus.value || undefined,
+  sortBy: tableSortBy.value,
+  sortDirection: tableSortDirection.value
+})
+
+const mergePriceQueryRows = (rows: PriceQueryRow[]) => {
+  const nextMap = new Map(priceQueryRowMap.value)
+  rows.forEach(row => nextMap.set(row.productId, row))
+  priceQueryRowMap.value = nextMap
+}
+
+const loadPriceQueryRows = async (params: PriceQueryParams) => {
+  const response = await getPriceQueryRows(params)
+  const pageData = response.data as PageResponse<PriceQueryRow>
+  return pageData.content || []
+}
+
 const loadTableProducts = async (options: { silent?: boolean } = {}) => {
   const requestSeq = ++tableRequestSeq
   if (!options.silent) tableLoading.value = true
   try {
-    const params = {
-      page: tablePage.value,
-      size: tableSize.value,
-      keyword: searchQueryDebounced.value || undefined,
-      categoryId: selectedCategoryIds.value.length === 1 ? selectedCategoryIds.value[0] : undefined,
-      status: tableStatus.value || undefined,
-      sortBy: tableSortBy.value,
-      sortDirection: tableSortDirection.value
-    }
-    const response = await getProducts(params)
+    const params = buildTableRequestParams()
+    const [response, priceQueryRows] = await Promise.all([
+      getProducts(params),
+      loadPriceQueryRows({ ...params, date: selectedDate.value, status: params.status || 'ACTIVE' })
+    ])
     if (requestSeq !== tableRequestSeq) return
+    mergePriceQueryRows(priceQueryRows)
     const pageData = response.data as PageResponse<Product>
     tableProducts.value = pageData.content || []
     tableTotalElements.value = pageData.totalElements || 0
@@ -654,6 +715,10 @@ const loadTableProducts = async (options: { silent?: boolean } = {}) => {
     if (requestSeq === tableRequestSeq) {
       tableLoading.value = false
     }
+  }
+  if (requestSeq === tableRequestSeq && tableSizeMode.value === 'auto') {
+    await nextTick()
+    applyAdaptiveHomeTableSize(true)
   }
 }
 
@@ -673,6 +738,7 @@ const loadData = async () => {
     currentPriceValueMap.value.clear()
     previousPriceValueMap.value.clear()
     inheritedPriceValueMap.value.clear()
+    priceQueryRowMap.value = new Map()
     chartOptionsMap.value.clear()
 
     const pricesWithStats = (pricesWithStatsRes.data || []) as PriceWithStats[]
@@ -689,7 +755,17 @@ const loadData = async () => {
       if (previousValue != null) previousPriceValueMap.value.set(productId, previousValue)
     })
 
-    await loadTableProducts()
+    await Promise.all([
+      loadPriceQueryRows({
+        date: selectedDate.value,
+        page: 0,
+        size: 200,
+        status: 'ACTIVE',
+        sortBy: 'sortOrder',
+        sortDirection: 'asc'
+      }).then(mergePriceQueryRows),
+      loadTableProducts()
+    ])
 
     if (!selectedProductId.value && homeProducts.value.length > 0) {
       selectedProductId.value = homeProducts.value[0].id
@@ -786,7 +862,7 @@ watch(searchQuery, (val) => {
 })
 
 watch(() => layoutConfig.value.productTablePageSize, (size) => {
-  if (!size || tableSize.value === size) return
+  if (tableSizeMode.value === 'auto' || !size || tableSize.value === size) return
   tableSize.value = size
   tablePage.value = 0
   loadTableProducts()
@@ -842,7 +918,17 @@ const goTablePage = (page: number) => {
   loadTableProducts({ silent: true })
 }
 
-const onTableSizeChange = () => {
+const onTableSizeChange = (event?: Event) => {
+  const rawValue = event ? (event.target as HTMLSelectElement).value : String(tableSize.value)
+  if (rawValue === 'auto') {
+    tableSizeMode.value = 'auto'
+    applyAdaptiveHomeTableSize(true)
+    return
+  }
+  const nextSize = Number(rawValue)
+  if (!Number.isFinite(nextSize) || nextSize <= 0) return
+  tableSizeMode.value = 'manual'
+  tableSize.value = nextSize
   tablePage.value = 0
   loadTableProducts({ silent: true })
 }
@@ -872,6 +958,48 @@ const updateHomeContentWidth = () => {
   homeContentWidth.value = homeRootRef.value?.clientWidth || windowWidth.value
 }
 
+const calculateAdaptiveHomeTableSize = () => {
+  const shell = homeRootRef.value?.querySelector('.product-table-shell') as HTMLElement | null
+  if (!shell || !isProductTableMode.value) return tableSize.value
+  const tableHead = shell.querySelector('thead') as HTMLElement | null
+  const firstRow = shell.querySelector('tbody tr:not(:only-child)') as HTMLElement | null
+    || shell.querySelector('tbody tr') as HTMLElement | null
+  const headerHeight = tableHead?.getBoundingClientRect().height || HOME_TABLE_FALLBACK_HEADER_HEIGHT
+  const rowHeight = firstRow?.getBoundingClientRect().height || HOME_TABLE_FALLBACK_ROW_HEIGHT
+  const measured = Math.floor((shell.clientHeight - headerHeight) / rowHeight)
+  return Math.min(Math.max(measured, HOME_TABLE_MIN_SIZE), HOME_TABLE_MAX_SIZE)
+}
+
+const applyAdaptiveHomeTableSize = (reload = false) => {
+  if (tableSizeMode.value !== 'auto' || !isPCLayout.value || !isProductTableMode.value) return
+  const nextSize = calculateAdaptiveHomeTableSize()
+  adaptiveTableSize.value = nextSize
+  if (tableSize.value === nextSize) return
+  tableSize.value = nextSize
+  tablePage.value = 0
+  if (reload) loadTableProducts({ silent: true })
+}
+
+const updateHomeProductWorkspace = async (reload = false) => {
+  if (!isPCLayout.value) {
+    productTableWorkspaceHeight.value = null
+    return
+  }
+  const section = homeRootRef.value?.querySelector('.home-product-table-section') as HTMLElement | null
+  const sectionTop = section?.getBoundingClientRect().top || 0
+  const availableHeight = window.innerHeight - Math.max(sectionTop, 0) - 24
+  productTableWorkspaceHeight.value = Math.max(360, Math.floor(availableHeight))
+  await nextTick()
+  applyAdaptiveHomeTableSize(reload)
+}
+
+const scheduleHomeProductWorkspaceUpdate = (reload = false) => {
+  if (homeResizeTimer) clearTimeout(homeResizeTimer)
+  homeResizeTimer = setTimeout(() => {
+    updateHomeProductWorkspace(reload)
+  }, 160)
+}
+
 const setupHomeResizeObserver = () => {
   updateHomeContentWidth()
   if (typeof ResizeObserver === 'undefined' || !homeRootRef.value) return
@@ -887,7 +1015,14 @@ watch(isPCLayout, () => {
   window.setTimeout(setupHomeResizeObserver, 0)
 })
 
-watch(windowWidth, updateHomeContentWidth)
+watch(windowWidth, () => {
+  updateHomeContentWidth()
+  scheduleHomeProductWorkspaceUpdate(true)
+})
+
+watch([isFullHomeLayout, isProductTableMode], () => {
+  scheduleHomeProductWorkspaceUpdate(true)
+})
 
 const loadCategories = async () => {
   try {
@@ -906,6 +1041,8 @@ const loadCategories = async () => {
 
 onMounted(async () => {
   setupHomeResizeObserver()
+  await nextTick()
+  await updateHomeProductWorkspace(false)
 
   // 加载分类数据并注册映射（必须在渲染产品卡片前完成）
   await loadCategories()
@@ -915,7 +1052,9 @@ onMounted(async () => {
     loadHomeConfig()
   ])
 
-  loadData()
+  await loadData()
+  await nextTick()
+  updateHomeProductWorkspace(true)
   unsubscribeProductSort = eventBus.on('product-sort-updated', loadData)
   unsubscribeCategorySort = eventBus.on('category-sort-updated', async () => {
     await loadCategories()
@@ -928,6 +1067,10 @@ onUnmounted(() => {
   unsubscribeCategorySort?.()
   homeResizeObserver?.disconnect()
   homeResizeObserver = null
+  if (homeResizeTimer) {
+    clearTimeout(homeResizeTimer)
+    homeResizeTimer = null
+  }
 })
 </script>
 
@@ -1030,7 +1173,7 @@ onUnmounted(() => {
                     <span class="featured-unit" v-if="getPriceUnit(product)">/ {{ getPriceUnit(product) }}</span>
                   </span>
                   <span class="featured-change" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
-                    较昨日 {{ getChangeDisplay(product) }}
+                    较上期 {{ getChangeDisplay(product) }}
                     <template v-if="getChangePercentDisplay(product)">（{{ getChangePercentDisplay(product) }}）</template>
                   </span>
                   <span class="featured-mini-chart" v-if="isMiddleHomeLayout && chartOptionsMap.get(product.id)">
@@ -1060,36 +1203,19 @@ onUnmounted(() => {
             @range-change="onTrendRangeChange"
           />
 
-          <section v-else-if="section.key === 'product_list'" class="home-product-table-section">
-            <div class="product-table-toolbar">
+          <section
+            v-else-if="section.key === 'product_list'"
+            class="home-product-table-section"
+            :style="productTableSectionStyle"
+          >
+            <!-- <div class="product-table-toolbar">
               <div>
                 <h2 class="section-title-pc">产品列表</h2>
                 <p class="panel-subtitle">共 {{ tableTotalElements }} 个产品，按当前日期展示价格状态</p>
               </div>
-              <div class="table-filters">
-                <div class="search-box-pc">
-                  <span class="search-icon-text">⌕</span>
-                  <input v-model="searchQuery" type="text" placeholder="搜索产品名称" class="search-input-pc" />
-                </div>
-                <select
-                  class="table-select category-select"
-                  :value="selectedCategoryIds[0] || ''"
-                  @change="onCategoryDropdownChange"
-                  aria-label="产品分类筛选"
-                >
-                  <option value="">全部分类</option>
-                  <option v-for="category in categories" :key="category.id" :value="category.id">
-                    {{ category.name }}
-                  </option>
-                </select>
-                <select v-model="tableSize" class="table-select" @change="onTableSizeChange">
-                  <option :value="10">10条/页</option>
-                  <option :value="20">20条/页</option>
-                  <option :value="50">50条/页</option>
-                </select>
-              </div>
-            </div>
+            </div> -->
 
+            <div class="home-product-list-scroll-region">
             <div v-if="isProductTableMode" class="product-table-shell">
               <table class="home-product-table">
                 <colgroup>
@@ -1109,7 +1235,7 @@ onUnmounted(() => {
                     <th>规格</th>
                     <th @click="setTableSort('sortOrder')">最新价格</th>
                     <th>单位</th>
-                    <th>较昨日</th>
+                    <th>较上期</th>
                     <th>走势图</th>
                     <th @click="setTableSort('updatedTime')">更新时间</th>
                   </tr>
@@ -1195,11 +1321,11 @@ onUnmounted(() => {
                     <span class="price-cell current">{{ getPriceDisplay(product) }}</span>
                   </span>
                   <span class="query-card-stat">
-                    <span class="query-card-label">昨日售价</span>
-                    <span class="price-cell">{{ getYesterdayPriceDisplay(product) }}</span>
+                    <span class="query-card-label">上期售价</span>
+                    <span class="price-cell">{{ getPreviousPriceDisplay(product) }}</span>
                   </span>
                   <span class="query-card-stat">
-                    <span class="query-card-label">较昨日</span>
+                    <span class="query-card-label">较上期</span>
                     <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
                       <span class="change-value">{{ getChangeDisplay(product) }}</span>
                     </span>
@@ -1207,9 +1333,33 @@ onUnmounted(() => {
                 </span>
               </button>
             </div>
+            </div>
 
             <div class="table-pagination">
-              <span>显示 {{ tableStart }}-{{ tableEnd }}，共 {{ tableTotalElements }} 条</span>
+              <div class="table-footer-left">
+                <div class="table-filters table-footer-filters">
+                  <div class="search-box-pc">
+                    <span class="search-icon-text">⌕</span>
+                    <input v-model="searchQuery" type="text" placeholder="搜索产品名称" class="search-input-pc" />
+                  </div>
+                  <select
+                    class="table-select category-select"
+                    :value="selectedCategoryIds[0] || ''"
+                    @change="onCategoryDropdownChange"
+                    aria-label="产品分类筛选"
+                  >
+                    <option value="">全部分类</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">
+                      {{ category.name }}
+                    </option>
+                  </select>
+                  <select class="table-select" :value="displayedTableSize" @change="onTableSizeChange">
+                    <option value="auto">自适应（{{ adaptiveTableSize }}条）</option>
+                    <option v-for="size in visibleTableSizes" :key="size" :value="size">{{ size }}条/页</option>
+                  </select>
+                </div>
+                <span class="table-range-summary">显示 {{ tableStart }}-{{ tableEnd }}，共 {{ tableTotalElements }} 条</span>
+              </div>
               <div class="pagination-actions">
                 <button class="page-btn" :disabled="tablePage === 0" @click="goTablePage(tablePage - 1)">上一页</button>
                 <span>第 {{ tablePage + 1 }} / {{ Math.max(tableTotalPages, 1) }} 页</span>
@@ -1567,8 +1717,8 @@ onUnmounted(() => {
                   <tr>
                     <th>产品名称</th>
                     <th>最新价格</th>
-                    <th>昨日售价</th>
-                    <th>较昨日</th>
+                    <th>上期售价</th>
+                    <th>较上期</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1598,7 +1748,7 @@ onUnmounted(() => {
                       </div>
                     </td>
                     <td class="price-cell current">{{ getPriceDisplay(product) }}</td>
-                    <td class="price-cell">{{ getYesterdayPriceDisplay(product) }}</td>
+                    <td class="price-cell">{{ getPreviousPriceDisplay(product) }}</td>
                     <td>
                       <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
                         <span class="change-value">{{ getChangeDisplay(product) }}</span>
@@ -1637,11 +1787,11 @@ onUnmounted(() => {
                     <span class="price-cell current">{{ getPriceDisplay(product) }}</span>
                   </span>
                   <span class="query-card-stat">
-                    <span class="query-card-label">昨日售价</span>
-                    <span class="price-cell">{{ getYesterdayPriceDisplay(product) }}</span>
+                    <span class="query-card-label">上期售价</span>
+                    <span class="price-cell">{{ getPreviousPriceDisplay(product) }}</span>
                   </span>
                   <span class="query-card-stat">
-                    <span class="query-card-label">较昨日</span>
+                    <span class="query-card-label">较上期</span>
                     <span class="change-pill" :class="priceChangeCache.get(product.id)?.direction || 'flat'">
                       <span class="change-value">{{ getChangeDisplay(product) }}</span>
                     </span>
@@ -2027,21 +2177,33 @@ onUnmounted(() => {
 }
 
 .home-product-table-section {
+  display: flex;
+  flex-direction: column;
+  height: var(--home-product-workspace-height, auto);
   overflow: hidden;
   max-width: 100%;
   margin-top: var(--spacing-md);
 }
 
 .home-product-table-section .product-table-toolbar {
+  flex: 0 0 auto;
   margin-bottom: var(--spacing-lg);
 }
 
+.home-product-list-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .product-table-shell {
+  height: 100%;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .product-list-card-grid {
@@ -2288,6 +2450,9 @@ onUnmounted(() => {
 }
 
 .home-product-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--text-secondary);
   font-weight: 600;
   background: var(--gray-50);
@@ -2457,7 +2622,8 @@ onUnmounted(() => {
 
 .table-pagination {
   display: flex;
-  justify-content: space-between;
+  flex: 0 0 auto;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--spacing-md);
   padding-top: var(--spacing-md);
@@ -2465,10 +2631,33 @@ onUnmounted(() => {
   font-size: var(--font-size-sm);
 }
 
+.table-footer-left {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.table-footer-filters {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.table-footer-filters .search-box-pc {
+  width: min(260px, 24vw);
+}
+
+.table-range-summary {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .pagination-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  flex: 0 0 auto;
 }
 
 .table-select {
@@ -3456,6 +3645,22 @@ onUnmounted(() => {
 @media (max-width: 1360px) {
   .home-product-table-section {
     overflow: visible;
+  }
+
+  .table-pagination {
+    align-items: flex-end;
+    justify-content: flex-end;
+  }
+
+  .table-footer-left {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .table-footer-filters {
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }
 

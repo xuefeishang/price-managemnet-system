@@ -1,0 +1,195 @@
+package com.pricemanagement.service;
+
+import com.pricemanagement.dto.PricePublishResultDTO;
+import com.pricemanagement.entity.Price;
+import com.pricemanagement.entity.PriceDraftBatch;
+import com.pricemanagement.entity.PriceDraftItem;
+import com.pricemanagement.entity.PricePublishLog;
+import com.pricemanagement.entity.User;
+import com.pricemanagement.repository.PriceDraftBatchRepository;
+import com.pricemanagement.repository.PriceDraftItemRepository;
+import com.pricemanagement.repository.PricePublishLogRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PriceDraftBatchPublishExecutor {
+
+    private final PriceDraftBatchRepository batchRepository;
+    private final PriceDraftItemRepository itemRepository;
+    private final PricePublishLogRepository publishLogRepository;
+    private final PriceService priceService;
+    private final ProductAnnualBudgetService annualBudgetService;
+    private final NotificationEventService notificationEventService;
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PricePublishResultDTO publishBatchInNewTransaction(
+            Long batchId,
+            PricePublishLog.PublishType publishType,
+            Long userId) {
+        PriceDraftBatch batch = batchRepository.findByIdForUpdate(batchId)
+                .orElseThrow(() -> new IllegalArgumentException("草稿批次不存在"));
+        return publishLockedBatch(batch, publishType, userId, false);
+    }
+
+    @Transactional
+    public PricePublishResultDTO publishBatch(Long batchId, PricePublishLog.PublishType publishType, Long userId) {
+        PriceDraftBatch batch = batchRepository.findByIdForUpdate(batchId)
+                .orElseThrow(() -> new IllegalArgumentException("草稿批次不存在"));
+        return publishLockedBatch(batch, publishType, userId, true);
+    }
+
+    private PricePublishResultDTO publishLockedBatch(
+            PriceDraftBatch batch,
+            PricePublishLog.PublishType publishType,
+            Long userId,
+            boolean notifyWhenPublished) {
+        if (batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHED) {
+            throw new IllegalStateException("该草稿批次已发布，请勿重复发布");
+        }
+        if (batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHING) {
+            throw new IllegalStateException("该草稿批次正在发布，请稍后刷新查看结果");
+        }
+        if (batch.getStatus() != PriceDraftBatch.DraftStatus.DRAFT) {
+            throw new IllegalArgumentException("当前状态不允许发布");
+        }
+        List<PriceDraftItem> items = itemRepository.findByBatchIdOrderByIdAsc(batch.getId());
+        if (items.isEmpty()) {
+            return saveFailedBatchLog(batch, publishType, userId, "草稿批次没有可发布明细", 0);
+        }
+        List<PriceDraftItem> publishableItems = items.stream()
+                .filter(item -> !isPublishedItem(item))
+                .toList();
+
+        batch.setStatus(PriceDraftBatch.DraftStatus.PUBLISHING);
+        batchRepository.saveAndFlush(batch);
+
+        int successCount = 0;
+        int failCount = 0;
+        StringBuilder message = new StringBuilder();
+
+        for (PriceDraftItem draftItem : publishableItems) {
+            try {
+                Price price = new Price();
+                price.setOriginalPrice(draftItem.getOriginalPrice());
+                price.setCurrentPrice(draftItem.getCurrentPrice());
+                price.setCostPrice(draftItem.getCostPrice());
+                price.setBudgetPrice(annualBudgetService
+                        .getBudgetPrice(draftItem.getProduct().getId(), draftItem.getEffectiveDate())
+                        .orElse(null));
+                price.setEffectiveDate(draftItem.getEffectiveDate());
+                price.setExpiryDate(draftItem.getExpiryDate());
+                price.setUnit(draftItem.getUnit());
+                price.setPriceSpec(draftItem.getPriceSpec());
+                price.setCreatedBy(userId);
+                price.setProduct(draftItem.getProduct());
+                Price savedPrice = priceService.doSavePrice(draftItem.getProduct(), price, null);
+                draftItem.setItemStatus(PriceDraftItem.ItemStatus.PUBLISHED);
+                draftItem.setPublishedPriceId(savedPrice.getId());
+                itemRepository.save(draftItem);
+                successCount++;
+            } catch (Exception ex) {
+                failCount++;
+                message.append("产品ID ").append(draftItem.getProduct().getId()).append(" 发布失败: ")
+                        .append(ex.getMessage()).append("; ");
+                log.error("Publish draft item failed: itemId={}", draftItem.getId(), ex);
+            }
+        }
+
+        int totalPublishedCount = (int) items.stream()
+                .filter(this::isPublishedItem)
+                .count();
+        boolean allItemsPublished = totalPublishedCount == items.size();
+
+        PricePublishLog logEntity = new PricePublishLog();
+        logEntity.setBatchId(batch.getId());
+        logEntity.setEffectiveDate(batch.getEffectiveDate());
+        logEntity.setPublishType(publishType);
+        logEntity.setTotalCount(publishableItems.size());
+        logEntity.setSuccessCount(successCount);
+        logEntity.setFailCount(failCount);
+        logEntity.setStatus(failCount == 0 ? PricePublishLog.PublishStatus.SUCCESS
+                : successCount == 0 ? PricePublishLog.PublishStatus.FAILED : PricePublishLog.PublishStatus.PARTIAL);
+        logEntity.setMessage(message.isEmpty() ? "发布成功" : message.toString());
+        logEntity.setCreatedBy(userId);
+        PricePublishLog savedLog = publishLogRepository.save(logEntity);
+
+        if (failCount == 0 && allItemsPublished) {
+            batch.setStatus(PriceDraftBatch.DraftStatus.PUBLISHED);
+            batch.setPublishedBy(userId);
+            batch.setPublishedTime(LocalDateTime.now());
+        } else {
+            batch.setStatus(PriceDraftBatch.DraftStatus.DRAFT);
+        }
+        batchRepository.save(batch);
+
+        if (notifyWhenPublished && successCount > 0 && batch.getStatus() == PriceDraftBatch.DraftStatus.PUBLISHED) {
+            notificationEventService.pricePublished(
+                    "价格已更新",
+                    batch.getEffectiveDate() + " 价格已发布，共更新 " + totalPublishedCount + " 个产品，请查看最新价格。",
+                    savedLog.getId(),
+                    batch.getEffectiveDate(),
+                    batch.getId(),
+                    userId,
+                    List.of(NotificationService.CHANNEL_IN_APP, NotificationService.CHANNEL_APP_PUSH, NotificationService.CHANNEL_MINI_PROGRAM),
+                    List.of(User.Role.ADMIN, User.Role.EDITOR, User.Role.VIEWER)
+            );
+        }
+
+        PricePublishResultDTO result = new PricePublishResultDTO();
+        result.setBatchId(batch.getId());
+        result.setPublishLogId(savedLog.getId());
+        result.setStatus(savedLog.getStatus());
+        result.setBatchStatus(batch.getStatus());
+        result.setSuccessCount(successCount);
+        result.setFailCount(failCount);
+        result.setNotificationMessageId(null);
+        result.setMessage(savedLog.getMessage());
+        return result;
+    }
+
+    private PricePublishResultDTO saveFailedBatchLog(
+            PriceDraftBatch batch,
+            PricePublishLog.PublishType publishType,
+            Long userId,
+            String message,
+            int failCount) {
+        PricePublishLog logEntity = new PricePublishLog();
+        logEntity.setBatchId(batch.getId());
+        logEntity.setEffectiveDate(batch.getEffectiveDate());
+        logEntity.setPublishType(publishType);
+        logEntity.setTotalCount(0);
+        logEntity.setSuccessCount(0);
+        logEntity.setFailCount(failCount);
+        logEntity.setStatus(PricePublishLog.PublishStatus.FAILED);
+        logEntity.setMessage(message);
+        logEntity.setCreatedBy(userId);
+        PricePublishLog savedLog = publishLogRepository.save(logEntity);
+
+        batch.setStatus(PriceDraftBatch.DraftStatus.DRAFT);
+        batchRepository.save(batch);
+
+        PricePublishResultDTO result = new PricePublishResultDTO();
+        result.setBatchId(batch.getId());
+        result.setPublishLogId(savedLog.getId());
+        result.setStatus(savedLog.getStatus());
+        result.setBatchStatus(batch.getStatus());
+        result.setSuccessCount(0);
+        result.setFailCount(failCount);
+        result.setMessage(message);
+        return result;
+    }
+
+    private boolean isPublishedItem(PriceDraftItem item) {
+        return item.getItemStatus() == PriceDraftItem.ItemStatus.PUBLISHED
+                && item.getPublishedPriceId() != null;
+    }
+}

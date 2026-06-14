@@ -347,11 +347,12 @@ onMounted(async () => {
     networkStateVersion.value += 1
   }
 
-  // 加载主题配置（获取Logo）
-  loadThemeConfig()
-
-  // 初始化网络检测（自动选择最佳网络）
+  // 先确定请求环境，避免主题配置和登录请求落到不同服务器。
   await initNetworkDetection()
+  networkStateVersion.value += 1
+
+  // 加载主题配置（获取Logo）
+  await loadThemeConfig()
 
   // 恢复会话
   userStore.restoreSession()

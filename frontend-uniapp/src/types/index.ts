@@ -179,6 +179,15 @@ export interface PriceDraftBatch {
   items: PriceDraftItem[]
 }
 
+export interface PriceDraftPublishableSummary {
+  hasPublishableDrafts: boolean
+  publishableBatchCount: number
+  publishableItemCount: number
+  publishableDateCount: number
+  effectiveDates: string[]
+  publishableBatchIds: number[]
+}
+
 export interface PriceDraftSaveRequest {
   batchId?: number
   batchVersion?: number
@@ -189,10 +198,29 @@ export interface PriceDraftSaveRequest {
 export interface PricePublishResult {
   batchId: number
   publishLogId?: number
+  publishGroupId?: string
   status: PricePublishStatus
   batchStatus: PriceDraftStatus
   successCount: number
   failCount: number
+  attemptedBatchCount?: number
+  publishedBatchCount?: number
+  failedBatchCount?: number
+  remainingDraftBatchCount?: number
+  attemptedDateCount?: number
+  publishedDateCount?: number
+  effectiveDates?: string[]
+  publishLogIds?: number[]
+  batchResults?: Array<{
+    effectiveDate?: string
+    batchId: number
+    publishLogId?: number
+    status: PricePublishStatus
+    batchStatus: PriceDraftStatus
+    successCount: number
+    failCount: number
+    message?: string
+  }>
   notificationMessageId?: number
   message?: string
 }

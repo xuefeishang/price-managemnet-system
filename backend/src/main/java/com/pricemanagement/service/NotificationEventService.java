@@ -38,6 +38,39 @@ public class NotificationEventService {
         create(command);
     }
 
+    public void pricePublishedByDate(String title, String content, Long publishLogId, LocalDate effectiveDate,
+                                      Long createdBy, List<String> channels, List<User.Role> recipientRoles) {
+        NotificationCreateCommand command = command(NotificationService.TYPE_PRICE_PUBLISHED, title,
+                "价格已发布，可查看最新价格", content, "PRICE", publishLogId);
+        command.setRecipientRoles(recipientRoles);
+        command.setChannels(channels);
+        command.setPriority(NotificationMessage.NotificationPriority.NORMAL);
+        command.setLinkType(NotificationService.LINK_TYPE_PRICE_QUERY);
+        command.setLinkParams(json(Map.of("date", effectiveDate.toString())));
+        command.setDedupeKey("PRICE_PUBLISHED:DATE:" + effectiveDate);
+        command.setCreatedBy(createdBy);
+        create(command);
+    }
+
+    public void pricePublishedByGroup(String title, String content, Long publishLogId, String publishGroupId,
+                                      LocalDate effectiveDate, List<LocalDate> effectiveDates,
+                                      Long createdBy, List<String> channels, List<User.Role> recipientRoles) {
+        NotificationCreateCommand command = command(NotificationService.TYPE_PRICE_PUBLISHED, title,
+                "价格已发布，可查看最新价格", content, "PRICE", publishLogId);
+        command.setRecipientRoles(recipientRoles);
+        command.setChannels(channels);
+        command.setPriority(NotificationMessage.NotificationPriority.NORMAL);
+        command.setLinkType(NotificationService.LINK_TYPE_PRICE_QUERY);
+        command.setLinkParams(json(Map.of(
+                "date", effectiveDate == null ? "" : effectiveDate.toString(),
+                "effectiveDates", effectiveDates == null ? List.of() : effectiveDates,
+                "publishGroupId", publishGroupId == null ? "" : publishGroupId
+        )));
+        command.setDedupeKey("PRICE_PUBLISHED:GROUP:" + publishGroupId);
+        command.setCreatedBy(createdBy);
+        create(command);
+    }
+
     public void approvalPending(Long requestId, String approverRole, Long createdBy) {
         if (approverRole == null || approverRole.isBlank()) {
             return;

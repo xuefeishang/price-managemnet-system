@@ -37,7 +37,7 @@ public class SecurityProperties {
      * 是否在启动时重置默认用户密码
      * 建议生产环境设为 false，避免每次启动都重置密码
      */
-    private boolean resetPasswordOnStartup = true;
+    private boolean resetPasswordOnStartup = false;
 
     /**
      * CORS允许的来源列表

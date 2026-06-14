@@ -31,4 +31,19 @@ public interface PriceDraftBatchRepository extends JpaRepository<PriceDraftBatch
     Optional<PriceDraftBatch> findActiveByDateForUpdate(
             @Param("effectiveDate") LocalDate effectiveDate,
             @Param("statuses") Collection<PriceDraftBatch.DraftStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM PriceDraftBatch b WHERE b.effectiveDate = :effectiveDate AND b.status IN :statuses ORDER BY b.createdTime ASC, b.id ASC")
+    List<PriceDraftBatch> findAllByDateAndStatusForUpdate(
+            @Param("effectiveDate") LocalDate effectiveDate,
+            @Param("statuses") Collection<PriceDraftBatch.DraftStatus> statuses);
+
+    @Query("SELECT b FROM PriceDraftBatch b WHERE b.status IN :statuses ORDER BY b.effectiveDate ASC, b.createdTime ASC, b.id ASC")
+    List<PriceDraftBatch> findAllByStatusInOrderByEffectiveDateAscCreatedTimeAscIdAsc(
+            @Param("statuses") Collection<PriceDraftBatch.DraftStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM PriceDraftBatch b WHERE b.status IN :statuses ORDER BY b.effectiveDate ASC, b.createdTime ASC, b.id ASC")
+    List<PriceDraftBatch> findAllByStatusForUpdate(
+            @Param("statuses") Collection<PriceDraftBatch.DraftStatus> statuses);
 }

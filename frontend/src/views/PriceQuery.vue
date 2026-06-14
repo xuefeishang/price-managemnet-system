@@ -10,9 +10,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { getCategories } from '@/api/categories'
 import { getPriceTrend, getProductPriceYears, type PriceTrendPoint } from '@/api/products'
 import { exportPriceQueryRows, getPriceQueryRows, type PriceQueryParams } from '@/api/priceQuery'
-import type { PageResponse, PriceQueryRow, ProductCategory } from '@/types'
+import type { PageResponse, PriceQueryRow, ProductCategory, SysDict } from '@/types'
 import { useSafeChartAutoresize } from '@/composables/useSafeChartAutoresize'
-import { getCurrencySymbol, getDictOptions, getDictValue, getOriginName, loadAllDicts } from '@/composables/useDict'
+import { getActiveDictByCategory, getCurrencySymbol, getDictOptions, getDictValue, getOriginName, loadAllDicts } from '@/composables/useDict'
 import { Permission, usePermission } from '@/composables/usePermission'
 import { useTheme } from '@/composables/useTheme'
 import { getCategoryCardStyle, getCategoryVisual, registerCategoryCodes } from '@/composables/useCategoryVisual'
@@ -37,9 +37,9 @@ const keyword = ref('')
 const debouncedKeyword = ref('')
 const selectedCategoryId = ref<number | ''>('')
 const tablePage = ref(0)
-const tableSize = ref(5)
+const tableSize = ref(10)
 const tableSizeMode = ref<'auto' | string>('auto')
-const adaptiveTableSize = ref(5)
+const adaptiveTableSize = ref(10)
 const tableTotalElements = ref(0)
 const tableTotalPages = ref(0)
 const jumpPage = ref('1')
@@ -47,9 +47,15 @@ const activeTrendDays = ref(30)
 const selectedTrendYear = ref('rolling')
 const availableTrendYears = ref<number[]>([])
 const trendRequestSeq = ref(0)
+const rowRequestSeq = ref(0)
 const dateInputRef = ref<HTMLInputElement | null>(null)
+const pageRef = ref<HTMLElement | null>(null)
 const listPanelRef = ref<HTMLElement | null>(null)
 const tableShellRef = ref<HTMLElement | null>(null)
+const trendPanelRef = ref<HTMLElement | null>(null)
+const trendChartShellRef = ref<HTMLElement | null>(null)
+const pageAvailableHeight = ref<number | null>(null)
+const trendChartHeight = ref<number | null>(null)
 let isOpeningDatePicker = false
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let listResizeObserver: ResizeObserver | null = null
@@ -60,10 +66,26 @@ const AUTO_PAGE_SIZE_MAX = 12
 const AUTO_PAGE_SIZE_HEIGHT_OFFSET = 430
 const AUTO_PAGE_SIZE_ROW_HEIGHT = 64
 const AUTO_PAGE_SIZE_HEADER_HEIGHT = 45
+const STACKED_LAYOUT_BREAKPOINT = 1180
+const MOBILE_LAYOUT_BREAKPOINT = 768
+const STACKED_LAYOUT_PAGE_SIZE = 10
+const MOBILE_LAYOUT_PAGE_SIZE = 5
+const TREND_CHART_MIN_HEIGHT = 150
+const TREND_CHART_MAX_HEIGHT = 360
 
 const displayedTableSize = computed(() => (
-  tableSizeMode.value === 'auto' ? String(adaptiveTableSize.value) : String(tableSize.value)
+  tableSizeMode.value === 'auto' ? 'auto' : String(tableSize.value)
 ))
+const pageLayoutStyle = computed<Record<string, string>>(() => {
+  const style: Record<string, string> = {}
+  if (pageAvailableHeight.value != null) {
+    style['--price-query-page-height'] = `${pageAvailableHeight.value}px`
+  }
+  if (trendChartHeight.value != null) {
+    style['--price-query-chart-height'] = `${trendChartHeight.value}px`
+  }
+  return style
+})
 const visiblePageSizes = computed(() => (
   [...new Set([...pageSizes, adaptiveTableSize.value])]
     .filter(size => Number.isFinite(size) && size > 0)
@@ -130,6 +152,9 @@ const formatLocalDate = (date: Date) => {
 
 const calculateAdaptiveTableSize = () => {
   if (typeof window === 'undefined') return AUTO_PAGE_SIZE_MIN
+  if (window.innerWidth <= MOBILE_LAYOUT_BREAKPOINT) return MOBILE_LAYOUT_PAGE_SIZE
+  if (window.innerWidth <= STACKED_LAYOUT_BREAKPOINT) return STACKED_LAYOUT_PAGE_SIZE
+
   const shell = tableShellRef.value
   const tableHead = shell?.querySelector('thead') as HTMLElement | null
   const firstDataRow = shell?.querySelector('tbody tr.data-row') as HTMLElement | null
@@ -171,12 +196,6 @@ const formatAxisDate = (dateStr: string) => {
   const date = new Date(dateStr)
   if (Number.isNaN(date.getTime())) return dateStr
   return `${date.getMonth() + 1}/${date.getDate()}`
-}
-
-const getRelativeDateLabel = (daysBefore: number) => {
-  const date = parseLocalDate(selectedDate.value)
-  date.setDate(date.getDate() - daysBefore)
-  return formatShortDate(formatLocalDate(date))
 }
 
 const formatNumber = (value: number | null | undefined, digits = 2) => {
@@ -269,9 +288,11 @@ const selectDefaultRow = () => {
 }
 
 const loadRows = async (syncAdaptive = true) => {
+  const seq = ++rowRequestSeq.value
   loading.value = true
   try {
     const response = await getPriceQueryRows(queryParams.value)
+    if (seq !== rowRequestSeq.value) return
     const pageData = response.data as PageResponse<PriceQueryRow>
     rows.value = pageData.content || []
     tableTotalElements.value = pageData.totalElements || 0
@@ -279,14 +300,17 @@ const loadRows = async (syncAdaptive = true) => {
     jumpPage.value = String((pageData.number ?? tablePage.value) + 1)
     selectDefaultRow()
   } catch (error) {
+    if (seq !== rowRequestSeq.value) return
     console.error('Failed to load price query rows:', error)
     rows.value = []
     selectedRow.value = null
     showToast('加载价格查询数据失败')
   } finally {
-    loading.value = false
+    if (seq === rowRequestSeq.value) {
+      loading.value = false
+    }
   }
-  if (syncAdaptive && tableSizeMode.value === 'auto') {
+  if (seq === rowRequestSeq.value && syncAdaptive && tableSizeMode.value === 'auto') {
     await nextTick()
     applyAdaptiveTableSize(true)
   }
@@ -301,9 +325,45 @@ const applyAdaptiveTableSize = (reload = false) => {
   if (reload) loadRows(false)
 }
 
+const updateResponsiveLayout = async () => {
+  if (typeof window === 'undefined') return
+  if (window.innerWidth <= STACKED_LAYOUT_BREAKPOINT) {
+    pageAvailableHeight.value = null
+    trendChartHeight.value = null
+    return
+  }
+
+  const page = pageRef.value
+  if (!page) return
+  const parent = page.parentElement
+  const parentRect = parent?.getBoundingClientRect()
+  const parentPaddingBottom = parent ? Number.parseFloat(window.getComputedStyle(parent).paddingBottom) || 0 : 0
+  const pageTop = page.getBoundingClientRect().top
+  const availableBottom = Math.min(window.innerHeight, parentRect?.bottom || window.innerHeight)
+  pageAvailableHeight.value = Math.max(0, Math.floor(availableBottom - pageTop - parentPaddingBottom))
+
+  const preferredChartHeight = Math.min(
+    TREND_CHART_MAX_HEIGHT,
+    Math.max(TREND_CHART_MIN_HEIGHT, Math.floor(pageAvailableHeight.value * 0.32))
+  )
+  trendChartHeight.value = preferredChartHeight
+  await nextTick()
+
+  const panel = trendPanelRef.value
+  const chartShell = trendChartShellRef.value
+  if (!panel || !chartShell) return
+  const nonChartHeight = panel.scrollHeight - chartShell.offsetHeight
+  const availableChartHeight = panel.clientHeight - nonChartHeight
+  trendChartHeight.value = Math.max(
+    TREND_CHART_MIN_HEIGHT,
+    Math.min(preferredChartHeight, Math.floor(availableChartHeight))
+  )
+}
+
 const handleWindowResize = () => {
   if (resizeTimer) clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => {
+  resizeTimer = setTimeout(async () => {
+    await updateResponsiveLayout()
     applyAdaptiveTableSize(true)
   }, 180)
 }
@@ -314,7 +374,6 @@ const setupAdaptiveTableObserver = () => {
     handleWindowResize()
   })
   if (listPanelRef.value) listResizeObserver.observe(listPanelRef.value)
-  if (tableShellRef.value) listResizeObserver.observe(tableShellRef.value)
 }
 
 const loadTrend = async () => {
@@ -412,9 +471,14 @@ const onCategoryChange = (event: Event) => {
 }
 
 const onTableSizeChange = (event: Event) => {
-  const value = Number((event.target as HTMLSelectElement).value)
+  const rawValue = (event.target as HTMLSelectElement).value
+  if (rawValue === 'auto') {
+    tableSizeMode.value = 'auto'
+    applyAdaptiveTableSize(true)
+    return
+  }
+  const value = Number(rawValue)
   if (!Number.isFinite(value) || value <= 0) return
-  if (tableSizeMode.value === 'auto' && value === adaptiveTableSize.value) return
   tableSizeMode.value = String(value)
   tableSize.value = value
   tablePage.value = 0
@@ -511,34 +575,102 @@ const trendStats = computed(() => {
   }
 })
 
-const findTrendPriceBefore = (daysBefore: number) => {
-  if (!selectedDate.value || validTrendPoints.value.length === 0) return null
-  const targetDate = parseLocalDate(selectedDate.value)
-  targetDate.setDate(targetDate.getDate() - daysBefore)
-  const target = formatLocalDate(targetDate)
-  const exact = validTrendPoints.value.find(point => point.date === target)
-  if (exact) return Number(exact.currentPrice)
-  const before = [...validTrendPoints.value].reverse().find(point => point.date <= target)
-  return before ? Number(before.currentPrice) : null
+type PriceMetricValueType = 'price' | 'change' | 'percent' | 'date'
+
+interface PriceMetricItem {
+  key: string
+  label: string
+  description: string
+  type: PriceMetricValueType
+  value: number | string | null | undefined
 }
 
-const changeExplanations = computed(() => {
+interface PriceMetricExtra {
+  group?: string
+  valueType?: PriceMetricValueType
+  description?: string
+  rule?: string
+  note?: string
+}
+
+const parsePriceMetricExtra = (dict: SysDict): PriceMetricExtra | null => {
+  const extra = dict.extraValue
+  if (!extra) return null
+  try {
+    return JSON.parse(extra) as PriceMetricExtra
+  } catch {
+    return null
+  }
+}
+
+const metricAccessors: Record<string, { type: PriceMetricValueType, getValue: (row: PriceQueryRow) => PriceMetricItem['value'] }> = {
+  LATEST_PRICE: { type: 'price', getValue: row => row.latestPrice },
+  LATEST_PRICE_DATE: { type: 'date', getValue: row => row.latestPriceDate },
+  PREVIOUS_EFFECTIVE_PRICE: { type: 'price', getValue: row => row.previousPrice },
+  PREVIOUS_PRICE_DATE: { type: 'date', getValue: row => row.previousPriceDate },
+  PREVIOUS_CHANGE_AMOUNT: { type: 'change', getValue: row => row.previousChangeAmount },
+  PREVIOUS_CHANGE_PERCENT: { type: 'percent', getValue: row => row.previousChangePercent },
+  BUDGET_PRICE: { type: 'price', getValue: row => row.budgetPrice },
+  BUDGET_CHANGE_AMOUNT: { type: 'change', getValue: row => row.budgetChangeAmount },
+  BUDGET_CHANGE_PERCENT: { type: 'percent', getValue: row => row.budgetChangePercent },
+  CURRENT_MONTH_AVERAGE_PRICE: { type: 'price', getValue: row => row.monthlyAveragePrice },
+  PREVIOUS_MONTH_AVERAGE_PRICE: { type: 'price', getValue: row => row.previousMonthAveragePrice },
+  MONTH_OVER_MONTH_PERCENT: { type: 'percent', getValue: row => row.monthOverMonthPercent },
+  LAST_YEAR_SAME_PERIOD_AVERAGE_PRICE: { type: 'price', getValue: row => row.lastYearSamePeriodAveragePrice },
+  YEAR_OVER_YEAR_PERCENT: { type: 'percent', getValue: row => row.yearOverYearPercent }
+}
+const metricGroupClasses: Record<string, string> = {
+  PRICE_STATUS: 'status',
+  SHORT_TERM_BUDGET: 'deviation',
+  MONTHLY_TREND: 'monthly'
+}
+
+const formatPriceMetricValue = (item: PriceMetricItem) => {
+  const row = selectedRow.value
+  if (!row || item.value === null || item.value === undefined || item.value === '') return '--'
+  if (item.type === 'date') return formatShortDate(String(item.value))
+  if (item.type === 'percent') return formatPercent(Number(item.value))
+  if (item.type === 'change') return formatChange(row, Number(item.value))
+  return formatPrice(row, Number(item.value))
+}
+
+const getPriceMetricTone = (item: PriceMetricItem) => {
+  if (item.type !== 'change' && item.type !== 'percent') return ''
+  return getChangeClass(typeof item.value === 'number' ? item.value : null)
+}
+
+const priceMetricGroups = computed(() => {
   const row = selectedRow.value
   if (!row) return []
-  const current = row.currentPrice ?? row.latestPrice ?? null
-  const build = (label: string, comparePrice: number | null, dateLabel: string) => {
-    if (current == null || comparePrice == null) {
-      return { label, value: null, percent: null, className: 'flat', dateLabel }
-    }
-    const diff = current - comparePrice
-    const percent = comparePrice === 0 ? null : (diff / comparePrice) * 100
-    return { label, value: diff, percent, className: getChangeClass(diff), dateLabel }
-  }
-  return [
-    build('较预算', row.budgetPrice ?? null, '年度预算'),
-    build('较上周', findTrendPriceBefore(7), getRelativeDateLabel(7)),
-    build('较上月', findTrendPriceBefore(30), getRelativeDateLabel(30))
-  ]
+  const itemsByGroup = new Map<string, PriceMetricItem[]>()
+  getActiveDictByCategory('price_metric')
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .forEach(dict => {
+      const accessor = metricAccessors[dict.dictKey]
+      const extra = parsePriceMetricExtra(dict)
+      if (!accessor || !extra?.group || extra.valueType !== accessor.type) return
+      const items = itemsByGroup.get(extra.group) || []
+      items.push({
+        key: dict.dictKey,
+        label: dict.dictValue,
+        description: [extra.description, extra.rule, extra.note].filter(Boolean).join('；'),
+        type: accessor.type,
+        value: accessor.getValue(row)
+      })
+      itemsByGroup.set(extra.group, items)
+    })
+
+  return getActiveDictByCategory('price_metric_group')
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(group => ({
+      key: group.dictKey,
+      label: group.dictValue,
+      className: metricGroupClasses[group.dictKey] || '',
+      items: itemsByGroup.get(group.dictKey) || []
+    }))
+    .filter(group => group.items.length > 0)
 })
 
 const chartOption = computed(() => {
@@ -710,16 +842,21 @@ watch(selectedRow, async () => {
   selectedTrendYear.value = 'rolling'
   await loadTrendYears()
   loadTrend()
+  await nextTick()
+  updateResponsiveLayout()
 })
 
 onMounted(async () => {
   await nextTick()
+  await updateResponsiveLayout()
   setupAdaptiveTableObserver()
   applyAdaptiveTableSize(false)
   window.addEventListener('resize', handleWindowResize)
   await loadAllDicts()
   await loadCategories()
   await loadRows()
+  await nextTick()
+  updateResponsiveLayout()
 })
 
 onUnmounted(() => {
@@ -734,7 +871,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="price-query-page">
+  <div ref="pageRef" class="price-query-page" :style="pageLayoutStyle">
     <section class="query-header">
       <div class="header-left">
         <h1 class="page-title">价格查询</h1>
@@ -775,6 +912,7 @@ onUnmounted(() => {
                 </option>
               </select>
               <select class="table-select size-select" :value="displayedTableSize" @change="onTableSizeChange">
+                <option value="auto">自适应（{{ adaptiveTableSize }}条）</option>
                 <option v-for="size in visiblePageSizes" :key="size" :value="size">{{ size }}条/页</option>
               </select>
             </div>
@@ -839,10 +977,10 @@ onUnmounted(() => {
                     </div>
                   </td>
                   <td class="price-cell current">{{ displayPrice(row, row.currentPrice ?? row.latestPrice) }}</td>
-                  <td class="price-cell">{{ displayPrice(row, row.budgetPrice ?? row.yesterdayPrice) }}</td>
+                  <td class="price-cell">{{ displayPrice(row, row.budgetPrice) }}</td>
                   <td>
-                    <span class="change-pill" :class="getChangeClass(row.changeAmount)">
-                      <span class="change-value">{{ formatChange(row, row.changeAmount) }}</span>
+                    <span class="change-pill" :class="getChangeClass(row.budgetChangeAmount)">
+                      <span class="change-value">{{ formatChange(row, row.budgetChangeAmount) }}</span>
                     </span>
                   </td>
                 </tr>
@@ -885,7 +1023,7 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <aside class="trend-panel" :class="{ 'has-category': selectedRow?.categoryId }" :style="getRowCategoryStyle(selectedRow)">
+      <aside ref="trendPanelRef" class="trend-panel" :class="{ 'has-category': selectedRow?.categoryId }" :style="getRowCategoryStyle(selectedRow)">
         <div class="trend-top">
           <div v-if="selectedRow" class="trend-title-area">
             <div class="selected-name-row trend-title-row">
@@ -934,7 +1072,7 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div class="trend-chart-shell">
+          <div ref="trendChartShellRef" class="trend-chart-shell">
             <div v-if="trendLoading" class="chart-state">正在加载趋势...</div>
             <v-chart
               v-else-if="hasTrendChartData"
@@ -968,18 +1106,34 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="change-explain">
-              <h3>价格变化说明</h3>
-            <div v-for="item in changeExplanations" :key="item.label" class="explain-row" :class="item.className">
-              <span class="explain-dot" :class="item.className"></span>
-              <span class="explain-label">{{ item.label }}</span>
-              <strong :class="item.className">
-                {{ item.value == null ? '--' : formatChange(selectedRow, item.value) }}
-                <template v-if="item.percent != null">（{{ formatPercent(item.percent) }}）</template>
-              </strong>
-              <small>较 {{ item.dateLabel }} 的价格变化</small>
+          <section class="metric-insights">
+            <div class="metric-insights-header">
+              <h3>价格指标洞察</h3>
+              <span>口径：最新有效价格日，自动跳过无价格记录日期</span>
             </div>
-          </div>
+            <div class="metric-group-grid">
+              <article
+                v-for="group in priceMetricGroups"
+                :key="group.key"
+                class="metric-group"
+                :class="group.className"
+              >
+                <header>
+                  <strong>{{ group.label }}</strong>
+                  <span>{{ group.items.length }}项</span>
+                </header>
+                <div
+                  v-for="metric in group.items"
+                  :key="metric.key"
+                  class="metric-row"
+                  :title="metric.description"
+                >
+                  <span>{{ metric.label }}</span>
+                  <strong :class="getPriceMetricTone(metric)">{{ formatPriceMetricValue(metric) }}</strong>
+                </div>
+              </article>
+            </div>
+          </section>
         </template>
 
         <div v-else class="empty-trend">
@@ -996,9 +1150,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  height: var(--price-query-page-height, auto);
   max-width: 100%;
-  min-height: calc(100dvh - 48px);
   min-width: 0;
+  overflow: hidden;
   color: var(--text-primary);
 }
 
@@ -1056,7 +1211,7 @@ onUnmounted(() => {
 }
 
 .panel-toolbar h2,
-.change-explain h3,
+.metric-insights h3,
 .empty-trend h3 {
   margin: 0;
   color: var(--text-primary);
@@ -1122,6 +1277,7 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   align-items: stretch;
+  overflow: hidden;
 }
 
 .list-panel,
@@ -1270,6 +1426,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .query-table {
@@ -1347,26 +1504,6 @@ onUnmounted(() => {
   border-radius: 999px;
   background: var(--category-primary, var(--primary-color));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--category-primary, var(--primary-color)) 12%, transparent);
-}
-
-.explain-dot {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 9px;
-  border-radius: 999px;
-  background: var(--price-flat-color);
-}
-
-.explain-dot.up {
-  background: var(--price-rise-color);
-}
-
-.explain-dot.down {
-  background: var(--price-fall-color);
-}
-
-.explain-dot.flat {
-  background: var(--price-flat-color);
 }
 
 .status-dot.missing {
@@ -1484,6 +1621,7 @@ onUnmounted(() => {
 }
 
 .pagination {
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: var(--spacing-md);
   padding-top: var(--spacing-md);
@@ -1697,10 +1835,10 @@ onUnmounted(() => {
 
 .trend-chart-shell {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 0 var(--price-query-chart-height, clamp(180px, 30dvh, 360px));
   min-width: 0;
-  min-height: clamp(220px, 34dvh, 420px);
-  height: auto;
+  min-height: var(--price-query-chart-height, clamp(180px, 30dvh, 360px));
+  height: var(--price-query-chart-height, clamp(180px, 30dvh, 360px));
 }
 
 .trend-chart {
@@ -1771,89 +1909,123 @@ onUnmounted(() => {
   color: var(--chart-color-7);
 }
 
-.change-explain {
-  padding-top: var(--spacing-sm);
+.metric-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--gray-100);
 }
 
-.change-explain h3 {
-  margin-bottom: var(--spacing-sm);
+.metric-insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.metric-insights h3 {
   font-family: var(--font-body);
   font-size: var(--font-size-base);
   font-weight: 800;
 }
 
-.explain-row {
+.metric-insights-header span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-align: right;
+}
+
+.metric-group-grid {
   display: grid;
-  grid-template-columns: 10px 58px minmax(110px, auto) minmax(0, 1fr);
-  gap: var(--spacing-sm);
-  align-items: center;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-left-width: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.metric-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--metric-border);
   border-radius: var(--radius-sm);
+  background: var(--metric-surface);
+}
+
+.metric-group.status {
+  --metric-color: var(--category-primary, var(--primary-color));
+  --metric-surface: color-mix(in srgb, var(--category-surface, var(--primary-color)) 12%, var(--bg-card));
+  --metric-border: color-mix(in srgb, var(--category-primary, var(--primary-color)) 20%, var(--border-color));
+}
+
+.metric-group.deviation {
+  --metric-color: var(--chart-budget-color);
+  --metric-surface: color-mix(in srgb, var(--chart-budget-color) 7%, var(--bg-card));
+  --metric-border: color-mix(in srgb, var(--chart-budget-color) 18%, var(--border-color));
+}
+
+.metric-group.monthly {
+  --metric-color: var(--chart-primary-color);
+  --metric-surface: color-mix(in srgb, var(--chart-primary-color) 7%, var(--bg-card));
+  --metric-border: color-mix(in srgb, var(--chart-primary-color) 18%, var(--border-color));
+}
+
+.metric-group header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--metric-border);
+  color: var(--metric-color);
+  font-size: var(--font-size-xs);
+}
+
+.metric-group header span {
+  color: color-mix(in srgb, var(--metric-color) 72%, var(--text-muted));
+  font-size: 10px;
+}
+
+.metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--metric-border) 58%, transparent);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: 11px;
 }
 
-.explain-row + .explain-row {
-  margin-top: 6px;
+.metric-row:last-child {
+  border-bottom: none;
 }
 
-.explain-row.up {
-  border-color: color-mix(in srgb, var(--price-rise-color) 24%, var(--border-color));
-  border-left-color: var(--price-rise-color);
-  background: color-mix(in srgb, var(--price-rise-color) 8%, var(--bg-card));
-}
-
-.explain-row.down {
-  border-color: color-mix(in srgb, var(--price-fall-color) 24%, var(--border-color));
-  border-left-color: var(--price-fall-color);
-  background: color-mix(in srgb, var(--price-fall-color) 8%, var(--bg-card));
-}
-
-.explain-row.flat {
-  border-color: color-mix(in srgb, var(--price-flat-color) 26%, var(--border-color));
-  border-left-color: var(--price-flat-color);
-  background: color-mix(in srgb, var(--price-flat-color) 10%, var(--bg-card));
-}
-
-.explain-row strong {
-  font-family: var(--font-mono);
-  white-space: nowrap;
-}
-
-.explain-row.up .explain-label,
-.explain-row.up strong {
-  color: var(--price-rise-color);
-}
-
-.explain-row.down .explain-label,
-.explain-row.down strong {
-  color: var(--price-fall-color);
-}
-
-.explain-row.flat .explain-label,
-.explain-row.flat strong {
-  color: var(--price-flat-color);
-}
-
-.explain-row small {
+.metric-row span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.explain-row.up small {
-  color: color-mix(in srgb, var(--price-rise-color) 72%, var(--text-muted));
+.metric-row strong {
+  flex: 0 0 auto;
+  color: var(--metric-color);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.explain-row.down small {
-  color: color-mix(in srgb, var(--price-fall-color) 72%, var(--text-muted));
+.metric-row strong.up {
+  color: var(--price-rise-color);
 }
 
-.explain-row.flat small {
-  color: color-mix(in srgb, var(--price-flat-color) 72%, var(--text-muted));
+.metric-row strong.down {
+  color: var(--price-fall-color);
+}
+
+.metric-row strong.flat {
+  color: var(--price-flat-color);
 }
 
 .empty-trend {
@@ -1876,12 +2048,16 @@ onUnmounted(() => {
 
 @media (max-width: 1180px) {
   .price-query-page {
+    height: auto;
     min-height: 0;
+    overflow: visible;
   }
 
   .query-layout {
     grid-template-columns: 1fr;
     flex: 0 1 auto;
+    height: auto;
+    overflow: visible;
   }
 
   .trend-panel {
@@ -2037,12 +2213,17 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .explain-row {
-    grid-template-columns: 10px 58px minmax(0, 1fr);
+  .metric-insights-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .explain-row small {
-    grid-column: 2 / -1;
+  .metric-insights-header span {
+    text-align: left;
+  }
+
+  .metric-group-grid {
+    grid-template-columns: 1fr;
   }
 }
 

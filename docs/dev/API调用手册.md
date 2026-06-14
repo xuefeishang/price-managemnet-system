@@ -15,6 +15,7 @@
 - [认证接口](#认证接口)
 - [产品接口](#产品接口)
 - [价格接口](#价格接口)
+- [价格草稿接口](#价格草稿接口)
 - [价格查询接口](#价格查询接口)
 - [首页仪表盘接口](#首页仪表盘接口)
 - [分类接口](#分类接口)
@@ -812,6 +813,50 @@ GET /api/products/{productId}/price-years
 
 ---
 
+## 价格草稿接口
+
+价格维护页采用“保存草稿 / 发布全部草稿”双阶段。保存只写当前日期草稿；发布会发布全系统所有 `DRAFT` 草稿，不受当前页面日期限制。
+
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| GET | `/api/price-drafts/by-date?date=yyyy-MM-dd` | ADMIN / EDITOR | 查询指定日期活动价格草稿 |
+| GET | `/api/price-drafts/publishable-summary` | ADMIN / EDITOR | 查询全系统待发布 DRAFT 草稿汇总 |
+| POST | `/api/price-drafts/batch-save` | ADMIN / EDITOR | 批量保存当前日期价格草稿 |
+| POST | `/api/price-drafts/publish-all` | ADMIN / EDITOR | 发布全系统所有 DRAFT 草稿，使价格正式生效 |
+| POST | `/api/price-drafts/by-date/publish?date=yyyy-MM-dd` | ADMIN / EDITOR | 按日期发布 DRAFT 草稿；仅用于定时任务、补发或维护入口 |
+| POST | `/api/price-drafts/{batchId}/publish` | ADMIN / EDITOR | 兼容/维护用单批次发布接口 |
+
+### 待发布草稿汇总
+
+```http
+GET /api/price-drafts/publishable-summary
+Authorization: Bearer <accessToken>
+```
+
+响应 `data` 示例：
+
+```json
+{
+  "hasPublishableDrafts": true,
+  "publishableBatchCount": 4,
+  "publishableItemCount": 80,
+  "publishableDateCount": 3,
+  "effectiveDates": ["2026-06-12", "2026-06-13", "2026-06-14"],
+  "publishableBatchIds": [101, 102, 103, 104]
+}
+```
+
+### 发布全部草稿
+
+```http
+POST /api/price-drafts/publish-all
+Authorization: Bearer <accessToken>
+```
+
+响应 `data` 会返回 `successCount`、`failCount`、`publishGroupId`、`publishLogIds` 和 `batchResults`。发布成功后生成一条发布组通知；无 DRAFT 草稿时返回业务错误“暂无可发布草稿”。
+
+---
+
 ## 价格查询接口
 
 ### 查询价格列表
@@ -834,6 +879,19 @@ GET /api/price-query
 | size | int | 否 | 20 | 每页数量 |
 | sortBy | string | 否 | - | 排序字段 |
 | sortDirection | string | 否 | asc | 排序方向 |
+
+**响应指标字段：**
+
+| 字段 | 说明 |
+|------|------|
+| `latestPrice`, `latestPriceDate` | 截至查询日期的最新有效价格及日期 |
+| `previousPrice`, `previousPriceDate` | 最新有效价格之前的上期有效价格及日期，跳过无记录日期 |
+| `previousChangeAmount`, `previousChangePercent` | 最新价格较上期有效价格的差额及差异率 |
+| `budgetPrice`, `budgetChangeAmount`, `budgetChangePercent` | 最新有效价格日所属年度预算价及预算偏差 |
+| `monthlyAveragePrice`, `previousMonthAveragePrice`, `monthOverMonthPercent` | 最新有效价格日所在月累计均价、上个自然月均价及环比 |
+| `lastYearSamePeriodAveragePrice`, `yearOverYearPercent` | 以上年同月对应最新有效价格日为截止日的均价及同比 |
+
+最新有效价格会排除在查询日已显式过期的价格。指标分组、名称、排序、启停和说明分别由 `price_metric_group`、`price_metric` 字典维护。`yesterdayPrice`、`changeAmount`、`changePercent` 为 deprecated 的 v1 历史兼容字段，分别始终等于 `budgetPrice`、`budgetChangeAmount`、`budgetChangePercent`；内部页面和导出不再使用这些字段。
 
 ### 导出价格查询结果
 

@@ -66,7 +66,7 @@ security:
   # 默认用户密码（重要：生产环境必须修改）
   default-user-password: ${DEFAULT_USER_PASSWORD}
   # 是否在启动时重置默认用户密码（生产环境建议设为false）
-  reset-password-on-startup: true
+  reset-password-on-startup: ${RESET_PASSWORD_ON_STARTUP:false}
   # CORS允许的来源（生产环境必须配置具体域名，不配置时仅允许本地开发来源）
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   password-policy:

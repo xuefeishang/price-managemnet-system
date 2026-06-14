@@ -23,7 +23,7 @@
 
         <view class="price-grid">
           <view class="price-metric primary">
-            <text class="metric-label">当前价格</text>
+            <text class="metric-label">最新价格</text>
             <text class="metric-value">{{ formatPrice(displayPrice) }}</text>
             <text class="metric-note">{{ currentPrice?.effectiveDate ? `${formatDate(currentPrice.effectiveDate)} 生效` : '当前有效价格' }}</text>
           </view>

@@ -1,0 +1,23 @@
+UPDATE sys_dict
+SET extra_value = JSON_SET(
+        extra_value,
+        '$.valueType',
+        CASE
+            WHEN dict_key IN ('LATEST_PRICE', 'PREVIOUS_EFFECTIVE_PRICE', 'BUDGET_PRICE',
+                              'CURRENT_MONTH_AVERAGE_PRICE', 'PREVIOUS_MONTH_AVERAGE_PRICE',
+                              'LAST_YEAR_SAME_PERIOD_AVERAGE_PRICE') THEN 'price'
+            WHEN dict_key IN ('PREVIOUS_CHANGE_AMOUNT', 'BUDGET_CHANGE_AMOUNT') THEN 'change'
+            WHEN dict_key IN ('PREVIOUS_CHANGE_PERCENT', 'BUDGET_CHANGE_PERCENT',
+                              'MONTH_OVER_MONTH_PERCENT', 'YEAR_OVER_YEAR_PERCENT') THEN 'percent'
+            WHEN dict_key IN ('LATEST_PRICE_DATE', 'PREVIOUS_PRICE_DATE') THEN 'date'
+        END
+    ),
+    updated_time = NOW()
+WHERE category = 'price_metric'
+  AND JSON_VALID(extra_value)
+  AND dict_key IN (
+      'LATEST_PRICE', 'LATEST_PRICE_DATE', 'PREVIOUS_EFFECTIVE_PRICE', 'PREVIOUS_PRICE_DATE',
+      'PREVIOUS_CHANGE_AMOUNT', 'PREVIOUS_CHANGE_PERCENT', 'BUDGET_PRICE', 'BUDGET_CHANGE_AMOUNT',
+      'BUDGET_CHANGE_PERCENT', 'CURRENT_MONTH_AVERAGE_PRICE', 'PREVIOUS_MONTH_AVERAGE_PRICE',
+      'MONTH_OVER_MONTH_PERCENT', 'LAST_YEAR_SAME_PERIOD_AVERAGE_PRICE', 'YEAR_OVER_YEAR_PERCENT'
+  );
