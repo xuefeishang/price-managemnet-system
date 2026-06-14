@@ -130,17 +130,27 @@ public class SecurityConfig {
         if (allowedOrigins.isEmpty()) {
             // 无配置时允许本地开发和生产环境常用来源
             allowedOrigins = List.of(
+                    // 本地开发
                     "http://localhost:5173",
                     "http://127.0.0.1:5173",
                     "http://localhost:80",
                     "http://127.0.0.1:80",
                     "http://localhost:32080",
                     "http://127.0.0.1:32080",
-                    // 生产环境内网地址
+                    "https://localhost:32080",
+                    "https://127.0.0.1:32080",
+                    // 生产环境内网 HTTP
                     "http://10.7.5.175",
                     "http://10.7.5.175:80",
                     "http://10.7.5.175:32080",
-                    // 生产环境外网地址
+                    "http://10.7.5.175:32801",
+                    // 生产环境内网 HTTPS
+                    "https://10.7.5.175",
+                    "https://10.7.5.175:32080",
+                    // 生产环境域名 HTTPS
+                    "https://price.jlmining.com",
+                    "https://price.jlmining.com:32080",
+                    // 生产环境外网 HTTP
                     "http://101.254.159.153",
                     "http://101.254.159.153:80",
                     "http://101.254.159.153:32080"
