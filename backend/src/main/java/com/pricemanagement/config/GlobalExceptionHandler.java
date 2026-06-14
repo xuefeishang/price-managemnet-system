@@ -3,16 +3,24 @@ package com.pricemanagement.config;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.exception.RateLimitException;
 import com.pricemanagement.exception.TokenRefreshException;
+import com.pricemanagement.exception.UserConflictException;
+import com.pricemanagement.exception.UserImportValidationException;
+import com.pricemanagement.dto.UserImportResult;
+import com.pricemanagement.util.DataIntegrityViolationDiagnostics;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +43,13 @@ public class GlobalExceptionHandler {
         });
         log.warn("Validation failed: {}", errors);
         return new Result<>(400, "参数校验失败", errors);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
+        log.warn("Request body cannot be read: type={}", ex.getClass().getSimpleName());
+        return Result.error(400, "请求字段或格式不正确");
     }
 
     /**
@@ -108,12 +123,32 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理用户唯一字段或角色关联冲突
+     */
+    @ExceptionHandler(UserConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Result<Void> handleUserConflictException(UserConflictException ex) {
+        log.warn("User conflict: reason={}", ex.getReason());
+        return Result.error(409, ex.getMessage());
+    }
+
+    @ExceptionHandler(UserImportValidationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<UserImportResult> handleUserImportValidationException(UserImportValidationException ex) {
+        log.warn("User import validation failed: totalRows={}, errors={}",
+                ex.getResult().totalRows(), ex.getResult().errors().size());
+        return new Result<>(400, ex.getMessage(), ex.getResult());
+    }
+
+    /**
      * 处理数据完整性异常（如唯一约束冲突）
      */
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Result<Void> handleDataIntegrityViolationException(org.springframework.dao.DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMessage());
+        DataIntegrityViolationDiagnostics.Diagnostic diagnostic = DataIntegrityViolationDiagnostics.inspect(ex);
+        log.warn("Data integrity violation: constraint={}, rootType={}",
+                diagnostic.constraintName(), diagnostic.rootExceptionType());
         return Result.error(409, "数据操作失败，可能违反数据完整性约束");
     }
 
@@ -122,7 +157,17 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<Void> handleGenericException(Exception ex) {
+    public Result<Void> handleGenericException(Exception ex, HttpServletRequest request) {
+        // 异步请求超时（如 SSE 长连接空闲超时），响应已提交，无需写回
+        if (ex instanceof AsyncRequestTimeoutException) {
+            log.debug("SSE 异步超时: {}", request.getRequestURI());
+            return null;
+        }
+        // 响应已提交或 SSE 等流式响应，无法再写入错误
+        if (ex instanceof HttpMessageNotWritableException) {
+            log.debug("响应已提交，写入失败: {}", ex.getMessage());
+            return null;
+        }
         log.error("Unexpected error occurred", ex);
         // 不返回具体错误信息，避免泄露敏感数据
         return Result.error(500, "服务器内部错误，请稍后重试");

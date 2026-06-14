@@ -8,6 +8,7 @@
 
 | 版本 | 发布日期 | 类型 | 主要变更 |
 |------|---------|------|---------|
+| v1.6.7-20260614 | 2026-06-14 | 补丁版本 | 修复修改密码时 SSE 异步超时产生的 ERROR/WARN 日志噪音 |
 | v1.6.6-20260614 | 2026-06-14 | 补丁版本 | 修复 Redis healthcheck 密码转义（使用环境变量非明文） |
 | v1.6.5-20260614 | 2026-06-14 | 补丁版本 | 修复 Redis MISCONF 错误（持久化目录未指定） |
 | v1.6.4-20260614 | 2026-06-14 | 补丁版本 | 修复 CORS HTTPS 来源 403 错误（PC 端 HTTPS 登录失败） |
@@ -20,6 +21,19 @@
 | v1.2.0-20260509 | 2026-05-09 | 次版本 | Docker 部署、Harbor 集成 |
 | v1.1.0-20260501 | 2026-05-01 | 次版本 | 多端适配（uni-app） |
 | v1.0.0-20260415 | 2026-04-15 | 主版本 | 项目初始化 |
+
+---
+
+## v1.6.7-20260614 (2026-06-14)
+
+### 修复问题
+- 修复修改密码时 SSE 异步超时产生的 ERROR/WARN 日志噪音
+  - 现象：AsyncRequestTimeoutException + HttpMessageNotWritableException 级联报错
+  - 根因：SSE 长连接 60 秒空闲超时，GlobalExceptionHandler 强行写 JSON 错误，但响应 Content-Type 已是 text/event-stream
+  - 解决：handleGenericException 增加异步异常静默处理，返回 null 跳过响应写入
+
+### 提交记录
+- v1.6.6 之后的 GlobalExceptionHandler 异步异常处理
 
 ---
 
