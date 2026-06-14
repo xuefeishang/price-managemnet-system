@@ -31,6 +31,14 @@
 - [导入导出接口](#导入导出接口)
 - [样式配置接口](#样式配置接口)
 - [审批流程接口](#审批流程接口)
+- [个人中心接口](#个人中心接口)
+- [通知中心接口](#通知中心接口)
+- [管理员通知接口](#管理员通知接口)
+- [系统公告接口](#系统公告接口)
+- [定时任务接口](#定时任务接口)
+- [产品年度预算接口](#产品年度预算接口)
+- [API 授权管理接口](#api-授权管理接口)
+- [API 调用日志接口](#api-调用日志接口)
 
 ---
 
@@ -1355,16 +1363,29 @@ DELETE /api/users/{id}
 ### 重置用户密码
 
 ```
-POST /api/users/{id}/reset-password?newPassword=新密码
+POST /api/users/{id}/reset-password
 ```
 
 **权限：** ADMIN
 
-**请求参数：**
+**JSON 请求体：**
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| newPassword | string | 否 | 新密码，不传则使用默认密码 |
+```json
+{
+  "newPassword": "Password123"
+}
+```
+
+`newPassword` 可省略，此时使用服务端默认密码。密码禁止通过 URL 查询参数传输。
+
+### 管理员原子编辑用户
+
+```
+PUT /api/users/{id}/admin-edit
+```
+
+一次事务内更新基础资料、状态和可选新密码。`deptId: null` 表示显式清空部门关联；
+省略字段表示保持原值。
 
 ### 锁定用户
 
@@ -1775,17 +1796,48 @@ POST /api/import/users
 
 **请求：** multipart/form-data，文件字段名 `file`
 
-**响应：**
+导入前会全量检查模板表头、字段格式、密码策略、文件内重复以及数据库中的用户名/工号重复。
+只有全部检查通过才会在单一事务中写入；存在任一异常时不会导入任何用户。
+
+**成功响应：**
 ```json
 {
   "code": 200,
-  "message": "导入完成: 成功 10 条, 跳过 2 条",
+  "message": "用户导入成功，共 10 条",
   "data": {
-    "successCount": 10,
-    "skipCount": 2
+    "valid": true,
+    "imported": true,
+    "totalRows": 10,
+    "importedCount": 10,
+    "errors": []
   }
 }
 ```
+
+**预检失败响应（HTTP 400）：**
+```json
+{
+  "code": 400,
+  "message": "用户导入预检未通过",
+  "data": {
+    "valid": false,
+    "imported": false,
+    "totalRows": 2,
+    "importedCount": 0,
+    "errors": [
+      {
+        "rowNumber": 3,
+        "field": "username",
+        "code": "DUPLICATE_USERNAME_IN_FILE",
+        "message": "Excel 中存在重复用户名"
+      }
+    ]
+  }
+}
+```
+
+写入阶段发生并发唯一约束冲突时返回 HTTP 409。默认最大导入数据行数为 1000，可通过
+`USER_IMPORT_MAX_ROWS` 调整。
 
 ### 导出用户
 
@@ -1805,7 +1857,7 @@ GET /api/import/users/template
 
 **权限：** ADMIN
 
-**响应：** Excel 模板文件下载
+**响应：** 仅包含标准表头的 Excel 模板文件下载
 
 ---
 
@@ -2247,4 +2299,404 @@ const products = await productsRes.json();
 
 ---
 
-**最后更新：2026-06-02**
+## 个人中心接口
+
+当前登录用户自身的资料、安全、会话、偏好、登录历史等接口。
+
+> 与"认证接口"区别：认证接口面向登录态获取 token；个人中心接口面向已登录用户管理自身账号。
+
+### 获取个人资料
+
+```
+GET /api/profile
+```
+
+**权限：** 已登录用户
+
+### 更新个人资料
+
+```
+PUT /api/profile
+```
+
+**权限：** 已登录用户
+
+### 获取安全设置（含密码策略、最后登录信息）
+
+```
+GET /api/profile/security
+```
+
+### 修改密码
+
+```
+PUT /api/profile/password
+```
+
+**请求体：**
+
+```json
+{
+  "oldPassword": "原密码",
+  "newPassword": "新密码"
+}
+```
+
+### 获取当前会话列表
+
+```
+GET /api/profile/sessions
+```
+
+### 注销指定会话
+
+```
+DELETE /api/profile/sessions/{sessionId}
+```
+
+### 获取登录历史
+
+```
+GET /api/profile/login-history
+```
+
+**查询参数：** `page`(默认0), `size`(默认20), `startDate`, `endDate`
+
+### 获取操作日志（当前用户）
+
+```
+GET /api/profile/operation-logs
+```
+
+### 获取用户偏好
+
+```
+GET /api/profile/preferences
+```
+
+### 更新用户偏好
+
+```
+PUT /api/profile/preferences
+```
+
+**请求体：**
+
+```json
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "notifications": {
+    "email": true,
+    "sms": false
+  }
+}
+```
+
+---
+
+## 通知中心接口
+
+面向已登录用户的通知拉取、SSE 实时推送、偏好设置。
+
+### 拉取我的通知列表
+
+```
+GET /api/notifications/my
+```
+
+**查询参数：** `page`(默认0), `size`(默认20), `unread`(true/false), `category`
+
+### 标记单条已读
+
+```
+PUT /api/notifications/{id}/read
+```
+
+### 全部标记已读
+
+```
+PUT /api/notifications/read-all
+```
+
+### 获取通知事件流（SSE 实时推送）
+
+```
+GET /api/notifications/events
+```
+
+> 该接口为 Server-Sent Events 长连接。客户端使用 `EventSource` 订阅。空闲超时 60 秒会自动重连（前端组件已实现自动重连）。
+
+### 获取我的通知偏好
+
+```
+GET /api/notifications/preferences
+```
+
+### 更新我的通知偏好
+
+```
+PUT /api/notifications/preferences
+```
+
+### 获取通知未读数
+
+```
+GET /api/notifications/unread-count
+```
+
+### 删除单条通知
+
+```
+DELETE /api/notifications/{id}
+```
+
+---
+
+## 管理员通知接口
+
+通知管理后台接口，仅 `ADMIN` 角色可访问。
+
+> 路由前缀：`/api/admin/notifications`
+
+### 仪表盘
+
+```
+GET /api/admin/notifications/dashboard
+```
+
+### 服务商健康检查
+
+```
+GET /api/admin/notifications/providers/health
+```
+
+### 节流规则
+
+```
+GET /api/admin/notifications/throttle-rules
+PUT /api/admin/notifications/throttle-rules
+```
+
+### 通知列表（管理员视角）
+
+```
+GET /api/admin/notifications
+```
+
+### 单条详情
+
+```
+GET /api/admin/notifications/{id}
+```
+
+### 创建通知
+
+```
+POST /api/admin/notifications
+```
+
+### 取消通知
+
+```
+POST /api/admin/notifications/{id}/cancel
+```
+
+### 重发通知
+
+```
+POST /api/admin/notifications/{id}/resend
+```
+
+### 获取接收人列表
+
+```
+GET /api/admin/notifications/{id}/recipients
+```
+
+### 获取投递日志
+
+```
+GET /api/admin/notifications/{id}/deliveries
+```
+
+### 小程序订阅管理
+
+```
+POST /api/admin/notifications/mini-program/authorization-guides
+POST /api/admin/notifications/mini-program/authorization-guides/{userId}
+```
+
+---
+
+## 系统公告接口
+
+管理员发布/取消系统公告。
+
+> 路由前缀：`/api/admin/system-notices`
+
+### 公告列表
+
+```
+GET /api/admin/system-notices
+```
+
+### 发布公告
+
+```
+POST /api/admin/system-notices
+```
+
+### 取消公告
+
+```
+POST /api/admin/system-notices/{id}/cancel
+```
+
+---
+
+## 定时任务接口
+
+调度任务管理与执行日志。
+
+> 路由前缀：`/api/scheduled-tasks`
+
+### 任务列表
+
+```
+GET /api/scheduled-tasks
+```
+
+### 任务详情
+
+```
+GET /api/scheduled-tasks/{id}
+```
+
+### 创建任务
+
+```
+POST /api/scheduled-tasks
+```
+
+**请求体：**
+
+```json
+{
+  "name": "每日价格汇总",
+  "cron": "0 0 1 * * ?",
+  "handler": "priceSummaryJob",
+  "enabled": true
+}
+```
+
+### 更新任务
+
+```
+PUT /api/scheduled-tasks/{id}
+```
+
+### 启/停任务
+
+```
+PUT /api/scheduled-tasks/{id}/enable
+PUT /api/scheduled-tasks/{id}/disable
+```
+
+### 立即执行一次
+
+```
+POST /api/scheduled-tasks/{id}/run
+```
+
+### 删除任务
+
+```
+DELETE /api/scheduled-tasks/{id}
+```
+
+### 执行日志
+
+```
+GET /api/scheduled-tasks/{id}/logs
+```
+
+---
+
+## 产品年度预算接口
+
+按年度存储产品预算价格，供价格走势参考。
+
+> 路由前缀：`/api/product-budgets`
+
+### 预算列表（按产品+年份）
+
+```
+GET /api/product-budgets
+```
+
+**查询参数：** `productId`, `year`, `page`, `size`
+
+### 创建/更新年度预算
+
+```
+POST /api/product-budgets
+```
+
+**请求体：**
+
+```json
+{
+  "productId": 1,
+  "year": 2026,
+  "budgetPrice": 5500.00,
+  "currency": "CNY",
+  "remark": "年度目标价"
+}
+```
+
+### 删除预算
+
+```
+DELETE /api/product-budgets/{id}
+```
+
+---
+
+## API 授权管理接口
+
+外部 API Key 的增删改查、服务开关、权限树。仅 `ADMIN` 角色。
+
+> 路由前缀：`/api/api-keys`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/api-keys` | 列表（分页） |
+| POST | `/api/api-keys` | 创建（返回一次性 App Secret） |
+| GET | `/api/api-keys/{id}` | 详情 |
+| PUT | `/api/api-keys/{id}` | 更新名称/描述 |
+| PUT | `/api/api-keys/{id}/enable` | 启用 |
+| PUT | `/api/api-keys/{id}/disable` | 停用 |
+| PUT | `/api/api-keys/{id}/revoke` | 吊销（不可逆） |
+| GET | `/api/api-keys/permissions/tree` | 权限树（用于绑定） |
+| GET | `/api/api-keys/service-status` | 服务总开关 |
+| PUT | `/api/api-keys/service-status` | 切换服务总开关 |
+
+> 注意：列表权限树实际接口路径为 `/api/api-keys/permissions/tree`（归属 `ApiKeyController`），而 `/api/permissions/tree` 归属 `PermissionController`，用于内部角色权限。
+
+---
+
+## API 调用日志接口
+
+外部 API 调用流水记录，仅 `ADMIN` 角色。
+
+> 路由前缀：`/api/api-call-logs`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/api-call-logs` | 日志列表（分页） |
+| GET | `/api/api-call-logs/statistics` | 统计概览（按时间/状态/密钥） |
+
+---
+
+**最后更新：2026-06-14**
