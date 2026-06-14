@@ -500,6 +500,25 @@
   - 实时预览面板（导航栏/价格显示/表格样式/图表色板），PC端无外层框并粘性跟随滚动
   - 历史版本管理与一键回滚
 
+> v1.6.10 实测核对：样式设置实际有 12 个 .vue 组件（`frontend/src/components/style-settings/`）：
+>
+> | Panel 组件 | 对应配置域 | 是否可编辑 |
+> |-----------|----------|----------|
+> | StyleOverviewPanel | 总览 | ❌ 只读 |
+> | BrandSettingsPanel | 品牌 | ✅ |
+> | ColorSchemePanel | 色彩 | ✅ |
+> | TypographyPanel | 排版 | ✅ |
+> | LayoutStylePanel | 布局 | ✅ |
+> | HomeExperiencePanel | 首页体验 | ✅ |
+> | HomeSortPanel | 首页排序 | ✅ |
+> | CategoryVisualPanel | 分类视觉 | ✅ |
+> | StylePreviewPanel | 实时预览 | ❌ 只读 |
+> | StyleSectionNav | 导航 | ❌ 只读 |
+> | StyleStatusBar | 状态栏 | ❌ 只读 |
+> | StyleSettingsShell | 外壳 | ❌ 只读 |
+>
+> 可编辑配置域实际为 **7 个**（品牌/色彩/排版/布局/首页体验/首页排序/分类视觉），"9 个配置域"含总览（只读摘要）+ 版本恢复（实际是"总览"页内的子功能，"版本恢复"是功能而非独立域）。
+
 ### 版本 1.4.0 (2026-05-19)
 - 首页驾驶舱布局升级
   - 经营摘要区（产品总数、今日更新、涨跌统计）
