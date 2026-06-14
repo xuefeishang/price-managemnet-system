@@ -547,3 +547,109 @@
 - 编辑用户资料与可选新密码只提交一次原子请求，密码校验失败时资料不得部分保存。
 - “无部门”保存时发送 `deptId: null`，重新打开弹窗应保持无部门状态。
 - 独立重置密码请求使用 JSON 请求体，浏览器地址与 Network URL 不得包含密码。
+
+---
+
+## v1.6.8 新增页面章节索引（2026-06-14）
+
+> 本节对账 v1.5.0 ~ v1.6.7 期间实际已上线但本文档未独立列出的页面。原则：仅追加不破坏既有内容。
+
+### 新增 PC 端页面（H5 frontend/src/views/）
+
+| 页面文件 | 菜单位置 | 角色 | 核心功能 |
+|---------|---------|------|---------|
+| `BudgetManagement.vue` | 产品管理 / 预算管理 | ADMIN/EDITOR | 按产品+年份维护年度预算价格，年份控件支持 1900-2999 |
+| `Notifications.vue` | 通知抽屉 + 站内入口 | 全员 | 5 页签工作台（全部/未读/系统/已读/归档）|
+| `ScheduledTasks.vue` | 系统管理 / 定时任务 | ADMIN | 任务 CRUD + 启停 + 立即执行 + 执行日志 |
+| `RoleManagement.vue` | 系统管理 / 角色管理 | ADMIN | 角色 CRUD + 权限绑定 + 启停 |
+| `MenuConfig.vue` | 系统管理 / 菜单配置 | ADMIN | 菜单树 CRUD + 排序 + 显隐 + 初始化 |
+| `ApiKeyDetail.vue` | API 授权管理 / 详情 | ADMIN | 密钥详情 + 权限编辑 + 调用日志 |
+| `ApiKeyList.vue` | API 授权管理 / 列表 | ADMIN | 密钥列表 + 创建 + 启停/吊销 |
+| `ApiCallLog.vue` | API 授权管理 / 日志 | ADMIN | 调用流水 + 统计 + 筛选 |
+
+### 页面 §3.2 预算管理（BudgetManagement.vue）
+
+- 顶部产品下拉 + 年份控件（支持 1900-2999 直接输入）
+- 中部当前年度预算表（单价/币种/备注/更新人/更新时间）
+- 右侧复用 `/api/products/{productId}/price-trend?startDate={year}-01-01&endDate={year}-12-31` 的年度走势图
+- 走势图与 `/price-query` 趋势图保持一致，正式价（实线）+ 年度预算（虚线）双线展示
+- 保存：调用 `POST /api/product-budgets` 批量更新
+- 唯一维护入口：其它页面和外部产品接口只读取 `product_annual_budget`
+
+### 页面 §17 定时任务（ScheduledTasks.vue）
+
+- 任务列表（名称/Cron/处理器/任务类型/启用/最后执行/下次执行）
+- 创建/编辑弹窗：name + cron（带格式校验）+ handler（Spring Bean 名）+ task_type + enabled
+- 启停开关：调用 `PUT /api/scheduled-tasks/{id}/enable|disable`
+- "立即执行"按钮：调用 `POST /api/scheduled-tasks/{id}/run`，按钮带 loading 防止重复点击
+- 执行日志页签：表格展示 started_at / finished_at / status / duration_ms / error_message
+
+### 页面 §18 角色管理（RoleManagement.vue）
+
+- 角色列表（角色编码/名称/启用状态/创建时间）
+- 创建/编辑：role（编码，禁用输入）、name、description、enabled
+- 权限绑定：右侧抽屉展示权限树，按 `permission:module:action` 命名空间分组
+- 启停：调用启停接口，禁用提示"该角色关联用户将立即失去对应权限"
+
+### 页面 §19 菜单配置（MenuConfig.vue）
+
+- 左侧菜单树（支持拖拽排序、跨层级移动）
+- 右侧菜单详情：name / path / icon / parent_id / sort_order / visible / permission_code
+- 顶部"初始化"按钮：调用 `POST /api/menus/init`，重置为系统默认菜单
+- 显隐切换：仅修改 visible 字段，不删除数据
+
+### 页面 §16.1 / §16.2 API 授权管理子节
+
+- §16.1 密钥管理（ApiKeyList.vue + ApiKeyDetail.vue）
+  - 列表：appId / name / environment / status / created_time / expired_at
+  - 创建弹窗：name + environment + expired_at + minutes_rate_limit + daily_quota + 端点权限树
+  - 创建成功一次性弹窗：展示 appId + 一次性 appSecret（**仅本次可复制，关闭后不再保留**）+ 可复制 Node.js / Java 25 / Postman / PowerShell / curl 示例
+  - 详情页：基本信息 + 端点权限 + 调用日志入口 + 启停/吊销按钮
+- §16.2 调用日志（ApiCallLog.vue）
+  - 表格：appId / 端点 / 方法 / 状态码 / 耗时 / 调用时间
+  - 统计卡片：今日调用/成功/失败/平均耗时
+
+### 通知中心（Notifications.vue）
+
+- PC 端 5 页签工作台：全部/未读/系统公告/已读/归档
+- 顶部"全部已读"按钮：调用 `PUT /api/notifications/read-all`
+- 单条操作：标记已读/删除/跳转（`link_type` + `link_params` 决定路由）
+- SSE 实时刷新：连接 `/api/notifications/events`，新事件触发列表顶部插入
+- 与 Layout 更多菜单"消息通知"入口联动，未读数红点轮询
+
+### 新增 uniapp 页面（frontend-uniapp/src/）
+
+| 页面 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| `pages/notifications/index.vue` | 通知列表 | 全员 | 复用 PC 接口，复用 `useDict` |
+| `pages-sub/approval/index.vue` | 审批入口 | ADMIN/EDITOR | 轻量审批页 |
+| `pages-sub/basic/categories/index.vue` | 分类浏览 | VIEWER | 只读 |
+| `pages-sub/basic/customers/index.vue` | 客户浏览 | VIEWER | 只读 |
+| `pages-sub/basic/origins/index.vue` | 产地浏览 | VIEWER | 只读 |
+| `components/mini-trend-chart/index.vue` | 趋势图组件 | - | 复用 ECharts |
+| `components/price-trend-chart/index.vue` | 价格趋势图 | - | 触摸交互优化（v1.6.x 性能优化） |
+
+### 小程序自定义 tabBar 规范
+
+- `pages.json` 中 `tabBar.custom: true`，由 `custom-tab-bar/index.vue` 统一托管
+- tabBar 页面**不得**再次手动挂载 `CustomTabBar` 组件
+- 进入登录页必须使用 `uni.reLaunch` 清理页面栈
+- 非 tabBar 页面返回时无上一页使用 `uni.switchTab` 回到首页
+
+### 页面清单索引更新
+
+- §3.2 预算管理（新增）
+- §7.0.1 通知管理（Notifications.vue + Drawer）
+- §7.2 小程序审批入口（uniapp pages-sub/approval）
+- §16.1 API 密钥管理（ApiKeyList + ApiKeyDetail）
+- §16.2 API 调用日志（ApiCallLog）
+- §17 定时任务（ScheduledTasks）
+- §18 角色管理（RoleManagement）
+- §19 菜单配置（MenuConfig）
+
+---
+
+*版本：v1.6.8*
+*最后更新：2026-06-14 — 补充 v1.5.0 ~ v1.6.7 期间上线的 5 个 PC 端新页面 + 6 个 uniapp 页面*
+*上次更新：2026-06-14 — 用户管理第二轮安全交互*
+*再上次：2026-06-11 — 预算管理工作台*
