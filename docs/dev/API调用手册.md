@@ -293,15 +293,17 @@ Content-Type: application/json
 {
   "code": 200,
   "message": "操作成功",
-  "data": { ... }
+  "data": { ... },
+  "timestamp": 1779990000000
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| code | int | 状态码，200=成功 |
-| message | string | 响应消息 |
-| data | object | 响应数据 |
+| code | int | 业务态码，200=成功，4xx=客户端错误，5xx=服务端错误 |
+| message | string | 响应消息，**默认"操作成功"**（不是"success"） |
+| data | object | 响应数据，泛型 |
+| timestamp | long | 服务端响应时间戳（**毫秒**，Long 类型） |
 
 ### 分页响应格式
 
