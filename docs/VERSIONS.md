@@ -13,6 +13,7 @@
 | v1.6.9-20260614 | 2026-06-14 | 补丁版本 | 处理 v1.6.8 后剩余 15 条中严重度偏差（字段定义/版本号/页面归属）|
 | v1.6.10-20260614 | 2026-06-14 | 补丁版本 | 清理剩余 7 条可客观验证偏差（CSS 变量/字典值/目录结构/实测核对）|
 | v1.6.11-20260614 | 2026-06-14 | 补丁版本 | 清理剩余 14 条可执行偏差（API 概览/PasswordPolicy/依赖使用/触摸交互）|
+| v2.0.0-20260615 | 2026-06-15 | 主版本 | **文档结构重构**：docs/dev 按 CLAUDE.md 单一职责原则拆分为 17 个职责化子文件 |
 | v1.6.6-20260614 | 2026-06-14 | 补丁版本 | 修复 Redis healthcheck 密码转义（使用环境变量非明文） |
 | v1.6.5-20260614 | 2026-06-14 | 补丁版本 | 修复 Redis MISCONF 错误（持久化目录未指定） |
 | v1.6.4-20260614 | 2026-06-14 | 补丁版本 | 修复 CORS HTTPS 来源 403 错误（PC 端 HTTPS 登录失败） |
@@ -25,6 +26,88 @@
 | v1.2.0-20260509 | 2026-05-09 | 次版本 | Docker 部署、Harbor 集成 |
 | v1.1.0-20260501 | 2026-05-01 | 次版本 | 多端适配（uni-app） |
 | v1.0.0-20260415 | 2026-04-15 | 主版本 | 项目初始化 |
+
+---
+
+## v2.0.0-20260615 (2026-06-15)
+
+### 🔥 主版本：文档结构重构
+
+按 CLAUDE.md "单一职责原则" 将 `docs/dev/` 6 个大文件（530KB）拆分为 17 个职责化子文件。
+
+#### 重构前后对比
+
+| 维度 | v1.6.11 | v2.0 |
+|------|---------|------|
+| 文档数量 | 6 个大文件 | 17 个子文件（+ 1 README 索引）|
+| 单文件最大行数 | 3263（技术栈简明说明）| 1514（specifications.md）|
+| 平均文件行数 | 2167 | ~700 |
+| 目录深度 | 1 层 | 2 层（dev/{api,design,workflow}）|
+| 跨文档职责重叠 | 多处（按钮 CSS/API 签名）| 0（按职责拆分）|
+| 新人查找时间 | 不知道看哪个 | 按 README 导航直达 |
+
+#### 顶层结构
+
+```
+docs/dev/
+├── README.md                    # 索引 + 职责说明
+├── stack.md                     # 前后端技术栈
+├── coding-standards.md          # 代码规范
+│
+├── api/                         # API 文档（5 文件）
+│   ├── README.md
+│   ├── specs.md                 # 通用规范
+│   ├── auth.md                  # 认证（JWT + API Key）
+│   ├── internal.md              # 内部 API
+│   └── external.md              # 外部 API
+│
+├── design/                      # 设计文档（6 文件）
+│   ├── README.md
+│   ├── architecture.md          # 架构 + 模块
+│   ├── database.md              # 数据库设计
+│   ├── api-design.md            # API 设计
+│   ├── specifications.md        # 设计规范
+│   └── ui.md                    # UI 设计
+│
+├── workflow/                    # 工作流（5 文件）
+│   ├── README.md
+│   ├── development.md           # 开发流程
+│   ├── git.md                   # Git 规范
+│   ├── deployment.md            # 部署指南
+│   └── learning-path.md         # 学习路径
+│
+└── backup/                      # v1.6.11 历史快照（只读）
+```
+
+#### 每个文件特性
+
+- 顶部 YAML frontmatter：`title / version / last_updated / source`
+- 行数控制在 100-1500 之间
+- 跨文件引用使用 markdown 链接
+- 不修改 backup/ 中任何文件
+
+#### CLAUDE.md 同步
+
+- 文档引用全部指向 v2.0 新路径
+- §文档应用场景更新为新结构
+- §步骤2 文档更新表扩展为 11 个职责化路径
+
+#### 提交记录
+
+- `b3fdb8a` - docs/dev v2.0 重构（17 文件 + 1 README）
+- `aeb03b6` - CLAUDE.md 引用更新
+
+#### 升级指南
+
+| v1.6.11 路径 | v2.0 路径 |
+|--------------|----------|
+| `docs/dev/开发指南.md` | `docs/dev/workflow/development.md` + `git.md` + `deployment.md` |
+| `docs/dev/技术栈简明说明.md` | `docs/dev/stack.md` |
+| `docs/dev/项目设计文档.md` | `docs/dev/design/architecture.md` + `database.md` + `api-design.md` |
+| `docs/dev/项目设计规范.md` | `docs/dev/design/specifications.md` + `coding-standards.md` |
+| `docs/dev/UI设计说明.md` | `docs/dev/design/ui.md` |
+| `docs/dev/API调用手册.md` | `docs/dev/api/README.md` + `specs.md` + `auth.md` + `internal.md` + `external.md` |
+| `docs/dev/学习路径.md` | `docs/dev/workflow/learning-path.md` |
 
 ---
 
