@@ -46,4 +46,6 @@ paths:
 ## 参考文件
 
 - `backend/src/main/java/com/pricemanagement/controller/` — 所有控制器
-- `docs/dev/项目设计文档.md` — 现有 API 设计
+- `docs/dev/design/api-design.md` — 现有 API 设计（v2.0）
+- `docs/dev/api/internal.md` — 内部 API 端点（v2.0）
+- `docs/dev/api/external.md` — 外部 API 端点（v2.0）

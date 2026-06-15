@@ -55,4 +55,4 @@ ON DUPLICATE KEY UPDATE column = VALUES(column);
 
 - `backend/src/main/resources/db/migration/` — 现有迁移脚本
 - `backend/src/main/resources/init.sql` — 初始化脚本
-- `docs/dev/项目设计文档.md` — 数据库设计
+- `docs/dev/design/database.md` — 数据库设计（v2.0）
