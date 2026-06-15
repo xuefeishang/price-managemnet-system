@@ -25,12 +25,12 @@ source: docs/dev/backup/开发指南.md
 
 | 工作流场景 | 主文档 | 辅助文档 |
 |----------|--------|---------|
-| 新成员上手 | [learning-path.md](learning-path.md) | [README.md](../../README.md) → [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) |
-| 日常开发 | [development.md](development.md) | [CLAUDE.md](../../../CLAUDE.md) → [docs/dev/项目设计文档.md](../项目设计文档.md) |
+| 新成员上手 | [learning-path.md](learning-path.md) | [README.md](../../../README.md) → [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) |
+| 日常开发 | [development.md](development.md) | [CLAUDE.md](../../../CLAUDE.md) → [design/architecture.md](../design/architecture.md) |
 | 提交代码 | [git.md](git.md) | [CLAUDE.md](../../../CLAUDE.md) §功能变更流程 |
 | 部署上线 | [deployment.md](deployment.md) | [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) → [docs/ops/操作手册.md](../../ops/操作手册.md) |
-| 查 API | — | [docs/dev/API调用手册.md](../API调用手册.md) |
-| 设计规范 | — | [docs/dev/项目设计规范.md](../项目设计规范.md) → [docs/dev/UI设计说明.md](../UI设计说明.md) |
+| 查 API | — | [api/README.md](../api/README.md) |
+| 设计规范 | — | [design/specifications.md](../design/specifications.md) → [design/ui.md](../design/ui.md) |
 | 功能完成汇报 | — | [docs/archive/项目完成总结.md](../../archive/项目完成总结.md) |
 
 ## 文档维护原则
@@ -52,6 +52,6 @@ source: docs/dev/backup/开发指南.md
 ## 相关文档
 
 - [CLAUDE.md](../../../CLAUDE.md) — 项目规范（永久文档）
-- [docs/dev/开发指南.md](../开发指南.md) — 已归档，保留历史版本
-- [docs/dev/项目设计文档.md](../项目设计文档.md) — 技术选型、数据库设计、API 设计
+- [docs/dev/README.md](../README.md) — v2.0 开发文档总览
+- [design/architecture.md](../design/architecture.md) — 技术选型、模块与架构设计
 - [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) — 本地/生产部署详细步骤

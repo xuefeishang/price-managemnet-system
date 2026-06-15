@@ -121,6 +121,21 @@ docs/dev/
    - 新依赖 → `stack.md`
 3. **更新数据字典**：如果是数据库变更
 
+### 维护落点矩阵
+
+| 变更类型 | 必改文档 | 视情况同步 |
+|----------|----------|------------|
+| 新增/修改内部接口 | `api/internal.md`、`design/api-design.md` | `workflow/development.md` |
+| 新增/修改外部接口 | `api/external.md`、`api/auth.md`（认证变化时）、`design/api-design.md` | `README.md` |
+| 新增/修改数据库表 | `design/database.md` | 数据字典文档、`design/architecture.md` |
+| 新增功能模块 | `design/architecture.md`、`README.md` | `api/`、`design/ui.md`、`docs/archive/项目完成总结.md` |
+| UI/交互变化 | `design/ui.md` | `design/specifications.md` |
+| 开发流程/规范变化 | `workflow/development.md`、`coding-standards.md` | `AGENTS.md` / `CLAUDE.md` |
+| 部署/环境变量变化 | `workflow/deployment.md`、`docs/ops/IDEA部署指南.md` | `stack.md`、`README.md` |
+| 技术栈/依赖变化 | `stack.md` | `workflow/deployment.md` |
+
+> `backup/` 仅用于追溯 v1.x 内容。新增、修改、删除功能时不得把 `backup/` 作为当前文档维护目标。
+
 ### 文档修改原则
 
 - **单一职责**：一个文件只描述一类内容

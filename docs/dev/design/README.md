@@ -53,7 +53,7 @@ source: docs/dev/backup/项目设计文档.md + 项目设计规范.md + UI设计
 每次功能变化必须执行三步流程（详见 [CLAUDE.md](../../../CLAUDE.md)）：
 
 1. 检查前后端与数据库一致性（API 路径、DTO 字段、Entity 注解）
-2. 更新项目文档（README.md、设计文档、API 调用手册）
+2. 更新项目文档（README.md、设计文档、API 文档）
 3. 同步数据字典（`sys_dict` 表、数据字典文档）
 
 ## 文档与代码对应关系
@@ -94,6 +94,7 @@ source: docs/dev/backup/项目设计文档.md + 项目设计规范.md + UI设计
 ## 相关文档
 
 - [CLAUDE.md](../../../CLAUDE.md) — 项目规范（功能变更三步流程）
-- [开发指南.md](../../dev/开发指南.md) — 开发流程、代码规范、Git 规范
-- [API调用手册.md](../../dev/API调用手册.md) — 外部 API 签名与调用规范
+- [workflow/development.md](../workflow/development.md) — 开发流程、代码规范、Git 规范入口
+- [api/README.md](../api/README.md) — API 文档总览
+- [api/auth.md](../api/auth.md) — 外部 API 签名与调用规范
 - [README.md](../../../README.md) — 项目入口

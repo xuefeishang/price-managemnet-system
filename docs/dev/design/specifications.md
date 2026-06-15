@@ -872,7 +872,7 @@ spring:
 5. 字典配置 → sys_dict 表新增字典项
       │
       ▼
-6. 文档更新 → README.md、项目设计文档.md
+6. 文档更新 → README.md、design/architecture.md、design/api-design.md、design/database.md
       │
       ▼
 7. 质量门禁检查 → 后端测试 + 前端构建 + Flyway校验 + 生产配置预检

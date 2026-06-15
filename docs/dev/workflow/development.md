@@ -9,7 +9,7 @@ source: docs/dev/backup/开发指南.md
 
 本文件覆盖开发环境准备、快速开始、开发流程规范、后端启动前置条件、mvn 命令详解与常见错误。
 
-> 完整项目规范见 [CLAUDE.md](../../../CLAUDE.md)，技术选型与架构见 [docs/dev/项目设计文档.md](../项目设计文档.md)。
+> 完整项目规范见 [CLAUDE.md](../../../CLAUDE.md)，技术选型与架构见 [design/architecture.md](../design/architecture.md)。
 
 ## 目录
 
@@ -178,7 +178,7 @@ npm run dev:mp-weixin   # 微信小程序开发
 npm run dev:app         # APP 开发
 ```
 
-详见 [frontend-uniapp/README.md](../../../../frontend-uniapp/README.md)
+详见 [frontend-uniapp/README.md](../../../frontend-uniapp/README.md)
 
 ### 2.6 访问应用
 
@@ -235,21 +235,27 @@ npm run dev:app         # APP 开发
 
 #### 步骤 2：更新项目文档
 
+v2.0 起，`docs/dev` 已按职责拆分为 `api/`、`design/`、`workflow/` 三类文档。旧版中文大文件只保留在 `docs/dev/backup/` 作为历史快照，不再作为维护入口。
+
 | 文档 | 更新内容 |
 |------|---------|
 | `README.md` | 功能列表、新增功能说明 |
-| `docs/dev/开发指南.md` | 开发流程、代码规范、API 文档变更 |
-| `docs/ops/IDEA部署指南.md` | 部署方式、环境配置变更 |
-| `docs/dev/项目设计文档.md` | 数据库表结构、API 接口、功能模块设计 |
+| `docs/dev/workflow/development.md` | 开发流程、代码规范变更 |
+| `docs/dev/workflow/deployment.md` / `docs/ops/IDEA部署指南.md` | 部署方式、环境配置变更 |
+| `docs/dev/design/architecture.md` | 功能模块、架构设计变更 |
+| `docs/dev/design/database.md` | 数据库表结构、ER 图变更 |
+| `docs/dev/design/api-design.md` | API 设计总览、模块接口变更 |
+| `docs/dev/api/internal.md` / `docs/dev/api/external.md` | 内部/外部端点详细契约变更 |
+| `docs/dev/coding-standards.md` / `docs/dev/design/specifications.md` | 长期代码规范、设计规范变更 |
 | `docs/archive/项目完成总结.md` | 功能完成情况表格、更新状态 |
-| `docs/dev/UI设计说明.md` | 界面/交互变更 |
+| `docs/dev/design/ui.md` | 界面/交互变更 |
 
 **文档更新原则：**
 
-- API 变更：必须更新 `docs/dev/项目设计文档.md` 中的 API 部分
-- 数据库变更：必须更新 `docs/dev/项目设计文档.md` 中的表结构部分
+- API 变更：必须更新 `docs/dev/api/internal.md` 或 `docs/dev/api/external.md`，并同步 `docs/dev/design/api-design.md`
+- 数据库变更：必须更新 `docs/dev/design/database.md`
 - 新增功能：所有文档中功能列表部分必须同步更新
-- 界面/交互变更：更新对应的说明文档
+- 界面/交互变更：更新 `docs/dev/design/ui.md`
 
 #### 步骤 3：更新数据字典
 
@@ -507,7 +513,7 @@ const isPCLayout = computed(() => {
 
 ### 3.5 按钮设计规范
 
-> 详细设计规范请参阅 [docs/dev/UI设计说明.md](../UI设计说明.md)。
+> 详细设计规范请参阅 [design/ui.md](../design/ui.md)。
 
 #### 按钮类型与尺寸
 
@@ -1157,7 +1163,7 @@ frontend-uniapp/src/
 
 #### 按钮设计规范
 
-- 详细设计规范请参阅 [docs/dev/UI设计说明.md](../UI设计说明.md)
+- 详细设计规范请参阅 [design/ui.md](../design/ui.md)
 - 见 [§3.5 按钮设计规范](#35-按钮设计规范)
 
 ### 7.3 v1.6.10 一致性更新（2026-06-14）
@@ -1197,6 +1203,9 @@ frontend-uniapp/src/
 - [git.md](git.md) — Git 规范
 - [deployment.md](deployment.md) — 部署指南
 - [learning-path.md](learning-path.md) — 学习路径
-- [docs/dev/项目设计文档.md](../项目设计文档.md) — 技术选型、数据库设计、API 设计
-- [docs/dev/项目设计规范.md](../项目设计规范.md) — 项目设计规范
+- [design/architecture.md](../design/architecture.md) — 技术选型与架构设计
+- [design/database.md](../design/database.md) — 数据库设计
+- [design/api-design.md](../design/api-design.md) — API 设计总览
+- [design/specifications.md](../design/specifications.md) — 项目设计规范
+- [coding-standards.md](../coding-standards.md) — 代码规范
 - [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) — 本地/生产部署详细步骤

@@ -365,7 +365,7 @@ source: docs/dev/backup/项目设计文档.md
 | ExternalPriceQueryController | 2 | 价格查询 + 导出 |
 | ExternalHomeController | 5 | 首页仪表盘 5 项 |
 
-详细端点定义见 `docs/dev/API调用手册.md` "外部 API 业务接口"章节。
+详细端点定义见 [api/external.md](../api/external.md) 的"外部 API 业务接口"章节。
 
 ### 签名规则
 
@@ -392,7 +392,7 @@ signature = HMAC-SHA256(
 )
 ```
 
-详见 [API调用手册.md](../../dev/API调用手册.md)。
+详见 [api/auth.md](../api/auth.md)。
 
 ## 错误码
 

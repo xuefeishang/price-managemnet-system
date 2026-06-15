@@ -802,6 +802,14 @@ WHERE NOT EXISTS (
 
 ### 版本升级
 
+用户安全稳定性整改不涉及数据库结构变更，无需新增 Flyway migration。可通过
+`USER_IMPORT_MAX_ROWS` 设置单次用户 Excel 导入最大数据行数，默认值为 `1000`。
+升级后仍需确认 Flyway validate 通过，并回归管理员新增、受控更新和用户导入：
+参数或导入预检错误应返回 HTTP 400，用户名、工号或写入阶段唯一约束冲突应返回 HTTP 409；
+导入存在任一异常时不得写入任何用户，前端对同一失败请求只显示一次安全原因。
+第二轮发布还需确认重置密码 URL 不含密码、停用角色不授权、管理员原子编辑失败零更新、
+`deptId: null` 可清空部门，以及合法导入使用批量写入。本轮仍无数据库结构变更。
+
 ```bash
 # 后端升级
 systemctl stop pricemanagement-backend.service

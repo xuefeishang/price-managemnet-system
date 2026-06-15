@@ -420,7 +420,7 @@ v1.6.8 处理了 30 条高严重度偏差，本次清理剩余 15 条中严重�
 ### 新增功能
 - 站内通知工业化二期：Outbox 可靠投递、Webhook 回调、微信小程序订阅消息
 - 企业级应用架构评估报告（docs/plan/enterprise-architecture-assessment.md）
-- application.yml 配置详解（docs/dev/技术栈简明说明.md 2.12 节）
+- application.yml 配置详解（v1.6.x 位于 `docs/dev/技术栈简明说明.md` 2.12 节；v2.0 起迁移至 `docs/dev/stack.md`）
 - 通知管理平台关闭功能规划文档
 - 通知前端页面（Notifications.vue）和小程序通知页
 

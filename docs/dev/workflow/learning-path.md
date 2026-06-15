@@ -233,5 +233,5 @@ spring:
 
 - [CLAUDE.md](../../../CLAUDE.md) — 项目规范
 - [README.md](README.md) — 工作流总览
-- [docs/dev/项目设计文档.md](../项目设计文档.md) — 技术选型
+- [design/architecture.md](../design/architecture.md) — 技术选型与架构设计
 - [docs/ops/IDEA部署指南.md](../../ops/IDEA部署指南.md) — 本地部署
