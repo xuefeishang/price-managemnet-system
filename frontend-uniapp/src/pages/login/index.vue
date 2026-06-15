@@ -49,6 +49,16 @@
           </view>
         </view>
 
+        <view class="remember-row" @click="toggleRememberCredentials">
+          <view class="remember-check" :class="{ checked: rememberCredentials }">
+            <text v-if="rememberCredentials">✓</text>
+          </view>
+          <view class="remember-copy">
+            <text class="remember-title">记住账号和密码</text>
+            <text class="remember-hint">仅保存在当前设备，并按服务器环境区分</text>
+          </view>
+        </view>
+
         <view class="error-msg" v-if="errorMsg">
           <text>{{ errorMsg }}</text>
         </view>
@@ -167,8 +177,17 @@ const { themeConfig, loadThemeConfig } = useTheme()
 
 const form = ref({ username: '', password: '' })
 const showPassword = ref(false)
+const rememberCredentials = ref(false)
 const loading = ref(false)
 const errorMsg = ref('')
+const REMEMBERED_CREDENTIALS_KEY = 'rememberedLoginCredentials'
+
+interface RememberedCredentials {
+  username: string
+  password: string
+}
+
+type RememberedCredentialsByServer = Record<string, RememberedCredentials>
 
 // 网络设置相关
 const showNetworkSettings = ref(false)
@@ -247,6 +266,55 @@ const currentServerAddress = computed(() => {
   return getApiBaseUrl()
 })
 
+const getRememberedCredentialsByServer = (): RememberedCredentialsByServer => {
+  try {
+    const stored = uni.getStorageSync(REMEMBERED_CREDENTIALS_KEY)
+    if (!stored) return {}
+    return typeof stored === 'string'
+      ? JSON.parse(stored) as RememberedCredentialsByServer
+      : stored as RememberedCredentialsByServer
+  } catch {
+    return {}
+  }
+}
+
+const restoreRememberedCredentials = () => {
+  const credentials = getRememberedCredentialsByServer()[getApiBaseUrl()]
+  if (!credentials?.username || !credentials?.password) {
+    rememberCredentials.value = false
+    return
+  }
+  form.value.username = credentials.username
+  form.value.password = credentials.password
+  rememberCredentials.value = true
+}
+
+const removeRememberedCredentials = () => {
+  const credentialsByServer = getRememberedCredentialsByServer()
+  delete credentialsByServer[getApiBaseUrl()]
+  if (Object.keys(credentialsByServer).length === 0) {
+    uni.removeStorageSync(REMEMBERED_CREDENTIALS_KEY)
+    return
+  }
+  uni.setStorageSync(REMEMBERED_CREDENTIALS_KEY, credentialsByServer)
+}
+
+const saveRememberedCredentials = () => {
+  const credentialsByServer = getRememberedCredentialsByServer()
+  credentialsByServer[getApiBaseUrl()] = {
+    username: form.value.username.trim(),
+    password: form.value.password
+  }
+  uni.setStorageSync(REMEMBERED_CREDENTIALS_KEY, credentialsByServer)
+}
+
+const toggleRememberCredentials = () => {
+  rememberCredentials.value = !rememberCredentials.value
+  if (!rememberCredentials.value) {
+    removeRememberedCredentials()
+  }
+}
+
 const openNetworkSettings = () => {
   selectedNetworkMode.value = getNetworkMode()
   manualServerForm.value = getServerConfig()
@@ -284,6 +352,8 @@ const handleApplyNetwork = async () => {
   try {
     await switchNetworkMode(selectedNetworkMode.value)
     networkStateVersion.value += 1
+    form.value = { username: '', password: '' }
+    restoreRememberedCredentials()
     closeNetworkSettings()
     uni.showToast({
       title: `已切换到${currentNetworkLabel.value}`,
@@ -307,6 +377,9 @@ const handleSaveManualServer = () => {
 
   saveServerConfig(manualServerForm.value)
   setNetworkMode('external') // 手动配置视为外网模式
+  networkStateVersion.value += 1
+  form.value = { username: '', password: '' }
+  restoreRememberedCredentials()
   showAdvanced.value = false
   closeNetworkSettings()
   uni.showToast({ title: '已保存手动配置', icon: 'success' })
@@ -329,6 +402,11 @@ const handleLogin = async () => {
   try {
     const success = await userStore.loginAction(form.value)
     if (success) {
+      if (rememberCredentials.value) {
+        saveRememberedCredentials()
+      } else {
+        removeRememberedCredentials()
+      }
       uni.switchTab({ url: '/pages/home/index' })
     } else {
       errorMsg.value = '用户名或密码错误'
@@ -350,6 +428,7 @@ onMounted(async () => {
   // 先确定请求环境，避免主题配置和登录请求落到不同服务器。
   await initNetworkDetection()
   networkStateVersion.value += 1
+  restoreRememberedCredentials()
 
   // 加载主题配置（获取Logo）
   await loadThemeConfig()
@@ -514,6 +593,57 @@ onMounted(async () => {
   transform: translateY(-50%);
   font-size: 26rpx;
   color: #0D6E6E;
+}
+
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 2rpx 0 20rpx;
+  padding: 8rpx 2rpx;
+}
+
+.remember-check {
+  width: 34rpx;
+  height: 34rpx;
+  flex: 0 0 34rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #CBD5E1;
+  border-radius: 8rpx;
+  background: #FFFFFF;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.remember-check.checked {
+  border-color: #0D6E6E;
+  background: #0D6E6E;
+}
+
+.remember-copy,
+.remember-title,
+.remember-hint {
+  display: block;
+}
+
+.remember-copy {
+  min-width: 0;
+}
+
+.remember-title {
+  color: #334155;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.remember-hint {
+  margin-top: 4rpx;
+  color: #94A3B8;
+  font-size: 20rpx;
 }
 
 .login-btn {

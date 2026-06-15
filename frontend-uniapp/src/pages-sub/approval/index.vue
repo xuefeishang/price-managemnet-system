@@ -200,7 +200,7 @@ watch(activeTab, () => {
 onMounted(() => {
   userStore.restoreSession()
   if (!userStore.isAuthenticated) {
-    uni.redirectTo({ url: '/pages/login/index' })
+    uni.reLaunch({ url: '/pages/login/index' })
     return
   }
   loadData(true)

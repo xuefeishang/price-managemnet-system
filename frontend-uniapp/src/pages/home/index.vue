@@ -155,7 +155,6 @@
       />
     </template>
 
-    <CustomTabBar />
   </view>
 </template>
 
@@ -171,7 +170,6 @@ import type { PriceWithStats } from '@/api/products'
 import type { HomeSummary, PriceAlert } from '@/api/home'
 import SummarySection from '@/components/home/SummarySection.vue'
 import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
-import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 import { getProductCategoryId, sortProductsByHomeOrder } from '@/utils/productOrder'
 import { getProductDisplayName } from '@/utils/productDisplay'
@@ -412,7 +410,7 @@ onMounted(() => {
   userStore.restoreSession()
 
   if (!userStore.token) {
-    uni.redirectTo({ url: '/pages/login/index' })
+    uni.reLaunch({ url: '/pages/login/index' })
     return
   }
 

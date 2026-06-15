@@ -57,14 +57,12 @@
       <text class="version-text">版本 1.0.0</text>
     </view>
 
-    <CustomTabBar />
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
-import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getDictValue, loadAllDicts } from '@/composables/useDict'
 import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { useMiniProgramSubscription } from '@/composables/useMiniProgramSubscription'

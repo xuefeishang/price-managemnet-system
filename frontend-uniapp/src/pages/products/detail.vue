@@ -169,7 +169,14 @@ const loadProduct = async () => {
   }
 }
 
-const goBack = () => uni.navigateBack()
+const goBack = () => {
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    uni.navigateBack()
+    return
+  }
+  uni.switchTab({ url: '/pages/home/index' })
+}
 
 onLoad((options) => {
   if (options?.id) productId.value = Number(options.id)

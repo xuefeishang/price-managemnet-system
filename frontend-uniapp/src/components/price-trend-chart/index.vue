@@ -63,7 +63,7 @@
         class="chart-canvas"
         :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px' }"
         @touchstart="handleChartTouch"
-        @touchmove="handleChartTouch"
+        @touchmove.stop="handleChartTouch"
       />
 
       <!-- 加载状态 -->
@@ -100,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, getCurrentInstance } from 'vue'
+import { computed, ref, watch, nextTick, getCurrentInstance, onUnmounted } from 'vue'
 import { getPriceTrend, getProductPriceYears } from '@/api/products'
 
 const props = defineProps<{
@@ -127,6 +127,11 @@ const priceData = ref<{ date: string; price: number | null; budgetPrice: number 
 const selectedIndex = ref(-1)
 let lastPlotMetrics: { left: number; width: number } | null = null
 let lastCanvasLeft = 0
+let cachedContext: any = null
+let cachedCanvasWidth = 0
+let cachedCanvasHeight = 0
+let pendingTouchIndex = -1
+let touchDrawTimer: ReturnType<typeof setTimeout> | null = null
 
 const prices = computed(() => priceData.value
   .map(d => d.price)
@@ -176,6 +181,11 @@ const drawChart = () => {
   if (!hasChartData.value) return
 
   // #ifdef MP-WEIXIN
+  if (cachedContext && cachedCanvasWidth > 0 && cachedCanvasHeight > 0) {
+    drawChartContent(cachedContext, cachedCanvasWidth, cachedCanvasHeight)
+    return
+  }
+
   // Canvas 2D API
   const query = uni.createSelectorQuery().in(instance)
   query.select(`#${canvasId}`)
@@ -198,6 +208,9 @@ const drawChart = () => {
       canvas.width = width * dpr
       canvas.height = height * dpr
       ctx.scale(dpr, dpr)
+      cachedContext = ctx
+      cachedCanvasWidth = width
+      cachedCanvasHeight = height
 
       drawChartContent(ctx, width, height)
     })
@@ -211,6 +224,7 @@ const drawChart = () => {
 }
 
 const drawChartContent = (ctx: any, width: number, height: number) => {
+  ctx.clearRect?.(0, 0, width, height)
   const rawMin = Math.min(...chartPrices.value)
   const rawMax = Math.max(...chartPrices.value)
   const rawRange = rawMax - rawMin
@@ -345,8 +359,16 @@ const handleChartTouch = (event: any) => {
   const x = Number.isFinite(offsetX) ? offsetX : pageX - lastCanvasLeft
   if (!Number.isFinite(x)) return
   const ratio = Math.max(0, Math.min(1, (x - lastPlotMetrics.left) / lastPlotMetrics.width))
-  selectedIndex.value = Math.round(ratio * (priceData.value.length - 1))
-  nextTick(drawChart)
+  const nextIndex = Math.round(ratio * (priceData.value.length - 1))
+  if (nextIndex === selectedIndex.value || nextIndex === pendingTouchIndex) return
+  pendingTouchIndex = nextIndex
+  if (touchDrawTimer) return
+  touchDrawTimer = setTimeout(() => {
+    touchDrawTimer = null
+    if (pendingTouchIndex < 0 || pendingTouchIndex === selectedIndex.value) return
+    selectedIndex.value = pendingTouchIndex
+    drawChart()
+  }, 32)
 }
 
 const selectPeriod = (days: number) => {
@@ -400,6 +422,7 @@ const loadTrendData = async () => {
         }))
 
       selectedIndex.value = priceData.value.length - 1
+      pendingTouchIndex = selectedIndex.value
       nextTick(() => {
         drawChart()
       })
@@ -419,6 +442,14 @@ watch(() => props.productId, async () => {
 
 watch(() => props.budgetPrice, () => {
   if (priceData.value.length > 0) nextTick(drawChart)
+})
+
+onUnmounted(() => {
+  if (touchDrawTimer) {
+    clearTimeout(touchDrawTimer)
+    touchDrawTimer = null
+  }
+  cachedContext = null
 })
 </script>
 

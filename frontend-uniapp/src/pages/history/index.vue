@@ -114,7 +114,6 @@
       </view>
     </scroll-view>
 
-    <CustomTabBar />
   </view>
 </template>
 
@@ -125,7 +124,6 @@ import { getProducts, getPricesByDateWithStats, type PriceWithStats } from '@/ap
 import { getPriceQueryRows, type PriceQueryRow } from '@/api/priceQuery'
 import { getCategories } from '@/api/categories'
 import type { PageResponse, Product, ProductCategory } from '@/types'
-import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 import { getProductDisplayName } from '@/utils/productDisplay'
 

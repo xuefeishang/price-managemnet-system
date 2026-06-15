@@ -136,7 +136,6 @@
       </button>
     </view>
 
-    <CustomTabBar />
   </view>
 </template>
 
@@ -148,7 +147,6 @@ import { getPricesByDateWithStats } from '@/api/products'
 import { getPriceDraftByDate, getPriceDraftPublishableSummary, publishAllPriceDrafts, savePriceDraft } from '@/api/priceDraft'
 import { getCategories } from '@/api/categories'
 import type { PriceDraftBatch, PriceDraftPublishableSummary, PricePublishResult, Product, Price, PageResponse, ProductCategory } from '@/types'
-import CustomTabBar from '@/custom-tab-bar/index.vue'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 import { getProductDisplayName } from '@/utils/productDisplay'
 import { refreshNotificationIndicator, showNotificationBubble } from '@/composables/useNotificationIndicator'
@@ -499,7 +497,7 @@ watch(selectedDate, () => {
 onMounted(() => {
   userStore.restoreSession()
   if (!userStore.isAuthenticated) {
-    uni.redirectTo({ url: '/pages/login/index' })
+    uni.reLaunch({ url: '/pages/login/index' })
     return
   }
   if (!userStore.canEdit) {
