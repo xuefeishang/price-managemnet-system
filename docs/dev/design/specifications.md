@@ -1,4 +1,11 @@
-# 矿产品价格管理系统 - 项目设计规范
+---
+title: 设计规范
+version: v2.0.0
+last_updated: 2026-06-15
+source: docs/dev/backup/项目设计规范.md
+---
+
+# 设计规范
 
 > 本规范基于项目实际实现，指导新功能开发，确保系统一致性。
 
@@ -26,7 +33,7 @@
 | category | VARCHAR(50) | 字典分类 | `currency` |
 | dictKey | VARCHAR(100) | 字典键 | `CNY` |
 | dictValue | VARCHAR(200) | 显示值 | `人民币` |
-| extraValue | TEXT | 扩展值 | `¥` / JSON配置 |
+| extraValue | TEXT | 扩展值 | `¥` / JSON 配置 |
 | sortOrder | INT | 排序 | `1` |
 | status | VARCHAR(20) | 状态 | `ACTIVE` |
 
@@ -52,14 +59,14 @@
 | price_metric_group | 价格指标分组 | PRICE_STATUS→价格现状, SHORT_TERM_BUDGET→短期及预算偏差, MONTHLY_TREND→月度趋势 |
 | price_metric | 价格指标 | LATEST_PRICE→最新价格, MONTH_OVER_MONTH_PERCENT→月均价环比 |
 | notification_type | 通知类型 | PRICE_PUBLISHED→价格已发布 |
-| notification_channel | 通知渠道 | IN_APP→站内通知, APP_PUSH→App推送 |
+| notification_channel | 通知渠道 | IN_APP→站内通知, APP_PUSH→App 推送 |
 | notification_read_status | 通知阅读状态 | UNREAD→未读, READ→已读 |
 | notification_delivery_status | 通知投递状态 | SUCCESS→成功, SKIPPED→已跳过 |
 | notification_priority | 通知优先级 | LOW→低, NORMAL→普通, HIGH→高, URGENT→紧急 |
 | notification_link_type | 通知跳转类型 | PRICE_QUERY→价格查询, SYSTEM_NOTICE→系统通知 |
 | notification_business_type | 通知业务类型 | PRICE→价格, APPROVAL→审批, TASK→任务 |
-| notification_outbox_status | 通知Outbox状态 | PENDING→待处理, PROCESSING→处理中 |
-| notification_provider_health_status | Provider健康状态 | OK→正常, DOWN→异常 |
+| notification_outbox_status | 通知 Outbox 状态 | PENDING→待处理, PROCESSING→处理中 |
+| notification_provider_health_status | Provider 健康状态 | OK→正常, DOWN→异常 |
 | notification_frequency_rule | 通知聚合频控规则 | TASK_FAILED→任务失败聚合频控 |
 | system_notice_status | 系统公告状态 | DRAFT→草稿, PUBLISHED→已发布 |
 | scheduled_task_type | 定时任务类型 | PRICE_PUBLISH→价格自动发布 |
@@ -68,7 +75,7 @@
 | theme | 样式主题 | theme_red_green→红涨绿跌 |
 | style | 样式配置 | system_name, price_rise_color |
 
-### 1.4.1 分类治理规则
+### 1.4.1 分类治理规则（v1.6.8 / v1.6.9 同步）
 
 **受保护分类（字典管理页面默认隐藏）：**
 
@@ -95,7 +102,7 @@
 
 > 该过滤是**纯前端**控制（不在后端做权限隔离），因为字典本身可读，只是管理入口分离。
 
-**extraValue渲染模式：**
+**extraValue 渲染模式：**
 
 | 模式 | 渲染效果 | 适用分类 |
 |------|----------|----------|
@@ -104,6 +111,15 @@
 | json | 格式化+复制 | category_visual_config |
 | text | 文本徽章 | currency, unit, origin |
 | readonly | 只读文本 | 受保护分类 |
+
+### 1.4.2 V23-V46 增量字典（v1.6.8 同步）
+
+价格草稿、通知中心、定时任务、年度预算、价格指标 5 大新模块共涉及以下字典分类（与数据库迁移 V23-V46 同步）：
+
+- 价格草稿：`price_draft_status`、`price_publish_type`、`price_publish_status`
+- 通知中心：`notification_type`、`notification_channel`、`notification_priority`、`notification_delivery_status`、`notification_provider_health_status`、`notification_frequency_rule`、`system_notice_status`、`notification_mini_program_page`
+- 定时任务：`scheduled_task_type`、`scheduled_task_trigger_type`、`scheduled_task_run_status`
+- 价格指标：`price_metric_group`、`price_metric`
 
 ### 1.5 前端使用规范
 
@@ -206,9 +222,12 @@ public class MyService {
 {
   "code": 200,
   "message": "success",
+  "timestamp": "2026-06-15T10:30:00",
   "data": { ... }
 }
 ```
+
+> v1.3.3 增强：响应增加 `timestamp` 字段，便于前端统一处理本地时间与时区。
 
 ### 2.3 分页查询规范
 
@@ -216,7 +235,7 @@ public class MyService {
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| page | int | 0 | 页码（从0开始） |
+| page | int | 0 | 页码（从 0 开始） |
 | size | int | 20 | 每页数量 |
 | sort | string | - | 排序字段 |
 
@@ -284,18 +303,19 @@ public Result<Product> create(@RequestBody ProductDTO dto) {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 敏感配置环境变量化
+### 3.2 敏感配置环境变量化（v1.6.8 / v1.6.11 同步）
 
 **必须通过环境变量管理：**
 
 | 配置项 | 环境变量 | 示例 |
 |--------|----------|------|
 | 数据库密码 | `DB_PASSWORD` | `${DB_PASSWORD:password}` |
-| Redis密码 | `REDIS_PASSWORD` | `${REDIS_PASSWORD:}` |
-| JWT密钥 | `JWT_SECRET` | `${JWT_SECRET:secret}` |
+| Redis 密码 | `REDIS_PASSWORD` | `${REDIS_PASSWORD:}` |
+| JWT 密钥 | `JWT_SECRET` | `${JWT_SECRET:secret}` |
 | 默认用户密码 | `DEFAULT_USER_PASSWORD` | 通过 `SecurityProperties` |
+| API Key 加密主密钥 | `API_KEY_ENCRYPTION_KEY` | 生产必须独立随机 key |
 
-**配置属性类规范：**
+**配置属性类规范（SecurityProperties）：**
 
 ```java
 @Configuration
@@ -304,8 +324,19 @@ public Result<Product> create(@RequestBody ProductDTO dto) {
 public class SecurityProperties {
     private String defaultUserPassword;
     private boolean resetPasswordOnStartup = false;
+    private PasswordPolicy passwordPolicy = new PasswordPolicy();
+}
+
+@Data
+public class PasswordPolicy {
+    private int minLength = 8;
+    private boolean requireLetter = true;
+    private boolean requireDigit = true;
+    private boolean allowWhitespace = false;
 }
 ```
+
+> v1.6.11 PasswordPolicy 修正：密码策略由 `SecurityProperties` 内嵌 `PasswordPolicy` 管理，至少包含长度、字母、数字、空白字符限制，避免分散到多个分散字段。
 
 ### 3.3 动态配置（sys_dict）
 
@@ -319,8 +350,8 @@ public class SecurityProperties {
 | heading_font | 标题字体 | Newsreader |
 | body_font | 正文字体 | Inter |
 | number_font | 数字字体 | JetBrains Mono |
-| logo_url | Logo地址 | /api/static/logo.png |
-| logo_size | Logo尺寸 | medium |
+| logo_url | Logo 地址 | /api/static/logo.png |
+| logo_size | Logo 尺寸 | medium |
 
 ### 3.4 前端配置加载
 
@@ -331,6 +362,18 @@ onMounted(async () => {
   await loadThemeConfig()   // 加载主题配置
 })
 ```
+
+### 3.5 数据库迁移治理（v1.6.8 Flyway 同步）
+
+`backend/src/main/resources/db/migration/` 下的 Flyway 脚本是生产与共享环境的正式数据库变更来源。`init.sql` 用于初始化和本地基线辅助。
+
+**迁移规则：**
+
+1. 新增表、字段、索引、约束、初始化字典项时，必须新增 Flyway migration
+2. 已进入共享环境或生产环境的历史 migration 禁止随意修改
+3. 需要修正历史问题时，新增后续版本 migration，不回改旧脚本
+4. Entity、Flyway migration、`init.sql`、`数据字典.md` 必须保持一致
+5. JPA 配置应保持 `ddl-auto: validate`，禁止依赖 Hibernate 自动改表
 
 ---
 
@@ -347,7 +390,7 @@ onMounted(async () => {
   --primary-light: #0D8A8A;
   --primary-dark: #0A5555;
 
-  /* 中性色（10级灰度） */
+  /* 中性色（10 级灰度） */
   --gray-50: #FAFAFA;
   --gray-900: #1A1A1A;
 
@@ -362,7 +405,7 @@ onMounted(async () => {
   --price-fall-color: #10B981;
   --price-flat-color: #9CA3AF;
 
-  /* 图表配色（9色） */
+  /* 图表配色（9 色） */
   --chart-color-1: #0D6E6E;
   --chart-color-2: #10B981;
   /* ... */
@@ -375,7 +418,7 @@ onMounted(async () => {
 
 **预设主题：**
 
-| 主题Key | 名称 | 涨价色 | 跌价色 |
+| 主题 Key | 名称 | 涨价色 | 跌价色 |
 |---------|------|--------|--------|
 | theme_red_green | 红涨绿跌 | #EF4444 | #10B981 |
 | theme_green_red | 绿涨红跌 | #10B981 | #EF4444 |
@@ -444,7 +487,7 @@ const chartColors = Array.from({ length: 9 }, (_, i) =>
 
 ### 5.1 字体层级
 
-| 类型 | CSS变量 | 默认字体 | 用途 |
+| 类型 | CSS 变量 | 默认字体 | 用途 |
 |------|---------|----------|------|
 | 标题 | --font-heading | Newsreader | 页面标题、大标题 |
 | 正文 | --font-body | Inter | 正文、表单、按钮 |
@@ -479,11 +522,11 @@ const chartColors = Array.from({ length: 9 }, (_, i) =>
 
 | 类型 | 规范 | 示例 |
 |------|------|------|
-| Vue组件 | PascalCase | `ProductList.vue` |
-| API文件 | camelCase | `product.ts` |
+| Vue 组件 | PascalCase | `ProductList.vue` |
+| API 文件 | camelCase | `product.ts` |
 | 类型文件 | camelCase | `product.ts` |
-| CSS类名 | kebab-case | `.product-card` |
-| CSS变量 | kebab-case | `--primary-color` |
+| CSS 类名 | kebab-case | `.product-card` |
+| CSS 变量 | kebab-case | `--primary-color` |
 
 ### 6.2 组件结构
 
@@ -585,6 +628,7 @@ const rules = {
 ```
 
 **优势：**
+
 - 数量由数据源决定，后端扩展无需改前端
 - 颜色由 CSS 变量控制，切换主题实时生效
 
@@ -778,17 +822,6 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
 }
 ```
 
-**错误码规范：**
-
-| 错误码 | 说明 | 处理方式 |
-|--------|------|----------|
-| 400 | 参数错误 | 显示错误信息 |
-| 401 | 未认证 | 跳转登录页 |
-| 403 | 无权限 | 显示无权限提示 |
-| 404 | 资源不存在 | 显示不存在提示 |
-| 409 | 业务冲突 | 显示冲突原因 |
-| 500 | 服务器错误 | 显示通用错误 |
-
 ---
 
 ## 九、性能优化规范
@@ -799,7 +832,7 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
 |------|----------|-----|------|
 | 字典数据 | Redis + 前端内存 | 1h | 按分类缓存 |
 | 主题配置 | Redis + 前端内存 | 1h | 全量配置 |
-| 用户信息 | Redis | 30min | 按用户ID |
+| 用户信息 | Redis | 30min | 按用户 ID |
 
 ### 9.2 懒加载降级
 
@@ -984,7 +1017,7 @@ spring:
 开发时按以下边界使用：
 
 | 样式类型 | 推荐归属 | 说明 |
-|----------|----------|------|
+|----------|----------|----------|
 | 页面容器、区块、头部、筛选栏 | UnoCSS shortcuts | 使用 `page-pc`、`section`、`header-row`、`filter` 等语义类 |
 | 常规 flex/grid/gap/padding/margin | UnoCSS 原子类或 shortcuts | 减少重复 scoped CSS |
 | 字体、颜色、间距 token | UnoCSS theme + CSS 变量 | 继续绑定 `--font-size-*`、`--spacing-*`、`--primary-color` |
@@ -1006,7 +1039,7 @@ spring:
 | 类名 | 说明 | 等效样式 |
 |------|------|----------|
 | `page` | 页面容器 | `min-h-screen bg-gray-50` |
-| `page-pc` | PC端页面 | `page flex flex-col gap-lg` |
+| `page-pc` | PC 端页面 | `page flex flex-col gap-lg` |
 | `page-mobile` | 移动端页面 | `page flex flex-col` |
 
 **区块级布局：**
@@ -1077,76 +1110,9 @@ rules: [
 ]
 ```
 
-### 11.4.2 UnoCSS 与 scoped CSS 分工示例
-
-**推荐写法：**
-
-```vue
-<template>
-  <article class="home-card home-card-hover container-inline flex flex-col gap-sm">
-    <div class="flex items-start justify-between gap-sm">
-      <span class="home-card-title break-anywhere" :title="product.name">
-        {{ product.name }}
-      </span>
-      <span class="home-trend">{{ trendText }}</span>
-    </div>
-
-    <div class="mt-auto flex items-end justify-between gap-sm">
-      <span class="home-price numeric-tabular">{{ priceText }}</span>
-    </div>
-  </article>
-</template>
-
-<style scoped>
-.home-product-card {
-  --card-price-size: 2rem;
-  --card-title-lines: 1;
-}
-
-@container (max-width: 320px) {
-  .home-product-card {
-    --card-price-size: 1.65rem;
-    --card-title-lines: 2;
-  }
-}
-</style>
-```
-
-说明：
-
-- `home-card`、`flex`、`gap-sm`、`numeric-tabular` 由 UnoCSS 负责。
-- `--card-price-size`、`@container`、内容长度档位由 scoped CSS 负责。
-- 这样既能统一基础视觉，又能保留复杂组件的精细控制能力。
-
-**禁止写法：**
-
-```vue
-<!-- ❌ 原子类过长，且混入大量一次性尺寸 -->
-<article class="bg-white rounded-lg border border-gray-200 p-[19px] min-h-[167px] w-[317px] hover:shadow-lg hover:-translate-y-[3px] overflow-hidden relative cursor-pointer transition-all">
-  ...
-</article>
-```
-
-正确做法是沉淀为 shortcut 或组件 class：
-
-```vue
-<article class="home-card home-card-hover">
-  ...
-</article>
-```
-
 ### 11.5 表格布局规范
 
 **核心原则：表格列宽使用百分比，禁止使用固定像素值。**
-
-**问题场景：**
-
-```css
-/* ❌ 错误：flex + min-width 累加超宽 */
-.table-cell.name { flex: 1.5; min-width: 150px; }
-.table-cell.origin { flex: 1; min-width: 100px; }
-/* 多列累加后总宽度超出容器，出现横向滚动条 */
-```
 
 **正确做法：**
 
@@ -1160,8 +1126,6 @@ rules: [
 
 **表格 UnoCSS Shortcuts：**
 
-以下 `w-[8%]`、`w-[15%]` 等值属于 `frontend/uno.config.ts` 集中管理的语义化 shortcut，仅允许通过 `table-col-*` 类使用。页面中不得零散复制这些任意值，也不得临时新增未归档的表格列宽类。
-
 | 类名 | 说明 | 等效样式 |
 |------|------|----------|
 | `table` | 表格容器 | `bg-white rounded-lg shadow-sm overflow-hidden` |
@@ -1174,48 +1138,6 @@ rules: [
 | `table-col-md` | 中等列宽 | `w-[15%]` |
 | `table-col-lg` | 大列宽 | `w-[20%]` |
 | `table-col-xl` | 超大列宽 | `w-[25%]` |
-
-**表格使用示例：**
-
-```vue
-<template>
-  <!-- 表格容器：支持横向滚动 -->
-  <div class="table-wrapper">
-    <div class="table">
-      <!-- 表头 -->
-      <div class="table-head table-row-min">
-        <div class="table-cell table-col-sm">序号</div>
-        <div class="table-cell table-col-md">名称</div>
-        <div class="table-cell table-col-lg">规格</div>
-        <div class="table-cell table-col-sm">状态</div>
-        <div class="table-cell table-col-sm">操作</div>
-      </div>
-
-      <!-- 数据行 -->
-      <div class="table-body">
-        <div v-for="item in list" :key="item.id" class="table-row table-row-min">
-          <div class="table-cell table-col-sm">{{ item.seq }}</div>
-          <div class="table-cell table-col-md">{{ item.name }}</div>
-          <div class="table-cell table-col-lg">{{ item.specs }}</div>
-          <div class="table-cell table-col-sm">
-            <span class="status-active">{{ getStatusLabel(item.status) }}</span>
-          </div>
-          <div class="table-cell table-col-sm">
-            <button class="btn-sm">编辑</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
-/* 表格行最小宽度，防止内容被压缩 */
-.table-row-min {
-  min-width: max-content;
-}
-</style>
-```
 
 ### 11.6 状态指示 Shortcuts
 
@@ -1241,8 +1163,6 @@ rules: [
 
 **组件路径：** `src/components/PageContainer.vue`
 
-**用途：** 封装页面布局逻辑，简化页面开发。
-
 **Props：**
 
 | 属性 | 类型 | 默认值 | 说明 |
@@ -1258,56 +1178,6 @@ rules: [
 | filter | 筛选栏区域 |
 | default | 主内容区域 |
 | footer | 底部区域 |
-
-**使用示例：**
-
-```vue
-<script setup lang="ts">
-import PageContainer from '@/components/PageContainer.vue'
-</script>
-
-<template>
-  <PageContainer>
-    <template #header>
-      <h1 class="header-title">产品列表</h1>
-      <button class="btn-primary">新增产品</button>
-    </template>
-
-    <template #filter>
-      <input class="form-input" placeholder="搜索..." />
-      <select class="form-input">...</select>
-    </template>
-
-    <!-- 主内容 -->
-    <div class="table-wrapper">
-      <div class="table">...</div>
-    </div>
-  </PageContainer>
-</template>
-```
-
-### 11.9 常见问题与解决方案
-
-**问题 1：页面出现横向滚动条**
-
-原因：表格列宽使用 `flex + min-width`，累加超出容器。
-
-解决：
-1. 列宽改为百分比（`width: 15%`）
-2. 表格容器添加 `overflow-x: auto`
-3. 表头/行添加 `min-width: max-content`
-
-**问题 2：内容不铺满屏幕**
-
-原因：页面容器设置了 `max-width` 或 `margin: 0 auto`。
-
-解决：移除 `max-width` 和 `margin: 0 auto`，让内容横向铺满。
-
-**问题 3：页面底部留白过大**
-
-原因：页面容器设置了 `min-height: 100vh`。
-
-解决：移除 `min-height: 100vh`，由 Layout 控制高度。
 
 ---
 
@@ -1397,7 +1267,7 @@ master (main)
 
 ### 13.1 核心原则：关键风险必须被拦截
 
-当前项目采用 **8.5主体规范 + 核心风险9.0门禁** 策略：常规研发保持轻量，数据库迁移、鉴权安全、生产配置、构建测试等高风险项必须设置硬性门槛。
+当前项目采用 **8.5 主体规范 + 核心风险 9.0 门禁** 策略：常规研发保持轻量，数据库迁移、鉴权安全、生产配置、构建测试等高风险项必须设置硬性门槛。
 
 质量门禁可以先由人工执行并在 PR / 发布记录中勾选；具备 CI 条件后，应逐步自动化。门禁失败时，不得合并到主分支，不得发布到生产环境。
 
@@ -1506,11 +1376,11 @@ master (main)
 - H5 使用 `localStorage` 存储 Token 时，必须配合 XSS 防护和敏感页面最小化展示；如引入 HttpOnly Cookie，应同步评估 CSRF 防护
 - 前端路由权限只用于体验控制，后端权限校验才是最终安全边界
 
-### 16.2 CORS 与密码策略
+### 16.2 CORS 与密码策略（v1.6.11 PasswordPolicy 同步）
 
 - 生产环境 `CORS_ALLOWED_ORIGINS` 必须配置为具体域名，禁止使用全量通配
 - 默认用户密码必须通过 `DEFAULT_USER_PASSWORD` 配置，生产环境禁止使用默认弱密码
-- 密码策略必须通过 `security.password-policy` 管理，至少包含长度、字母、数字、空白字符限制
+- 密码策略必须通过 `security.password-policy`（`SecurityProperties.PasswordPolicy`）管理，至少包含长度、字母、数字、空白字符限制
 - 登录失败、密码修改、账号禁用等高风险操作必须记录操作日志
 
 ### 16.3 敏感信息与日志脱敏
@@ -1633,174 +1503,12 @@ master (main)
 
 ### 18.5 批量导入与错误提示
 
-- 批量导入必须采用“完整读取与预检、全部通过后原子写入”的两阶段流程，不允许边读边写或静默跳过异常行。
+- 批量导入必须采用"完整读取与预检、全部通过后原子写入"的两阶段流程，不允许边读边写或静默跳过异常行。
 - 预检至少覆盖模板结构、字段格式、文件内重复、数据库重复和共享业务规则；失败响应必须返回安全、结构化的错误清单。
 - 写入用户及其关联数据必须处于同一事务，任一写入失败整批回滚。
 - 全局 HTTP 拦截器与页面本地处理不得对同一失败请求重复提示；需要页面展示结构化错误时，应关闭该请求的全局 Toast，并由页面统一展示一次。
-- 操作日志和通知仅记录安全统计、错误码摘要和真实响应码，禁止记录上传文件内容、密码、个人敏感字段或数据库异常原文。
-
-### 18.6 用户管理安全边界
-
-- 密码等敏感字段只能通过受控请求体传输，禁止使用 URL 查询参数。
-- 同一页面动作涉及资料与密码时，后端必须提供单一事务入口，禁止前端串联多个写请求模拟原子操作。
-- 可空更新字段必须区分字段省略与显式 `null`，并以自动化测试固定清空语义。
-- 角色分配和权限解析只认启用角色；所有角色必须在破坏性写操作前完成校验。
-- 批量导入必须批量检查唯一键和批量持久化，禁止逐行唯一性查询与逐行 flush。
 
 ---
 
-## v1.6.8 一致性更新（2026-06-14）
-
-本节对账文档与 v1.6.7 代码的实际状态。原则：仅追加不破坏既有 §1-§18。
-
-### Result 完整字段定义
-
-> 修正 §2.2 统一响应格式示例与实际代码不一致。
-
-**实际类定义**（`backend/src/main/java/com/pricemanagement/dto/Result.java`）：
-
-```java
-public class Result<T> {
-    private Integer code;        // 状态码：200成功，4xx客户端，5xx服务端
-    private String  message;     // 文案：默认 "操作成功"（不是 "success"）
-    private T       data;        // 业务数据
-    private Long    timestamp;   // 服务端时间戳（毫秒，自 1970-01-01 UTC）
-}
-```
-
-**完整响应示例：**
-
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": { ... },
-  "timestamp": 1779990000000
-}
-```
-
-**字段语义：**
-- `code` 业务态码：200/201/400/401/403/404/409/429/500
-- `message` 人类可读文案，**默认 "操作成功"**（非英文）
-- `data` 泛型，列表场景下为 `PageResponse<T>`（含 content/totalElements/totalPages/number/size/first/last）
-- `timestamp` Long 类型毫秒时间戳，前端可用于时钟校正
-
-### SecurityProperties 完整字段
-
-> 修正 §3.2 敏感配置示例不完整问题。
-
-**实际类**（`config/properties/SecurityProperties.java`）：
-
-| 字段 | 类型 | 默认值 | 用途 |
-|------|------|--------|------|
-| `defaultUserPassword` | String | `${DEFAULT_USER_PASSWORD}` | 启动时为新用户设置的初始密码 |
-| `resetPasswordOnStartup` | boolean | `${RESET_PASSWORD_ON_STARTUP:false}` | 是否每次启动重置所有用户密码 |
-| `jwtSecret` | String | `${JWT_SECRET}` | JWT 签名密钥（HS256） |
-| `jwtExpiration` | long | `86400000L` (24h) | accessToken 过期时间（毫秒） |
-| `corsAllowedOrigins` | List<String> | 见 application.yml | CORS 允许的源 |
-| `passwordPolicy` | PasswordPolicy | 嵌套对象 | 密码复杂度策略 |
-
-**PasswordPolicy 嵌套对象**（v1.6.11 实测核对）：
-
-| 字段 | 类型 | 默认值 | 用途 |
-|------|------|--------|------|
-| `minLength` | int | 8 | 密码最小长度 |
-| `maxLength` | int | 32 | 密码最大长度 |
-| `requireLetter` | boolean | true | 必须包含字母（大小写均可，非分别校验）|
-| `requireDigit` | boolean | true | 必须包含数字 |
-| `disallowWhitespace` | boolean | true | 禁止密码包含空格 |
-
-> v1.6.11 修正：v1.6.8 文档中列出的 `requireUppercase/requireLowercase/requireSpecial/specialChars/disallowUsername/disallowEmployeeId` **6 个字段实际不存在于 SecurityProperties.PasswordPolicy**。当前实现仅校验"必须含字母 + 数字 + 无空格 + 长度 8-32"。如需更细粒度校验，需在 PasswordPolicyValidator 中扩展。
-
-### Flyway 数据库迁移规范
-
-> 补充 §3.1 缺失的 Flyway 配置。
-
-**配置**（`application.yml`）：
-
-```yaml
-spring:
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-version: 12
-    baseline-on-migrate: true
-    validate-on-migrate: true
-```
-
-**脚本存放**：`backend/src/main/resources/db/migration/V{n}__{description}.sql`
-
-- V{n} 从 V1 顺序递增，n 为单调递增整数
-- 文件名描述用下划线分隔，全英文小写
-- 同一文件内禁止包含多条 DDL 语义（如必须分文件）
-- 修改既有表的字段：`ALTER TABLE` 不得破坏数据；新增字段必须允许 NULL 或有默认值
-- 删除字段：先 `ALTER TABLE ... DROP COLUMN` 并在 `operation_log` 记录
-
-**当前进度**：V1 ~ V46（2026-06-14），最近一次新增表为 V44 `product_annual_budget`，V45/V46 为价格指标字典与展示元数据。
-
-### 字典分类清单同步（V23 ~ V46 新增）
-
-> 补充 §1.4 字典分类清单，V23 之后新增的分类。
-
-| 分类 | 说明 | 示例 | 引入版本 |
-|------|------|------|----------|
-| `price_metric_group` | 价格指标分组 | PRICE_STATUS→价格现状, SHORT_TERM_BUDGET→短期及预算偏差, MONTHLY_TREND→月度趋势 | V45 |
-| `price_metric` | 价格指标 | LATEST_PRICE→最新价格, PREVIOUS_PRICE→上期有效价格, YEAR_OVER_YEAR_PERCENT→月均价同比 | V45 |
-| `notification_type` | 通知类型 | PRICE_PUBLISHED→价格发布, SYSTEM_NOTICE→系统公告, APPROVAL_PENDING→审批待办 | V25 |
-| `notification_channel` | 通知渠道 | IN_APP→站内通知, WEBHOOK→Webhook, MINI_PROGRAM→小程序 | V25 |
-| `notification_mini_program_page` | 小程序通知跳转页 | pages/notifications/index→消息通知, pages/home/index→首页 | V40 |
-| `notification_delivery_status` | 投递状态 | PENDING→待投递, FAILED→失败, SUCCESS→成功, SKIPPED→跳过 | V25 |
-| `notification_provider_health_status` | Provider健康状态 | OK→正常, DEGRADED→降级, DOWN→异常, NOT_CONFIGURED→未配置 | V29 |
-| `notification_frequency_rule` | 通知聚合频控规则 | TASK_FAILED→任务失败聚合频控, API_LIMIT_WARNING→API告警聚合频控 | V28 |
-| `system_notice_status` | 系统公告状态 | DRAFT→草稿, SCHEDULED→待发布, PUBLISHED→已发布, CANCELLED→已撤回, EXPIRED→已过期 | V26 |
-| `api_key_status` | API密钥状态 | ACTIVE→生效中, DISABLED→已停用, REVOKED→已吊销, EXPIRED→已过期 | V17 |
-| `api_key_environment` | API密钥环境 | PRODUCTION→生产, TESTING→测试 | V17 |
-| `api_key_operation` | API密钥操作 | CREATE→创建, UPDATE→更新, REVOKE→吊销 | V17 |
-| `api_auth_result` | 外部API认证结果 | SUCCESS→成功, INVALID_SIGNATURE→签名错误, EXPIRED→已过期, RATE_LIMITED→限流, NONCE_REUSED→Nonce重用 | V17 |
-| `api_permission` | 外部API权限 | product:read→产品读取, price:write→价格写入, price-query:export→价格查询导出 | V17 |
-| `category_visual_config` | 分类视觉配置 | 主色/浅底/图标/趋势图色 | V5-V6 |
-| `scheduled_task_type` | 调度任务类型 | PRICE_PUBLISH→价格发布, NOTIFICATION_CLEANUP→通知清理, ELIGIBILITY_REFRESH→资格校准 | V23 |
-| `scheduled_task_status` | 调度任务状态 | RUNNING→执行中, SUCCESS→成功, FAILED→失败 | V23 |
-
-**受保护分类**（仅 ADMIN 通过"显示系统配置"开关可见）：
-
-- `style`、`theme`、`color_scheme`、`layout_style`、`font_preset`
-- `home_layout`、`home_widget`
-- `category_visual_config`
-- `scheduled_task_type`、`scheduled_task_status`
-
-### 配置业务分组（application.yml 扩展）
-
-> 补充 §3.1 中业务配置说明。
-
-| 配置家族 | 前缀 | 关键字段 |
-|---------|------|---------|
-| API Key 加密 | `api-key.*` | enabled, encryption-key, encryption-key-version, cache-ttl-seconds |
-| 通知中心 | `notification.*` | in-app.*, webhook.*, mini-program.*, outbox.*, frequency.* |
-| 告警 | `alert.*` | enabled, dingtalk.*, wechat.*, threshold-memory, threshold-cpu |
-| 调度任务 | 无（由 `sys_scheduled_task` 表存储） | 通过 API 动态管理 |
-| 价格草稿 | `price-draft.*` | publish-batch-size, auto-publish-enabled |
-
-### uniapp 多端项目说明
-
-> 补充 §6.1 多端复用规范。
-
-`frontend-uniapp/` 是独立的 uni-app Vue3 项目，与 `frontend/` H5 项目**共用接口签名**和**部分 types/composables**：
-
-- **共用**：`types/index.ts`（部分类型）、`composables/useDict.ts` 的核心 API 调用方式
-- **独立**：UI 组件库（uni-app 内置 + 自研）、路由（`pages.json`）、构建工具（uni-cli 而非 Vite）
-- **依赖**：`@dcloudio/* 3.0.0-alpha-5000920260515001`、`vue 3.4.21`、`echarts ^6.0.0 + echarts-for-weixin ^1.0.2`
-
-详见 `docs/dev/技术栈简明说明.md` 中 frontend-uniapp 独立小节。
-
-### 文档同步说明
-
-- 本节为 v1.6.8 增量补充，原有内容（§1 ~ §18.6）保持不变
-- 后续 v1.6.9+ 在此节追加；v2.0 重构时整合到正式章节
-
----
-
-*版本：v1.3.3*
-*最后更新：2026-06-14 — 补充 Result.timestamp、SecurityProperties 完整字段、Flyway 规范、字典分类 V23-V46 同步*
-*上次更新：2026-06-14 — 用户管理安全边界 18.5/18.6*
-*再上次：2026-06-05 — 轻量工业级质量门禁、安全基线*
+*版本：v2.0.0*
+*最后更新：2026-06-15 — v2.0 文档拆分重构*
