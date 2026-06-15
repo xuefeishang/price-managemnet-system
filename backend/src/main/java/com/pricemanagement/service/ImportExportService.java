@@ -3,23 +3,22 @@ package com.pricemanagement.service;
 
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.write.style.column.LongestMatchColumnWidthStyleStrategy;
-import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.dto.ProductExcelData;
 import com.pricemanagement.dto.UserExcelData;
+import com.pricemanagement.dto.UserImportResult;
+import com.pricemanagement.dto.UserImportValidationError;
 import com.pricemanagement.entity.Product;
 import com.pricemanagement.entity.Price;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.listener.ProductExcelListener;
-import com.pricemanagement.listener.UserExcelListener;
+import com.pricemanagement.exception.UserImportValidationException;
+import com.pricemanagement.listener.UserExcelValidationListener;
 import com.pricemanagement.repository.PriceRepository;
 import com.pricemanagement.repository.ProductCategoryRepository;
 import com.pricemanagement.repository.ProductRepository;
-import com.pricemanagement.repository.SysRoleRepository;
 import com.pricemanagement.repository.UserRepository;
-import com.pricemanagement.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +27,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -38,10 +38,8 @@ public class ImportExportService {
     private final ProductCategoryRepository categoryRepository;
     private final PriceRepository priceRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final SecurityProperties securityProperties;
-    private final SysRoleRepository sysRoleRepository;
-    private final UserRoleRepository userRoleRepository;
+    private final UserImportValidationService userImportValidationService;
+    private final UserImportWriteService userImportWriteService;
 
     public void importProducts(MultipartFile file) throws IOException {
         EasyExcel.read(file.getInputStream(), ProductExcelData.class,
@@ -97,14 +95,25 @@ public class ImportExportService {
     // ==================== 用户导入导出 ====================
 
     public UserImportResult importUsers(MultipartFile file) throws IOException {
-        UserExcelListener listener = new UserExcelListener(
-            userRepository, passwordEncoder, securityProperties.getDefaultUserPassword(),
-            sysRoleRepository, userRoleRepository);
-        EasyExcel.read(file.getInputStream(), UserExcelData.class, listener)
-                .sheet()
-                .doRead();
-        log.info("用户导入完成: 成功 {}, 跳过 {}", listener.getSuccessCount(), listener.getSkipCount());
-        return new UserImportResult(listener.getSuccessCount(), listener.getSkipCount(), listener.getErrors());
+        validateUserImportFile(file);
+        UserExcelValidationListener listener = new UserExcelValidationListener();
+        try {
+            EasyExcel.read(file.getInputStream(), UserExcelData.class, listener)
+                    .sheet("用户")
+                    .doRead();
+        } catch (Exception ex) {
+            UserImportResult invalid = UserImportResult.invalid(0, List.of(
+                    new UserImportValidationError(null, "file", "INVALID_EXCEL_TEMPLATE", "无法读取用户导入模板")));
+            throw new UserImportValidationException(invalid);
+        }
+
+        UserImportValidationService.ValidationOutcome outcome = userImportValidationService.validate(listener);
+        if (!outcome.result().valid()) {
+            throw new UserImportValidationException(outcome.result());
+        }
+        int importedCount = userImportWriteService.importValidatedRows(outcome.rows());
+        log.info("用户导入完成: importedCount={}", importedCount);
+        return UserImportResult.success(importedCount);
     }
 
     public void exportUsers(HttpServletResponse response) throws IOException {
@@ -136,11 +145,6 @@ public class ImportExportService {
     }
 
     public void downloadUserTemplate(HttpServletResponse response) throws IOException {
-        List<UserExcelData> templateData = List.of(
-            createTemplateUser("zhangsan", "000001", "张三", "zhangsan@example.com", "13800138001", "技术部", "EDITOR", "ACTIVE", "初始密码123"),
-            createTemplateUser("lisi", "000002", "李四", "lisi@example.com", "13800138002", "市场部", "VIEWER", "ACTIVE", null)
-        );
-
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
         String fileName = URLEncoder.encode("用户导入模板", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
@@ -149,23 +153,19 @@ public class ImportExportService {
         EasyExcel.write(response.getOutputStream(), UserExcelData.class)
                 .sheet("用户")
                 .registerWriteHandler(new LongestMatchColumnWidthStyleStrategy())
-                .doWrite(templateData);
+                .doWrite(List.of());
     }
 
-    private UserExcelData createTemplateUser(String username, String employeeId, String nickname,
-            String email, String phone, String department, String role, String status, String password) {
-        UserExcelData data = new UserExcelData();
-        data.setUsername(username);
-        data.setEmployeeId(employeeId);
-        data.setNickname(nickname);
-        data.setEmail(email);
-        data.setPhone(phone);
-        data.setDepartment(department);
-        data.setRole(role);
-        data.setStatus(status);
-        data.setPassword(password);
-        return data;
+    private void validateUserImportFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new UserImportValidationException(UserImportResult.invalid(0, List.of(
+                    new UserImportValidationError(null, "file", "EMPTY_FILE", "请选择非空 Excel 文件"))));
+        }
+        String originalName = file.getOriginalFilename();
+        String normalized = originalName == null ? "" : originalName.toLowerCase(Locale.ROOT);
+        if (!normalized.endsWith(".xlsx") && !normalized.endsWith(".xls")) {
+            throw new UserImportValidationException(UserImportResult.invalid(0, List.of(
+                    new UserImportValidationError(null, "file", "INVALID_FILE_TYPE", "仅支持 Excel 文件"))));
+        }
     }
-
-    public record UserImportResult(int successCount, int skipCount, List<String> errors) {}
 }

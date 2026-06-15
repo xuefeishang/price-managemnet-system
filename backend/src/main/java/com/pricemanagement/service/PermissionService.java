@@ -27,6 +27,7 @@ public class PermissionService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RolePermissionRepository rolePermissionRepository;
+    private final ActiveRoleResolver activeRoleResolver;
 
     /**
      * 获取所有权限列表
@@ -147,14 +148,14 @@ public class PermissionService {
     }
 
     private List<Long> resolveUserRoleIds(Long userId) {
-        List<Long> roleIds = userRoleRepository.findRoleIdsByUserId(userId);
-        if (!roleIds.isEmpty()) {
-            return roleIds;
+        List<Long> assignedRoleIds = userRoleRepository.findRoleIdsByUserId(userId);
+        if (!assignedRoleIds.isEmpty()) {
+            return activeRoleResolver.activeRoleIds(assignedRoleIds);
         }
 
         return userRepository.findById(userId)
                 .map(User::getRole)
-                .flatMap(role -> roleRepository.findByRoleCode(role.name()))
+                .flatMap(role -> roleRepository.findByRoleCodeAndStatus(role.name(), "ACTIVE"))
                 .map(role -> List.of(role.getId()))
                 .orElseGet(Collections::emptyList);
     }

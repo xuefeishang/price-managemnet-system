@@ -2,12 +2,18 @@
 package com.pricemanagement.controller;
 
 import com.pricemanagement.dto.Result;
+import com.pricemanagement.dto.UserCreateRequest;
+import com.pricemanagement.dto.UserUpdateRequest;
+import com.pricemanagement.dto.AdminPasswordResetRequest;
+import com.pricemanagement.dto.AdminUserEditRequest;
 import com.pricemanagement.entity.OperationLog;
 import com.pricemanagement.entity.User;
+import com.pricemanagement.exception.UserConflictException;
 import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.service.PermissionService;
 import com.pricemanagement.service.UserService;
 import com.pricemanagement.util.OperationLogHelper;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -106,17 +112,22 @@ public class UserController {
      */
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<User> createUser(@RequestBody User user) {
+    public Result<User> createUser(@Valid @RequestBody UserCreateRequest request) {
         try {
+            User user = request.toUser();
             User savedUser = userService.createUser(user);
             savedUser.setPassword(null);
             operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.CREATE,
                     "创建用户：" + savedUser.getUsername(), "用户ID：" + savedUser.getId() + "，工号：" + savedUser.getEmployeeId());
             return Result.success("创建用户成功", savedUser);
+        } catch (UserConflictException e) {
+            operationLogHelper.logError("用户管理", OperationLog.OperationType.CREATE,
+                    "创建用户失败", "username=" + request.getUsername(), e.getMessage(), "409");
+            throw e;
         } catch (IllegalArgumentException e) {
             operationLogHelper.logError("用户管理", OperationLog.OperationType.CREATE,
-                    "创建用户失败", user.getUsername(), e.getMessage());
-            return Result.error(400, e.getMessage());
+                    "创建用户失败", "username=" + request.getUsername(), e.getMessage(), "400");
+            throw e;
         }
     }
 
@@ -125,18 +136,28 @@ public class UserController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<User> updateUser(@PathVariable Long id, @RequestBody User user) {
+    public Result<User> updateUser(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest request) {
         try {
-            User updatedUser = userService.updateUser(id, user);
+            User updatedUser = userService.updateUser(id, request);
             updatedUser.setPassword(null);
             operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.UPDATE,
                     "更新用户：" + updatedUser.getUsername(), "用户ID：" + id);
             return Result.success("更新用户成功", updatedUser);
         } catch (IllegalArgumentException e) {
             operationLogHelper.logError("用户管理", OperationLog.OperationType.UPDATE,
-                    "更新用户失败", "用户ID：" + id, e.getMessage());
-            return Result.error(404, e.getMessage());
+                    "更新用户失败", "用户ID：" + id, e.getMessage(), "400");
+            throw e;
         }
+    }
+
+    @PutMapping("/{id}/admin-edit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<User> adminEditUser(@PathVariable Long id, @Valid @RequestBody AdminUserEditRequest request) {
+        User updatedUser = userService.adminEditUser(id, request);
+        updatedUser.setPassword(null);
+        operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.UPDATE,
+                "管理员编辑用户：" + updatedUser.getUsername(), "用户ID：" + id);
+        return Result.success("更新用户成功", updatedUser);
     }
 
     /**
@@ -164,21 +185,18 @@ public class UserController {
      */
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasRole('ADMIN')")
-    public Result<Void> resetPassword(@PathVariable Long id, @RequestParam(required = false) String newPassword) {
-        try {
-            User user = userService.getUserById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-            // 使用配置的默认密码或传入的密码
-            String password = newPassword != null && !newPassword.isEmpty()
-                    ? newPassword
-                    : securityProperties.getDefaultUserPassword();
-            userService.resetPassword(id, password);
-            operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.UPDATE,
-                    "重置用户密码：" + user.getUsername(), "用户ID：" + id);
-            return Result.success("密码重置成功");
-        } catch (IllegalArgumentException e) {
-            return Result.error(404, e.getMessage());
-        }
+    public Result<Void> resetPassword(@PathVariable Long id,
+                                      @Valid @RequestBody(required = false) AdminPasswordResetRequest request) {
+        User user = userService.getUserById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        String newPassword = request == null ? null : request.getNewPassword();
+        String password = newPassword != null && !newPassword.isEmpty()
+                ? newPassword
+                : securityProperties.getDefaultUserPassword();
+        userService.resetPassword(id, password);
+        operationLogHelper.logSuccess("用户管理", OperationLog.OperationType.UPDATE,
+                "重置用户密码：" + user.getUsername(), "用户ID：" + id);
+        return Result.success("密码重置成功");
     }
 
     /**

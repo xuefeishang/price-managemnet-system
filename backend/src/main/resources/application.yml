@@ -76,6 +76,10 @@ security:
     require-digit: ${PASSWORD_REQUIRE_DIGIT:true}
     disallow-whitespace: ${PASSWORD_DISALLOW_WHITESPACE:true}
 
+import:
+  user:
+    max-rows: ${USER_IMPORT_MAX_ROWS:1000}
+
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}

@@ -1,6 +1,5 @@
 package com.pricemanagement.service;
 
-import com.pricemanagement.config.properties.SecurityProperties;
 import com.pricemanagement.dto.*;
 import com.pricemanagement.entity.*;
 import com.pricemanagement.repository.*;
@@ -30,7 +29,7 @@ public class ProfileService {
     private final PermissionService permissionService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
-    private final SecurityProperties securityProperties;
+    private final PasswordPolicyValidator passwordPolicyValidator;
     private final OperationLogHelper operationLogHelper;
 
     public ProfileDTO getCurrentProfile() {
@@ -82,7 +81,7 @@ public class ProfileService {
         if (request.getOldPassword().equals(request.getNewPassword())) {
             throw new IllegalArgumentException("新密码不能与旧密码相同");
         }
-        validatePasswordPolicy(user, request.getNewPassword());
+        passwordPolicyValidator.validate(user, request.getNewPassword());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.setPasswordUpdatedTime(LocalDateTime.now());
         userRepository.save(user);
@@ -240,27 +239,6 @@ public class ProfileService {
         dto.setThemeMode(preference.getThemeMode());
         dto.setPageSize(preference.getPageSize());
         return dto;
-    }
-
-    private void validatePasswordPolicy(User user, String password) {
-        SecurityProperties.PasswordPolicy policy = securityProperties.getPasswordPolicy();
-        if (password.length() < policy.getMinLength() || password.length() > policy.getMaxLength()) {
-            throw new IllegalArgumentException("新密码长度必须在" + policy.getMinLength() + "-" + policy.getMaxLength() + "个字符之间");
-        }
-        if (policy.isRequireLetter() && !password.matches(".*[A-Za-z].*")) {
-            throw new IllegalArgumentException("新密码必须包含字母");
-        }
-        if (policy.isRequireDigit() && !password.matches(".*\\d.*")) {
-            throw new IllegalArgumentException("新密码必须包含数字");
-        }
-        if (policy.isDisallowWhitespace() && password.matches(".*\\s.*")) {
-            throw new IllegalArgumentException("新密码不能包含空白字符");
-        }
-        if (password.equalsIgnoreCase(user.getUsername())
-                || (user.getNickname() != null && password.equalsIgnoreCase(user.getNickname()))
-                || (user.getPhone() != null && password.equals(user.getPhone()))) {
-            throw new IllegalArgumentException("新密码不能与账号、昵称或手机号相同");
-        }
     }
 
     private boolean isAllowedDefaultHomePath(String path) {

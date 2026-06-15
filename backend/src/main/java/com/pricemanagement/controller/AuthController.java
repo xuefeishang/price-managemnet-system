@@ -12,7 +12,6 @@ import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.service.CaptchaService;
 import com.pricemanagement.service.EmployeeIdService;
 import com.pricemanagement.service.LoginHistoryService;
-import com.pricemanagement.service.NotificationMiniProgramEligibilityService;
 import com.pricemanagement.service.PermissionService;
 import com.pricemanagement.service.ProfileService;
 import com.pricemanagement.service.RefreshTokenService;
@@ -49,7 +48,6 @@ public class AuthController {
     private final EmployeeIdService employeeIdService;
     private final PermissionService permissionService;
     private final ProfileService profileService;
-    private final NotificationMiniProgramEligibilityService notificationMiniProgramEligibilityService;
     private final LoginHistoryService loginHistoryService;
 
     @PostMapping("/login")
@@ -246,26 +244,4 @@ public class AuthController {
         return Result.success("密码修改成功，请重新登录");
     }
 
-    // 注册功能（如果需要）
-    @PostMapping("/register")
-    public Result<User> register(@Validated @RequestBody LoginRequest registerRequest) {
-        if (userRepository.existsByUsername(registerRequest.getUsername())) {
-            return Result.error(400, "用户名已存在");
-        }
-
-        User user = new User();
-        user.setUsername(registerRequest.getUsername());
-        user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
-        user.setRole(User.Role.VIEWER); // 默认角色为查看者
-        user.setStatus(CommonStatus.ACTIVE);
-        user.setNickname(registerRequest.getUsername());
-        user.setEmail(registerRequest.getUsername() + "@pricemanagement.com");
-        user.setPhone("");
-
-        User savedUser = userRepository.save(user);
-        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
-        log.debug("New user registered: {}", registerRequest.getUsername());
-
-        return Result.success("注册成功", savedUser);
-    }
 }

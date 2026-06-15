@@ -44,14 +44,14 @@ public class OperationLogHelper {
     public void log(String module, OperationLog.OperationType type, String description, String requestParams, String errorMessage) {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
-            operationLog.setRequestParams(requestParams);
+            operationLog.setRequestParams(SensitiveDataMasker.mask(requestParams));
             applyUsernameFallback(operationLog, type, requestParams);
-            operationLog.setErrorMessage(errorMessage);
+            operationLog.setErrorMessage(SensitiveDataMasker.mask(errorMessage));
             operationLog.setResponseCode(errorMessage == null ? "200" : "500");
 
             operationLogService.log(operationLog);
         } catch (Exception e) {
-            log.error("Failed to log operation: {}", e.getMessage());
+            log.error("Failed to log operation: type={}", e.getClass().getSimpleName());
         }
     }
 
@@ -66,14 +66,20 @@ public class OperationLogHelper {
      * 记录成功操作
      */
     public void logSuccess(String module, OperationLog.OperationType type, String description, String requestParams) {
+        logSuccess(module, type, description, requestParams, null);
+    }
+
+    public void logSuccess(String module, OperationLog.OperationType type, String description,
+                           String requestParams, Long executionTime) {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
-            operationLog.setRequestParams(requestParams);
+            operationLog.setRequestParams(SensitiveDataMasker.mask(requestParams));
             applyUsernameFallback(operationLog, type, requestParams);
             operationLog.setResponseCode("200");
+            operationLog.setExecutionTime(executionTime);
             operationLogService.log(operationLog);
         } catch (Exception e) {
-            log.error("Failed to log operation: {}", e.getMessage());
+            log.error("Failed to log operation: type={}", e.getClass().getSimpleName());
         }
     }
 
@@ -88,15 +94,29 @@ public class OperationLogHelper {
      * 记录失败操作
      */
     public void logError(String module, OperationLog.OperationType type, String description, String requestParams, String errorMessage) {
+        logError(module, type, description, requestParams, errorMessage, "500");
+    }
+
+    /**
+     * 记录带指定响应码的失败操作
+     */
+    public void logError(String module, OperationLog.OperationType type, String description,
+                         String requestParams, String errorMessage, String responseCode) {
+        logError(module, type, description, requestParams, errorMessage, responseCode, null);
+    }
+
+    public void logError(String module, OperationLog.OperationType type, String description,
+                         String requestParams, String errorMessage, String responseCode, Long executionTime) {
         try {
             OperationLog operationLog = buildBaseLog(module, type, description);
-            operationLog.setRequestParams(requestParams);
+            operationLog.setRequestParams(SensitiveDataMasker.mask(requestParams));
             applyUsernameFallback(operationLog, type, requestParams);
-            operationLog.setResponseCode("500");
-            operationLog.setErrorMessage(errorMessage);
+            operationLog.setResponseCode(responseCode);
+            operationLog.setErrorMessage(SensitiveDataMasker.mask(errorMessage));
+            operationLog.setExecutionTime(executionTime);
             operationLogService.log(operationLog);
         } catch (Exception e) {
-            log.error("Failed to log operation: {}", e.getMessage());
+            log.error("Failed to log operation: type={}", e.getClass().getSimpleName());
         }
     }
 

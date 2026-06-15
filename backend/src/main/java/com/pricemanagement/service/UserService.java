@@ -5,15 +5,20 @@ import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.entity.SysRole;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.entity.UserRole;
-import com.pricemanagement.repository.SysRoleRepository;
+import com.pricemanagement.dto.UserUpdateRequest;
+import com.pricemanagement.dto.AdminUserEditRequest;
+import com.pricemanagement.exception.UserConflictException;
+import com.pricemanagement.exception.UserConflictException.Reason;
 import com.pricemanagement.repository.UserRepository;
 import com.pricemanagement.repository.UserRoleRepository;
+import com.pricemanagement.util.DataIntegrityViolationDiagnostics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +34,11 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicyValidator passwordPolicyValidator;
     private final EmployeeIdService employeeIdService;
-    private final SysRoleRepository sysRoleRepository;
     private final UserRoleRepository userRoleRepository;
     private final NotificationMiniProgramEligibilityService notificationMiniProgramEligibilityService;
+    private final ActiveRoleResolver activeRoleResolver;
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
@@ -75,9 +81,17 @@ public class UserService {
 
     @Transactional
     public User createUser(User user) {
+        user.setUsername(normalizeRequiredText(user.getUsername(), "用户名不能为空"));
+        user.setEmployeeId(normalizeNullableText(user.getEmployeeId()));
+        user.setNickname(normalizeNullableText(user.getNickname()));
+        user.setEmail(normalizeNullableText(user.getEmail()));
+        user.setDepartment(normalizeNullableText(user.getDepartment()));
+        user.setWechatOpenid(normalizeNullableText(user.getWechatOpenid()));
+
         if (userRepository.existsByUsername(user.getUsername())) {
-            throw new IllegalArgumentException("用户名已存在: " + user.getUsername());
+            throw new UserConflictException(Reason.USERNAME_EXISTS);
         }
+        passwordPolicyValidator.validate(user, user.getPassword());
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setPhone(normalizePhone(user.getPhone()));
 
@@ -90,72 +104,50 @@ public class UserService {
                 throw new IllegalArgumentException("工号格式错误，应为6位数字");
             }
             if (userRepository.existsByEmployeeId(user.getEmployeeId())) {
-                throw new IllegalArgumentException("工号已存在: " + user.getEmployeeId());
+                throw new UserConflictException(Reason.EMPLOYEE_ID_EXISTS);
             }
         }
+        SysRole defaultRole = activeRoleResolver.requireActiveByCode(user.getRole().name());
 
-        User savedUser = userRepository.save(user);
-        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
+        try {
+            User savedUser = userRepository.saveAndFlush(user);
 
-        // 同步写入sys_user_role表（根据role枚举找到对应角色）
-        if (user.getRole() != null) {
-            Optional<SysRole> defaultRoleOpt = sysRoleRepository.findByRoleCode(user.getRole().name());
-            if (defaultRoleOpt.isPresent()) {
-                UserRole userRole = new UserRole();
-                userRole.setUserId(savedUser.getId());
-                userRole.setRoleId(defaultRoleOpt.get().getId());
-                userRoleRepository.save(userRole);
-                log.info("Assigned default role {} to user {}", user.getRole().name(), savedUser.getUsername());
-            }
+            UserRole userRole = new UserRole();
+            userRole.setUserId(savedUser.getId());
+            userRole.setRoleId(defaultRole.getId());
+            userRoleRepository.saveAndFlush(userRole);
+            log.info("Assigned default role {} to user {}", user.getRole().name(), savedUser.getUsername());
+
+            notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
+            log.info("Created user: {} with employee ID: {}", savedUser.getUsername(), savedUser.getEmployeeId());
+            return savedUser;
+        } catch (DataIntegrityViolationException ex) {
+            throw new UserConflictException(resolveCreateConflictReason(ex), ex);
         }
-
-        log.info("Created user: {} with employee ID: {}", savedUser.getUsername(), savedUser.getEmployeeId());
-        return savedUser;
     }
 
     @Transactional
-    public User updateUser(Long id, User user) {
+    public User updateUser(Long id, UserUpdateRequest request) {
         User existingUser = userRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
 
-        if (user.getNickname() != null) {
-            existingUser.setNickname(user.getNickname());
+        if (request.isNicknamePresent()) {
+            existingUser.setNickname(normalizeNullableText(request.getNickname()));
         }
-        if (user.getEmail() != null) {
-            existingUser.setEmail(user.getEmail());
+        if (request.isEmailPresent()) {
+            existingUser.setEmail(normalizeNullableText(request.getEmail()));
         }
-        if (user.getPhone() != null) {
-            existingUser.setPhone(normalizePhone(user.getPhone()));
+        if (request.isPhonePresent()) {
+            existingUser.setPhone(normalizePhone(request.getPhone()));
         }
-        if (user.getRole() != null) {
-            existingUser.setRole(user.getRole());
-
-            // 同步更新sys_user_role表
-            userRoleRepository.deleteByUserId(id);
-            Optional<SysRole> roleOpt = sysRoleRepository.findByRoleCode(user.getRole().name());
-            if (roleOpt.isPresent()) {
-                UserRole userRole = new UserRole();
-                userRole.setUserId(id);
-                userRole.setRoleId(roleOpt.get().getId());
-                userRoleRepository.save(userRole);
-                log.info("Synced role {} to user {}", user.getRole().name(), existingUser.getUsername());
-            }
+        if (request.getStatus() != null) {
+            existingUser.setStatus(request.getStatus());
         }
-        if (user.getStatus() != null) {
-            existingUser.setStatus(user.getStatus());
+        if (request.isDepartmentPresent()) {
+            existingUser.setDepartment(normalizeNullableText(request.getDepartment()));
         }
-        if (user.getDepartment() != null) {
-            existingUser.setDepartment(user.getDepartment());
-        }
-        if (user.getDeptId() != null) {
-            existingUser.setDeptId(user.getDeptId());
-        }
-        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
-            existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
-            existingUser.setPasswordUpdatedTime(LocalDateTime.now());
-        }
-        if (user.getIsLocked() != null) {
-            existingUser.setIsLocked(user.getIsLocked());
+        if (request.isDeptIdPresent()) {
+            existingUser.setDeptId(request.getDeptId());
         }
 
         User savedUser = userRepository.save(existingUser);
@@ -165,14 +157,49 @@ public class UserService {
     }
 
     @Transactional
+    public User adminEditUser(Long id, AdminUserEditRequest request) {
+        User existingUser = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
+
+        String newPassword = normalizeNullableText(request.getNewPassword());
+        if (newPassword != null) {
+            passwordPolicyValidator.validate(existingUser, newPassword);
+        }
+        if (request.isNicknamePresent()) {
+            existingUser.setNickname(normalizeNullableText(request.getNickname()));
+        }
+        if (request.isEmailPresent()) {
+            existingUser.setEmail(normalizeNullableText(request.getEmail()));
+        }
+        if (request.isPhonePresent()) {
+            existingUser.setPhone(normalizePhone(request.getPhone()));
+        }
+        if (request.isDepartmentPresent()) {
+            existingUser.setDepartment(normalizeNullableText(request.getDepartment()));
+        }
+        if (request.isDeptIdPresent()) {
+            existingUser.setDeptId(request.getDeptId());
+        }
+        if (request.getStatus() != null) {
+            existingUser.setStatus(request.getStatus());
+        }
+        if (newPassword != null) {
+            existingUser.setPassword(passwordEncoder.encode(newPassword));
+            existingUser.setPasswordUpdatedTime(LocalDateTime.now());
+        }
+
+        User savedUser = userRepository.save(existingUser);
+        notificationMiniProgramEligibilityService.requestRefresh(savedUser.getId());
+        log.info("Admin edited user: {}", savedUser.getUsername());
+        return savedUser;
+    }
+
+    @Transactional
     public void resetPassword(Long id, String rawPassword) {
         User existingUser = userRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
 
-        if (rawPassword == null || rawPassword.isBlank()) {
-            throw new IllegalArgumentException("新密码不能为空");
-        }
-
+        passwordPolicyValidator.validate(existingUser, rawPassword);
         existingUser.setPassword(passwordEncoder.encode(rawPassword));
         existingUser.setPasswordUpdatedTime(LocalDateTime.now());
         userRepository.save(existingUser);
@@ -196,9 +223,41 @@ public class UserService {
 
     private String normalizePhone(String phone) {
         if (phone == null || phone.isBlank()) {
-            return "";
+            return null;
         }
-        return phone.replaceAll("\\D", "");
+        return normalizeNullableText(phone.replaceAll("\\D", ""));
+    }
+
+    private String normalizeNullableText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String normalizeRequiredText(String value, String errorMessage) {
+        String normalized = normalizeNullableText(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(errorMessage);
+        }
+        return normalized;
+    }
+
+    private Reason resolveCreateConflictReason(DataIntegrityViolationException ex) {
+        String detail = DataIntegrityViolationDiagnostics.inspect(ex).constraintName().toLowerCase();
+        if (detail.contains("username")) {
+            return Reason.USERNAME_EXISTS;
+        }
+        if (detail.contains("employee_id")) {
+            return Reason.EMPLOYEE_ID_EXISTS;
+        }
+        if (detail.contains("wechat_openid")) {
+            return Reason.WECHAT_ALREADY_BOUND;
+        }
+        if (detail.contains("uk_user_role") || detail.contains("sys_user_role")) {
+            return Reason.USER_ROLE_EXISTS;
+        }
+        return Reason.UNKNOWN_USER_CONFLICT;
     }
 
     /**

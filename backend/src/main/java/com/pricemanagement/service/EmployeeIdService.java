@@ -6,6 +6,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Random;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -30,6 +35,29 @@ public class EmployeeIdService {
             }
         }
         throw new RuntimeException("无法生成唯一工号，请稍后重试");
+    }
+
+    public List<String> generateEmployeeIds(int count, Collection<String> reservedIds) {
+        if (count <= 0) {
+            return List.of();
+        }
+        Set<String> reserved = new HashSet<>(reservedIds == null ? List.of() : reservedIds);
+        Set<String> candidates = new HashSet<>();
+        for (int round = 0; round < MAX_ATTEMPTS && candidates.size() < count; round++) {
+            while (candidates.size() < count) {
+                String candidate = generateRandomEmployeeId();
+                if (!reserved.contains(candidate)) {
+                    candidates.add(candidate);
+                }
+            }
+            userRepository.findByEmployeeIdIn(candidates).stream()
+                    .map(user -> user.getEmployeeId())
+                    .forEach(candidates::remove);
+        }
+        if (candidates.size() < count) {
+            throw new IllegalStateException("无法生成足量唯一工号");
+        }
+        return new ArrayList<>(candidates).subList(0, count);
     }
 
     /**

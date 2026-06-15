@@ -22,6 +22,7 @@ public class SysRoleService {
     private final SysRoleRepository sysRoleRepository;
     private final UserRoleRepository userRoleRepository;
     private final UserRepository userRepository;
+    private final ActiveRoleResolver activeRoleResolver;
 
     public List<SysRole> getAllRoles() {
         return sysRoleRepository.findAll();
@@ -105,28 +106,27 @@ public class SysRoleService {
     public void assignRolesToUser(Long userId, List<Long> roleIds) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + userId));
-
-        // 先删除现有角色
-        userRoleRepository.deleteByUserId(userId);
-
-        // 批量分配新角色
-        if (roleIds != null && !roleIds.isEmpty()) {
-            List<UserRole> userRoles = roleIds.stream()
-                    .map(roleId -> {
-                        UserRole userRole = new UserRole();
-                        userRole.setUserId(userId);
-                        userRole.setRoleId(roleId);
-                        return userRole;
-                    })
-                    .toList();
-            userRoleRepository.saveAll(userRoles);
-            syncPrimaryRole(user, roleIds);
+        if (roleIds == null || roleIds.isEmpty()) {
+            throw new IllegalArgumentException("至少分配一个启用角色");
         }
+
+        List<SysRole> activeRoles = activeRoleResolver.requireAllActiveByIds(roleIds);
+
+        userRoleRepository.deleteByUserId(userId);
+        List<UserRole> userRoles = activeRoles.stream()
+                .map(role -> {
+                    UserRole userRole = new UserRole();
+                    userRole.setUserId(userId);
+                    userRole.setRoleId(role.getId());
+                    return userRole;
+                })
+                .toList();
+        userRoleRepository.saveAll(userRoles);
+        syncPrimaryRole(user, activeRoles);
         log.info("Assigned roles {} to user {}", roleIds, userId);
     }
 
-    private void syncPrimaryRole(User user, List<Long> roleIds) {
-        List<SysRole> roles = sysRoleRepository.findAllById(roleIds);
+    private void syncPrimaryRole(User user, List<SysRole> roles) {
         User.Role primaryRole = roles.stream()
                 .map(SysRole::getRoleCode)
                 .filter(code -> code != null && List.of("ADMIN", "EDITOR", "VIEWER").contains(code))
