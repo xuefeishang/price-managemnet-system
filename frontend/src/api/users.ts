@@ -1,6 +1,6 @@
 
 import http from '@/utils/http'
-import type { ApiResponse, User, PageResponse } from '@/types'
+import type { ApiResponse, User, PageResponse, Role } from '@/types'
 
 // 获取用户列表（分页，仅管理员）
 export const getUsers = async (params?: {
@@ -29,7 +29,7 @@ export interface CreateUserRequest {
   username: string
   password: string
   employeeId?: string
-  role: 'ADMIN' | 'EDITOR' | 'VIEWER'
+  role: Role
   nickname?: string
   email?: string
   phone?: string
@@ -46,15 +46,21 @@ export interface UpdateUserRequest {
   nickname?: string
   email?: string
   phone?: string
-  role?: 'ADMIN' | 'EDITOR' | 'VIEWER'
   status?: 'ACTIVE' | 'INACTIVE'
   department?: string
-  deptId?: number
-  isLocked?: boolean
+  deptId?: number | null
 }
 
 export const updateUser = async (id: number, data: UpdateUserRequest): Promise<ApiResponse<User>> => {
   return await http.put(`/api/users/${id}`, data)
+}
+
+export interface AdminUserEditRequest extends UpdateUserRequest {
+  newPassword?: string
+}
+
+export const adminEditUser = async (id: number, data: AdminUserEditRequest): Promise<ApiResponse<User>> => {
+  return await http.put(`/api/users/${id}/admin-edit`, data)
 }
 
 // 删除用户（仅管理员）
@@ -64,8 +70,7 @@ export const deleteUser = async (id: number): Promise<ApiResponse<void>> => {
 
 // 重置用户密码（仅管理员）
 export const resetUserPassword = async (id: number, newPassword?: string): Promise<ApiResponse<void>> => {
-  const params = newPassword ? { newPassword } : {}
-  return await http.post(`/api/users/${id}/reset-password`, undefined, { params })
+  return await http.post(`/api/users/${id}/reset-password`, newPassword ? { newPassword } : {})
 }
 
 // 锁定用户（仅管理员）
@@ -96,8 +101,24 @@ export const assignUserRoles = async (id: number, roleIds: number[]): Promise<Ap
 // ==================== 用户导入导出 ====================
 
 // 导入用户
-export const importUsers = async (formData: FormData): Promise<ApiResponse<{ successCount: number; skipCount: number; errors: string[] }>> => {
+export interface UserImportValidationError {
+  rowNumber?: number
+  field: string
+  code: string
+  message: string
+}
+
+export interface UserImportResult {
+  valid: boolean
+  imported: boolean
+  totalRows: number
+  importedCount: number
+  errors: UserImportValidationError[]
+}
+
+export const importUsers = async (formData: FormData): Promise<ApiResponse<UserImportResult>> => {
   return await http.post('/api/import/users', formData, {
+    showErrorToast: false,
     headers: {
       'Content-Type': 'multipart/form-data'
     }

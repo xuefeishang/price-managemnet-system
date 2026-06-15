@@ -16,6 +16,7 @@
 import axios, { AxiosError } from 'axios'
 import { showToast } from 'vant'
 import { useUserStore } from '@/store/useUserStore'
+import type { ApiError } from '@/utils/apiError'
 
 // API 基础路径（从环境变量读取）
 const baseURL = import.meta.env.VITE_API_BASE_URL || ''
@@ -41,7 +42,15 @@ declare module 'axios' {
       startTime?: number
     }
     _retry?: boolean
+    showErrorToast?: boolean
   }
+}
+
+const createApiError = (message: string, response?: any, toastShown = false): ApiError => {
+  const error = new Error(message) as ApiError
+  error.response = response
+  error.toastShown = toastShown
+  return error
 }
 
 // ==================== Token 刷新队列 ====================
@@ -123,16 +132,15 @@ instance.interceptors.response.use(
       // 登录接口错误由 Login.vue 自己处理，不弹全局 toast
       const loginUrl = '/auth/login'
       const isLoginUrl = response.config.url?.includes(loginUrl)
-      if (!isLoginUrl) {
+      const shouldShowToast = response.config.showErrorToast !== false && !isLoginUrl
+      if (shouldShowToast) {
         showToast({
           message: errorMsg,
           position: 'bottom'
         })
       }
       // 创建包含响应数据的错误对象
-      const error = new Error(errorMsg) as any
-      error.response = { data }
-      return Promise.reject(error)
+      return Promise.reject(createApiError(errorMsg, { data }, shouldShowToast))
     }
   },
   async error => {
@@ -142,6 +150,7 @@ instance.interceptors.response.use(
     const axiosError = error as AxiosError
     const url = error.config?.url || ''
     const status = error.response?.status
+    const shouldShowToast = error.config?.showErrorToast !== false
 
     // 提取错误消息
     const getErrorMessage = (): string => {
@@ -167,13 +176,10 @@ instance.interceptors.response.use(
     if (status === 429) {
       const errorMsg = getErrorMessage()
       // 登录接口的 429 由 Login.vue 处理
-      if (!isLoginUrl) {
+      if (!isLoginUrl && shouldShowToast) {
         showToast(errorMsg)
       }
-      // 保留原始响应数据
-      const err = new Error(errorMsg) as any
-      err.response = error.response
-      return Promise.reject(err)
+      return Promise.reject(createApiError(errorMsg, error.response, !isLoginUrl && shouldShowToast))
     }
 
     if (status === 401 && !isPublicUrl) {
@@ -227,33 +233,42 @@ instance.interceptors.response.use(
       }
     }
 
-    if (status === 403) {
+    let toastShown = false
+    if (status === 403 && shouldShowToast) {
       showToast('您没有权限访问该资源')
-    } else if (status === 404) {
+      toastShown = true
+    } else if (status === 404 && shouldShowToast) {
       showToast('资源不存在')
-    } else if (axiosError.code === 'ECONNABORTED') {
+      toastShown = true
+    } else if (axiosError.code === 'ECONNABORTED' && shouldShowToast) {
       showToast('请求超时，请稍后重试')
-    } else if (status === 500) {
+      toastShown = true
+    } else if (status === 500 && shouldShowToast) {
       showToast('服务器错误，请联系管理员')
-    } else if (!status && !error.message) {
+      toastShown = true
+    } else if (status && shouldShowToast) {
+      showToast(getErrorMessage())
+      toastShown = true
+    } else if (!status && !error.message && shouldShowToast) {
       showToast('网络连接失败，请检查网络')
-    } else if (error.message && !status) {
+      toastShown = true
+    } else if (error.message && !status && shouldShowToast) {
       // 网络错误（无响应），登录接口由 Login.vue 处理
       if (!isLoginUrl) {
         showToast(getErrorMessage())
+        toastShown = true
       }
-    } else {
+    } else if (shouldShowToast) {
       showToast('网络错误，请稍后重试')
+      toastShown = true
     }
 
     // 对于登录接口，保留原始响应数据以便 Login.vue 处理
     if (isLoginUrl) {
-      const err = new Error(getErrorMessage()) as any
-      err.response = error.response
-      return Promise.reject(err)
+      return Promise.reject(createApiError(getErrorMessage(), error.response, toastShown))
     }
 
-    return Promise.reject(error)
+    return Promise.reject(createApiError(getErrorMessage(), error.response, toastShown))
   }
 )
 

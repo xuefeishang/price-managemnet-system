@@ -2,7 +2,10 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { showToast } from 'vant'
-import { getUsers, createUser, updateUser, deleteUser, lockUser, unlockUser, getUserRolesBatch, assignUserRoles, resetUserPassword, importUsers, exportUsers, downloadUserTemplate } from '@/api/users'
+import { getUsers, createUser, updateUser, adminEditUser, deleteUser, lockUser, unlockUser, getUserRolesBatch, assignUserRoles, importUsers, exportUsers, downloadUserTemplate } from '@/api/users'
+import type { UserImportResult } from '@/api/users'
+import { showApiError } from '@/utils/apiError'
+import type { ApiError } from '@/utils/apiError'
 import { getActiveRoles } from '@/api/roles'
 import { getDepartmentTree } from '@/api/departments'
 import { usePermission, Permission } from '@/composables/usePermission'
@@ -35,7 +38,8 @@ const deletingUser = ref<User | null>(null)
 const selectedRoleIds = ref<number[]>([])
 const importing = ref(false)
 const exporting = ref(false)
-const importResult = ref<{ successCount: number; skipCount: number; errors: string[] } | null>(null)
+const importResult = ref<UserImportResult | null>(null)
+const showImportErrors = ref(false)
 const showMoreMenu = ref(false)
 
 // 防抖搜索
@@ -150,7 +154,7 @@ const loadUsers = async () => {
       await loadAllUserRoles()
     }
   } catch (error: any) {
-    showToast(error.message || '加载用户列表失败')
+    showApiError(error, '加载用户列表失败')
   } finally {
     loading.value = false
   }
@@ -282,17 +286,15 @@ const handleSave = async () => {
   try {
     if (editingUser.value) {
       // 更新用户
-      await updateUser(editingUser.value.id, {
+      await adminEditUser(editingUser.value.id, {
         nickname: formData.value.nickname,
         email: formData.value.email,
         phone: normalizePhone(formData.value.phone),
         department: formData.value.department,
-        deptId: formData.value.deptId ?? undefined,
-        status: formData.value.status
+        deptId: formData.value.deptId,
+        status: formData.value.status,
+        newPassword: formData.value.password.trim() || undefined
       })
-      if (formData.value.password.trim()) {
-        await resetUserPassword(editingUser.value.id, formData.value.password.trim())
-      }
       showToast('更新成功')
       await loadUsers()
     } else {
@@ -313,8 +315,8 @@ const handleSave = async () => {
     }
 
     showModal.value = false
-  } catch (error: any) {
-    showToast(error.message || '操作失败')
+  } catch (error) {
+    showApiError(error, '操作失败')
   } finally {
     loading.value = false
   }
@@ -342,7 +344,7 @@ const confirmDelete = async () => {
     deletingUser.value = null
     await loadUsers()
   } catch (error: any) {
-    showToast(error.message || '删除失败')
+    showApiError(error, '删除失败')
   } finally {
     loading.value = false
   }
@@ -357,7 +359,7 @@ const toggleStatus = async (user: User) => {
     showToast('状态更新成功')
     await loadUsers()
   } catch (error: any) {
-    showToast(error.message || '操作失败')
+    showApiError(error, '操作失败')
   } finally {
     loading.value = false
   }
@@ -376,7 +378,7 @@ const toggleLock = async (user: User) => {
     }
     await loadUsers()
   } catch (error: any) {
-    showToast(error.message || '操作失败')
+    showApiError(error, '操作失败')
   } finally {
     loading.value = false
   }
@@ -421,7 +423,7 @@ const saveRoleAssignment = async () => {
     userRolesMap.value.set(editingUserId.value, selectedRoleIds.value)
     showRoleModal.value = false
   } catch (error: any) {
-    showToast(error.message || '角色分配失败')
+    showApiError(error, '角色分配失败')
   } finally {
     loading.value = false
   }
@@ -443,7 +445,7 @@ const handleDownloadTemplate = async () => {
     await downloadUserTemplate()
     showToast('模板下载成功')
   } catch (error: any) {
-    showToast('模板下载失败')
+    showApiError(error, '模板下载失败')
   }
 }
 
@@ -477,14 +479,20 @@ const handleImport = async (file: File) => {
     const response = await importUsers(formData)
     if (response.data) {
       importResult.value = response.data
-      const msg = response.data.skipCount > 0
-        ? `导入完成: 成功 ${response.data.successCount} 条, 跳过 ${response.data.skipCount} 条`
-        : `导入成功，共 ${response.data.successCount} 条`
-      showToast(msg)
+      showToast(`导入成功，共 ${response.data.importedCount} 条`)
       await loadUsers()
     }
-  } catch (error: any) {
-    showToast(error.message || '导入失败')
+  } catch (error) {
+    const apiError = error as ApiError
+    const result = apiError.response?.data?.data as UserImportResult | undefined
+    if (result?.errors?.length) {
+      importResult.value = result
+      showImportErrors.value = true
+      showToast(`预检发现 ${result.errors.length} 项问题，未导入任何用户`)
+      apiError.toastShown = true
+    } else {
+      showApiError(error, '导入失败')
+    }
   } finally {
     importing.value = false
   }
@@ -497,7 +505,7 @@ const handleExport = async () => {
     await exportUsers()
     showToast('导出成功')
   } catch (error: any) {
-    showToast('导出失败')
+    showApiError(error, '导出失败')
   } finally {
     exporting.value = false
   }
@@ -757,7 +765,7 @@ onMounted(() => {
     </div>
 
     <!-- 新增/编辑模态框 -->
-    <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+    <div v-if="showModal" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">{{ editingUser ? '编辑用户' : '新增用户' }}</h2>
@@ -919,6 +927,35 @@ onMounted(() => {
           <button class="btn btn-primary" @click="saveRoleAssignment" :disabled="loading">
             {{ loading ? '保存中...' : '保存' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用户导入预检错误 -->
+    <div v-if="showImportErrors && importResult" class="modal-overlay">
+      <div class="modal-content import-errors-modal">
+        <div class="modal-header">
+          <h2 class="modal-title">用户导入预检未通过</h2>
+          <button class="modal-close" @click="showImportErrors = false" title="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="import-errors-summary">
+            共检查 {{ importResult.totalRows }} 行，发现 {{ importResult.errors.length }} 项问题，未导入任何用户。
+          </p>
+          <div class="import-errors-list">
+            <div v-for="(error, index) in importResult.errors" :key="`${error.rowNumber}-${error.code}-${index}`" class="import-error-item">
+              <span class="import-error-location">{{ error.rowNumber ? `第 ${error.rowNumber} 行` : '模板' }}</span>
+              <span class="import-error-message">{{ error.message }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" @click="showImportErrors = false">我知道了</button>
         </div>
       </div>
     </div>
@@ -1748,6 +1785,41 @@ onMounted(() => {
 
 .delete-modal {
   max-width: 420px;
+}
+
+.import-errors-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.import-errors-summary {
+  margin: 0 0 var(--spacing-md);
+  color: var(--gray-700);
+}
+
+.import-errors-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.import-error-item {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--error-color) 8%, white);
+}
+
+.import-error-location {
+  color: var(--error-color);
+  font-weight: 600;
+}
+
+.import-error-message {
+  color: var(--gray-700);
 }
 
 .delete-message {
