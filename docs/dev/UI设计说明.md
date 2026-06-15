@@ -680,3 +680,52 @@
 *最后更新：2026-06-14 — 补充 v1.5.0 ~ v1.6.7 期间上线的 5 个 PC 端新页面 + 6 个 uniapp 页面*
 *上次更新：2026-06-14 — 用户管理第二轮安全交互*
 *再上次：2026-06-11 — 预算管理工作台*
+
+---
+
+## v1.6.11 首页核心区 3 大区块澄清
+
+PC 首页存在 3 个易混淆的"重点"相关区块，本节明确区分。
+
+| 区块名称 | 数据来源 | 控制字段 | 数量上限 | 视觉特征 |
+|---------|---------|---------|---------|---------|
+| **重点产品**（featuredProductCount） | `home_layout.featured_product_count` | `home_layout.featured_product_count` | 1-4 个 | 36px 大价格数字，2×2 价格速览卡 |
+| **重点关注指标**（coreMetrics） | `home_widget.core_metrics` | `home_widget.core_metrics` | 跟随产品数 | 摘要卡，含最新价/较上期/月均价等 |
+| **重点走势**（trendChart） | `home_widget.trend_chart` | `home_widget.trend_chart` | 最多 4 个小折线图卡 | 每个产品 1 个 30天/180天/12个月折线图 |
+
+**实现位置**（v1.6.11 实测）：
+
+- 区块定义：`frontend/src/views/Home.vue:122-130`（home_widget 字典映射 section config）
+- 重点产品计算：`Home.vue:175-185`（`featuredProductsForDisplay` computed）
+- 重点关注指标渲染：`Home.vue:1138-1147`（`v-else-if="section.key === 'core_metrics'"`）
+- 重点走势渲染：`Home.vue:1198-1200`（`class="featured-trend-cards"` + `title="重点走势"`）
+
+**响应式行为**：
+
+- 全尺寸（≥1024px）：3 个区块都展示
+- 中等尺寸（768-1024px）：重点产品显示 Mini 折线图，不展示大折线图
+- H5（<768px）：**不展示经营摘要和重点走势**，重点关注指标采用 2×2 紧凑卡片
+
+> v1.6.11 实测：v1.4.0 之后"重点走势"在样式设置中独立于"首页体验"配置，由 `home_widget.trend_chart` 单独控制。
+
+---
+
+## v1.6.11 微信小程序价格走势图触摸交互规范
+
+**位置**：`frontend-uniapp/src/pages/products/detail.vue` 与 `components/price-trend-chart/index.vue`
+
+**强制要求**（v1.6.11 补充）：
+
+1. **Canvas 复用**：触摸交互必须复用已初始化的 Canvas 节点与绘图上下文，禁止每次触摸事件重新创建 Canvas
+2. **节流**：触摸移动按帧节流（requestAnimationFrame），每帧最多处理一次
+3. **重绘条件**：仅在选中数据点变化时重绘，避免无效重绘
+4. **12 个月性能**：12 个月数据范围下真机滑动必须保持流畅（≥30fps）
+
+**触摸交互行为**：
+
+- 触摸趋势线时展示所选日期的售价与预算价格
+- 选点信息固定放在 30天/180天/12个月范围按钮上方
+- 横轴显示日期范围
+- 触摸结束时保持选点显示 3 秒后自动隐藏
+
+**已应用版本**：v1.6.0 性能优化（commit 历史已记录）
