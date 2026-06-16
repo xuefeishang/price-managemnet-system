@@ -44,23 +44,32 @@
 
 ### 步骤2：更新项目文档
 
+**v2.0 文档结构（2026-06-15 起）**：`docs/dev` 已由旧版中文大文件拆分为 `api/`、`design/`、`workflow/` 三类职责化文档。旧文件保留在 `docs/dev/backup/` 作为历史快照，只读不维护。
+
 **必须更新的文档：**
 
-| 文档 | 更新内容 |
-|------|---------|
-| `README.md` | 功能列表、新增功能说明 |
-| `docs/dev/开发指南.md` | 开发流程、代码规范、API文档变更 |
-| `docs/ops/IDEA部署指南.md` | 部署方式、环境配置变更 |
-| `docs/dev/项目设计文档.md` | 数据库表结构、API接口、功能模块设计 |
-| `docs/archive/项目完成总结.md` | 功能完成情况表格、更新状态 |
-| `docs/dev/UI设计说明.md` | 界面/交互变更 |
+| 文档 | 更新内容 | 历史来源（只读） |
+|------|---------|---------------------|
+| `README.md` | 功能列表、新增功能说明 | （不变） |
+| `docs/dev/workflow/development.md` | 开发流程、代码规范 | `docs/dev/backup/开发指南.md` |
+| `docs/dev/workflow/deployment.md` / `docs/ops/IDEA部署指南.md` | 部署方式、环境配置变更 | `docs/ops/IDEA部署指南.md` |
+| `docs/dev/design/architecture.md` | 功能模块、架构设计 | `docs/dev/backup/项目设计文档.md` §功能模块 |
+| `docs/dev/design/database.md` | 数据库表结构、ER 图 | `docs/dev/backup/项目设计文档.md` §数据库设计 |
+| `docs/dev/design/api-design.md` | API 设计总览、模块接口 | `docs/dev/backup/项目设计文档.md` §API设计 |
+| `docs/dev/api/internal.md` / `docs/dev/api/external.md` | 内部/外部端点详细契约 | `docs/dev/backup/API调用手册.md` |
+| `docs/dev/coding-standards.md` | 代码规范、配置规范 | `docs/dev/backup/项目设计规范.md` + `docs/dev/backup/开发指南.md` |
+| `docs/dev/design/specifications.md` | 字典/颜色/字体/组件/安全等设计规范 | `docs/dev/backup/项目设计规范.md` |
+| `docs/dev/design/ui.md` | 界面/交互变更 | `docs/dev/backup/UI设计说明.md` |
+| `docs/dev/stack.md` | 技术栈、依赖、版本变更 | `docs/dev/backup/技术栈简明说明.md` |
+| `docs/archive/项目完成总结.md` | 功能完成情况表格、更新状态 | （不变） |
 
 **文档更新原则：**
 
-- API 变更：必须更新 `docs/dev/项目设计文档.md` 中的 API 部分
-- 数据库变更：必须更新 `docs/dev/项目设计文档.md` 中的表结构部分
+- API 变更：必须更新 `docs/dev/api/internal.md` 或 `docs/dev/api/external.md`（详细端点）+ `docs/dev/design/api-design.md`（设计总览）
+- 数据库变更：必须更新 `docs/dev/design/database.md`（表结构 + ER 图）
 - 新增功能：所有文档中功能列表部分必须同步更新
-- 界面/交互变更：更新对应的说明文档
+- 界面/交互变更：更新 `docs/dev/design/ui.md`
+- 流程/规范变更：同步 `docs/dev/workflow/development.md`、`docs/dev/coding-standards.md` 或 `docs/dev/design/specifications.md`
 
 ### 步骤3：更新数据字典
 
@@ -243,11 +252,29 @@ price-management-system/
 │       └── types/         # TypeScript类型（复用）
 ├── docs/                   # 项目文档
 │   ├── dev/               # 开发文档
-│   │   ├── 开发指南.md
-│   │   ├── 项目设计文档.md
-│   │   ├── 项目设计规范.md
-│   │   ├── UI设计说明.md
-│   │   └── 技术栈简明说明.md
+│   │   ├── README.md
+│   │   ├── stack.md
+│   │   ├── coding-standards.md
+│   │   ├── api/
+│   │   │   ├── README.md
+│   │   │   ├── specs.md
+│   │   │   ├── auth.md
+│   │   │   ├── internal.md
+│   │   │   └── external.md
+│   │   ├── design/
+│   │   │   ├── README.md
+│   │   │   ├── architecture.md
+│   │   │   ├── database.md
+│   │   │   ├── api-design.md
+│   │   │   ├── specifications.md
+│   │   │   └── ui.md
+│   │   ├── workflow/
+│   │   │   ├── README.md
+│   │   │   ├── development.md
+│   │   │   ├── git.md
+│   │   │   ├── deployment.md
+│   │   │   └── learning-path.md
+│   │   └── backup/        # v1.6.11 历史快照，只读不维护
 │   ├── ops/               # 运维文档
 │   │   ├── 操作手册.md
 │   │   └── IDEA部署指南.md
@@ -325,29 +352,37 @@ price-management-system/
 | `AGENTS.md` | 项目规范、AI助手指导原则 | Codex | 规范变更时 |
 | `README.md` | 项目入口文档：简介、功能列表、快速启动 | 所有访问者 | 功能变更时 |
 | `docs/ops/操作手册.md` | 完整操作指南：本地开发 / GitHub更新 / 生产部署 | 开发者/运维 | 操作流程变更时 |
-| `docs/dev/开发指南.md` | 开发流程、代码规范、Git规范、API文档、常用命令 | 开发者 | 开发流程变更时 |
+| `docs/dev/README.md` | v2.0 开发文档总览、迁移映射、维护矩阵 | 所有人 | 文档结构变更时 |
+| `docs/dev/workflow/development.md` | 开发流程、快速开始、常见问题 | 开发者 | 开发流程变更时 |
+| `docs/dev/workflow/git.md` | Git 分支、提交规范、常用命令 | 开发者 | Git 流程变更时 |
+| `docs/dev/workflow/deployment.md` | Docker 部署、端口、环境变量、回滚 | 开发者/运维 | 部署方式变更时 |
 | `docs/ops/IDEA部署指南.md` | 本地开发环境部署 + 生产环境部署 | 开发者 | 部署方式变更时 |
-| `docs/dev/项目设计文档.md` | 技术选型、数据库设计、API设计、功能模块设计 | 设计师/架构师 | 技术变更时 |
+| `docs/dev/api/` | API 通用规范、认证、内部/外部端点 | 前端/后端/外部对接方 | API 变更时 |
+| `docs/dev/design/architecture.md` | 技术选型、功能模块、架构设计 | 设计师/架构师 | 技术变更时 |
+| `docs/dev/design/database.md` | 数据库表结构、ER 图 | DBA/后端开发 | 数据库变更时 |
+| `docs/dev/design/api-design.md` | API 设计总览、模块接口 | 前端/后端 | API 设计变更时 |
+| `docs/dev/design/specifications.md` | 字典、颜色、字体、组件、安全等设计规范 | 全栈开发 | 设计规范变更时 |
+| `docs/dev/coding-standards.md` | 编码规范、注释、配置、检查清单 | 开发者 | 编码规范变更时 |
 | `docs/archive/项目完成总结.md` | 项目概述、完成情况汇总、技术栈 | 管理者/汇报 | 里程碑完成时 |
-| `docs/dev/UI设计说明.md` | UI设计说明、配色方案、页面清单 | 设计师 | UI变更时 |
+| `docs/dev/design/ui.md` | UI设计说明、配色方案、页面清单 | 设计师 | UI变更时 |
 
 ### 文档应用场景
 
 ```
 新成员加入
-  └─ README.md → docs/ops/操作手册.md → docs/dev/开发指南.md
+  └─ README.md → docs/dev/README.md → docs/dev/workflow/development.md
 
 开发新功能
-  └─ AGENTS.md → docs/dev/项目设计文档.md → docs/dev/开发指南.md
+  └─ AGENTS.md → docs/dev/design/architecture.md → docs/dev/coding-standards.md
 
 部署生产环境
-  └─ docs/ops/操作手册.md → 生产部署章节
+  └─ docs/dev/workflow/deployment.md → docs/ops/操作手册.md
 
 汇报/总结
   └─ docs/archive/项目完成总结.md
 
 UI设计变更
-  └─ UI设计说明.md
+  └─ docs/dev/design/ui.md
 
 日常操作
   └─ 操作手册.md（本地开发 / GitHub更新 / 生产部署）

@@ -48,18 +48,18 @@
 
 **必须更新的文档：**
 
-| 文档 | 更新内容 | 旧版位置（v1.6.11） |
+| 文档 | 更新内容 | 历史来源（只读） |
 |------|---------|---------------------|
 | `README.md` | 功能列表、新增功能说明 | （不变） |
-| `docs/dev/workflow/development.md` | 开发流程、代码规范 | `docs/dev/开发指南.md` |
+| `docs/dev/workflow/development.md` | 开发流程、代码规范 | `docs/dev/backup/开发指南.md` |
 | `docs/dev/workflow/deployment.md` | 部署方式、环境配置 | `docs/ops/IDEA部署指南.md` |
-| `docs/dev/design/database.md` | 数据库表结构 | `docs/dev/项目设计文档.md` §数据库设计 |
-| `docs/dev/design/api-design.md` | API 设计、模块 | `docs/dev/项目设计文档.md` §API设计 + §功能模块 |
-| `docs/dev/api/internal.md` / `api/external.md` | 端点详细 | `docs/dev/API调用手册.md` |
-| `docs/dev/coding-standards.md` | 代码规范、配置规范 | `docs/dev/项目设计规范.md` |
-| `docs/dev/design/specifications.md` | 字典/颜色/字体/组件规范 | `docs/dev/项目设计规范.md` |
-| `docs/dev/design/ui.md` | 界面/交互变更 | `docs/dev/UI设计说明.md` |
-| `docs/dev/stack.md` | 依赖变更 | `docs/dev/技术栈简明说明.md` |
+| `docs/dev/design/database.md` | 数据库表结构 | `docs/dev/backup/项目设计文档.md` §数据库设计 |
+| `docs/dev/design/api-design.md` | API 设计、模块 | `docs/dev/backup/项目设计文档.md` §API设计 + §功能模块 |
+| `docs/dev/api/internal.md` / `api/external.md` | 端点详细 | `docs/dev/backup/API调用手册.md` |
+| `docs/dev/coding-standards.md` | 代码规范、配置规范 | `docs/dev/backup/项目设计规范.md` |
+| `docs/dev/design/specifications.md` | 字典/颜色/字体/组件规范 | `docs/dev/backup/项目设计规范.md` |
+| `docs/dev/design/ui.md` | 界面/交互变更 | `docs/dev/backup/UI设计说明.md` |
+| `docs/dev/stack.md` | 依赖变更 | `docs/dev/backup/技术栈简明说明.md` |
 | `docs/archive/项目完成总结.md` | 功能完成情况表格 | （不变） |
 
 **文档更新原则：**
@@ -236,11 +236,29 @@ price-management-system/
 │       └── types/         # TypeScript类型（复用）
 ├── docs/                   # 项目文档
 │   ├── dev/               # 开发文档
-│   │   ├── 开发指南.md
-│   │   ├── 项目设计文档.md
-│   │   ├── 项目设计规范.md
-│   │   ├── UI设计说明.md
-│   │   └── 技术栈简明说明.md
+│   │   ├── README.md
+│   │   ├── stack.md
+│   │   ├── coding-standards.md
+│   │   ├── api/
+│   │   │   ├── README.md
+│   │   │   ├── specs.md
+│   │   │   ├── auth.md
+│   │   │   ├── internal.md
+│   │   │   └── external.md
+│   │   ├── design/
+│   │   │   ├── README.md
+│   │   │   ├── architecture.md
+│   │   │   ├── database.md
+│   │   │   ├── api-design.md
+│   │   │   ├── specifications.md
+│   │   │   └── ui.md
+│   │   ├── workflow/
+│   │   │   ├── README.md
+│   │   │   ├── development.md
+│   │   │   ├── git.md
+│   │   │   ├── deployment.md
+│   │   │   └── learning-path.md
+│   │   └── backup/        # v1.6.11 历史快照，只读不维护
 │   ├── ops/               # 运维文档
 │   │   ├── 操作手册.md
 │   │   └── IDEA部署指南.md
