@@ -416,14 +416,14 @@ CREATE TABLE IF NOT EXISTS ip_blacklist (
 |---|---|---|---|
 | Phase 0 只读核实与备份 | 已完成 | L0 | 生产备份目录 `/opt/backups/security-2026-06-16/`（含 iptables.rules.v4.backup）|
 | Phase 1.1 后端 8080 收敛 | 已完成 | L2 | 现有 iptables PHASE1-DROP-HOST-PORTS 已拦截（公网超时 5s）|
-| Phase 1.2 MySQL 3306 收敛 | 已完成 | L2 | 2026-06-16 11:27 添加 PHASE1-3306 三条规则 + 持久化到 rules.v4 |
+| Phase 1.2 MySQL 3306 收敛 | 已完成（含紧急修复）| L2 | 2026-06-16 11:27 添加 PHASE1-3306 三条规则 + 11:55 紧急修复 iptables 顺序（DROP 必须在 ACCEPT 之后）+ 11:57 添加 docker bridge 172.16.0.0/12 ACCEPT + 持久化到 rules.v4 |
 | Phase 1.3 Redis 6379 收敛 | 已完成 | L2 | 现有 iptables PHASE1-DROP-HOST-PORTS 已覆盖 |
-| Phase 1.4 Harbor 8082 收敛 | 已完成 | L3 | 2026-06-16 11:27 添加 PHASE1-8082 三条规则 + 持久化到 rules.v4 |
+| Phase 1.4 Harbor 8082 收敛 | 已完成（含紧急修复）| L3 | 2026-06-16 11:27 添加 PHASE1-8082 三条规则 + 11:55 紧急修复 iptables 顺序 + 11:57 添加 docker bridge ACCEPT + 持久化到 rules.v4 |
 | Phase 1.5 SSH 加固 | 未完成 | L3 | 限源 + 禁密码 + PermitRootLogin（多 sessions 验证后实施）|
 | Phase 2 Nginx 攻击特征拒绝 | 已完成 | L1 | 本地 nginx.conf 添加 security_blocked map + 4 个 server if 拦截；分层限流（api_global 30r/s + login 10r/m）已配置；`limit_req_dry_run on` 先观察 48h |
 | Phase 2.1 nginx 语法修复 | 已完成 | L0 | 修复本地 80/32801 块出现的孤立 3 行 + 重复 /api/auth/login（会导致 nginx 启动失败）；保留 4 个 server 块对称结构 |
 | Phase 3 fail2ban | 未完成 | L1 | 先启用 sshd + nginx-jndi，暂缓 nginx-404 |
-| Phase 4 V47 迁移 + SecurityEventService | 未完成 | L0/L1 | 新增 security_event + ip_blacklist 表 + 异步事件服务 |
+| Phase 4 V47 迁移 + SecurityEventService | **代码完成 + 部署待执行** | L0/L1 | 2026-06-16 V47 SQL/Entity/Repository 已提交到 master（commit 2bc74fe）；后端容器仍是 v2.1.0 部署版本（00:27:48 启动），V47 迁移**未在生产执行**；需重建后端镜像 + 重启触发 Flyway |
 | Phase 4 异常归类 | 未完成 | L1 | 4xx/5xx 不污染 ERROR 日志 |
 | Phase 5 密钥治理 | [跳过] | L1-L3 | 按用户决策不在本次范围 |
 | Phase 6 管理员门户 | [跳过] | L0/L1 | 按用户决策不在本次范围 |
@@ -433,8 +433,9 @@ CREATE TABLE IF NOT EXISTS ip_blacklist (
 | 风险编号 | v1.0 描述 | 实际发现 | 改正措施 |
 |---|---|---|---|
 | S-01 后端 8080 暴露 | 推断"通过 Nginx 代理即可" | 实际已有 iptables PHASE1 限源（公网 5s 超时）| [已确认] 现有规则已生效 |
-| S-02 MySQL/Redis/Harbor 暴露 | 全部推断公网可达 | 6379 已被 iptables DROP；3306/8082 仍可达 | [已改正] 11:27 添加 3306/8082 限源 |
+| S-02 MySQL/Redis/Harbor 暴露 | 全部推断公网可达 | 6379 已被 iptables DROP；3306/8082 仍可达 | [已改正] 11:27 添加 3306/8082 限源；11:55 **紧急修复** iptables 顺序错误（DROP 在 ACCEPT 前导致 3306/8082 完全不可达，包括 10.7.5.0/24 和 172.16.0.0/12）；11:57 添加 docker bridge ACCEPT；12:00 验证 mysql8 容器内通过 10.7.5.175:3306 连接恢复 |
 | iptables 持久化 | 假设重启会丢 | iptables-persistent 已装 + rules.v4 存在 | [已确认] 无丢失风险 |
+| **iptables 规则顺序** | 默认正确 | **DANGER**：用 `iptables -I` 添加 DROP 会插到最前，必须 ACCEPT 先 DROP 后 | **[已修复]** 11:55 删除原规则重排 + 添加 DOCKER 网段 ACCEPT |
 | SSH 22 风险 | 未明确说明 | PermitRootLogin=yes + PasswordAuthentication=yes | [未改] 等 Phase 1.5 多 sessions 验证 |
 
 ### 已执行变更记录
