@@ -20,6 +20,7 @@ frontend-uniapp/
 │   │   ├── mini-trend-chart/    # 迷你价格走势图（Canvas）
 │   │   └── price-trend-chart/   # 详情页价格走势图（Canvas）
 │   ├── composables/        # 组合式函数
+│   ├── custom-tab-bar/     # 微信小程序原生自定义 tabBar
 │   ├── pages/              # 主包页面
 │   ├── pages-sub/          # 分包页面
 │   ├── static/             # 静态资源
@@ -99,6 +100,8 @@ npm run build:app
 
 移动端一级功能必须放在底部导航中，页面内部不再放跨功能快捷入口：`首页` 只展示行情概览，`历史` 只做历史查询，`录入` 只做价格录入，`我的` 只承载账号信息和退出登录。
 
+微信小程序端 `pages.json` 使用 `tabBar.custom: true`，底部导航由 `src/custom-tab-bar/index.js|json|wxml|wxss` 原生组件托管；不要改回 `index.vue`，否则微信开发者工具不会生成可执行的自定义 tabBar。
+
 账号密码登录页支持用户主动勾选“记住账号和密码”。凭据仅保存在当前设备，并按当前服务器环境隔离；取消勾选后立即清除对应环境的本地凭据。
 
 ## 功能特性
@@ -162,7 +165,7 @@ POST /api/auth/wechat-login
 ## 注意事项
 
 1. 微信小程序 AppID 需要在 `manifest.json` 中配置（当前：`wxe6ae2d447abb057e`）
-2. TabBar 使用自定义配置，根据角色展示 首页/历史/录入/我的
+2. TabBar 使用微信小程序原生自定义组件，根据角色展示 首页/历史/录入/我的
 3. 默认 API 地址通过 `.env.production` / `.env.development` 配置；登录页“配置服务器地址”可在本机调试或内网部署时覆盖为指定 IP 与端口
 4. 图表使用 Canvas 2D API，兼容小程序环境
 5. 产品、分类、产地、客户、审批、字典、用户等完整运维在 PC 端完成

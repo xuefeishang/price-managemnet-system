@@ -715,10 +715,11 @@ source: docs/dev/backup/UI设计说明.md
 
 ### 小程序自定义 tabBar 规范
 
-- `pages.json` 中 `tabBar.custom: true`，由 `custom-tab-bar/index.vue` 统一托管
+- `pages.json` 中 `tabBar.custom: true`，微信小程序端由 `frontend-uniapp/src/custom-tab-bar/index.js|json|wxml|wxss` 原生组件统一托管；该目录不能只放 `index.vue`，否则微信开发者工具不会生成可执行的自定义 tabBar
 - tabBar 页面**不得**再次手动挂载 `CustomTabBar` 组件
 - 进入登录页必须使用 `uni.reLaunch` 清理页面栈
 - 非 tabBar 页面返回时无上一页使用 `uni.switchTab` 回到首页
+- 自定义 tabBar 负责从本地用户会话读取角色，VIEWER 隐藏"录入"，ADMIN/EDITOR 展示"录入"，并在"我的"入口显示未读消息角标
 
 ### 页面清单索引更新
 

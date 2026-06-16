@@ -1,0 +1,31 @@
+<view class="custom-tabbar-shell">
+  <view
+    class="notification-bubble {{bubbleVisible && currentPath === activeHostPath ? 'visible' : ''}}"
+    bindtap="goNotifications"
+  >
+    <view class="bubble-dot"></view>
+    <text>{{bubbleText}}</text>
+    <text class="bubble-arrow">›</text>
+  </view>
+
+  <view class="custom-tabbar">
+    <view
+      wx:for="{{tabList}}"
+      wx:key="key"
+      class="tab-item {{currentPath === item.pagePath ? 'active' : ''}}"
+      data-path="{{item.pagePath}}"
+      bindtap="switchTab"
+    >
+      <view class="tab-icon-wrap">
+        <text class="tab-icon">{{item.icon}}</text>
+        <text
+          wx:if="{{item.key === 'profile'}}"
+          class="tab-badge {{unreadCount > 0 ? 'visible' : ''}}"
+        >
+          {{unreadText}}
+        </text>
+      </view>
+      <text class="tab-text">{{item.text}}</text>
+    </view>
+  </view>
+</view>
