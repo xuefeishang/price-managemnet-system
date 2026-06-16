@@ -42,6 +42,7 @@ docs/dev/
 │   ├── database.md                 #   数据库表结构 + ER 图
 │   ├── api-design.md               #   API 设计文档
 │   ├── specifications.md           #   设计规范（字典/颜色/字体/组件）
+│   ├── security.md                 #   安全设计（v2.1.0 新增）
 │   └── ui.md                       #   UI 设计说明
 │
 ├── workflow/                       # 工作流

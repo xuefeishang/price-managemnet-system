@@ -82,6 +82,9 @@ source: docs/dev/backup/开发指南.md + docs/dev/backup/技术栈简明说明.
 2. **内外网分离**：内网 32801（HTTP，免证书）+ 外网 32080（HTTPS，证书统一）
 3. **小程序真机调试**：内网 32801 仅用于真机调试，生产必须使用 32080
 4. **Host 网络后端**：后端容器使用 `network_mode: host`，避免 docker-proxy 性能损耗
+5. **端口最小化**（v2.1.0）：3306/6379/8080/8082 仅本机/内网可达，依赖 iptables 规则
+
+> 详细安全配置（iptables 规则、Nginx 攻击特征、限流阈值）见 [docs/dev/design/security.md](../design/security.md)。
 
 ## Docker 网络模式对比
 
@@ -170,6 +173,31 @@ services:
       timeout: 10s
       retries: 3
 ```
+
+## iptables 持久化（v2.1.0 安全加固）
+
+生产环境使用 iptables 限制 3306/6379/8080/8082 仅本机/内网可达。
+**关键**：iptables 默认重启丢失，必须持久化。
+
+```bash
+# 首次安装
+apt install iptables-persistent
+# 启动时自动加载 /etc/iptables/rules.v4
+
+# 每次修改 iptables 后必须保存
+iptables -I INPUT -p tcp -s 10.7.5.0/24 --dport 3306 -j ACCEPT
+netfilter-persistent save   # 写入 /etc/iptables/rules.v4
+
+# 验证持久化
+grep -c 'SECURITY-HARDENING-PHASE1' /etc/iptables/rules.v4
+# 应 >= 7（v2.1.0 当前规则数）
+
+# 灾难恢复：所有 PHASE1 规则回滚
+iptables-save | grep -v SECURITY-HARDENING-PHASE1 | iptables-restore
+netfilter-persistent save
+```
+
+**回滚原则**：每次只改一个端口的限源规则；改完立即验证业务正常再保存。
 
 ### 常用命令
 
