@@ -44,3 +44,7 @@ target/
 
 # Local backup directory (not in version control)
 backup/
+
+# Internal operations & security management documents
+# (含生产配置位置、密码获取方式、应急联系 — 仅运维/安全负责人通过安全渠道分发)
+docs/dev/ops-internal/
