@@ -13,7 +13,9 @@ import java.time.LocalDateTime;
 @Table(name = "operation_log", indexes = {
     @Index(name = "idx_operation_user", columnList = "user_id"),
     @Index(name = "idx_operation_type", columnList = "operation_type"),
-    @Index(name = "idx_operation_time", columnList = "operation_time")
+    @Index(name = "idx_operation_time", columnList = "operation_time"),
+    @Index(name = "idx_operation_risk_score", columnList = "risk_score"),
+    @Index(name = "idx_operation_security_event", columnList = "security_event_id")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class OperationLog {
@@ -69,6 +71,12 @@ public class OperationLog {
 
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
+
+    @Column(name = "risk_score", nullable = false)
+    private Integer riskScore = 0;
+
+    @Column(name = "security_event_id")
+    private Long securityEventId;
 
     @Transient
     public String getStatus() {
