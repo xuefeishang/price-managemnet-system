@@ -24,13 +24,14 @@ services:
       start_period: 10s
 
   # 后端服务
+  # 注意：后端使用 network_mode: host，ports 配置不生效。
+  # 公网访问限制依赖：iptables 规则（已配置）或本机防火墙
+  # v2.1.0 安全加固：依赖现有 iptables 规则限制公网访问 8080
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: price-management-backend
-    ports:
-      - "8080:8080"
     network_mode: host
     environment:
       # 生产容器默认使用 prod profile，避免加载本地开发兜底配置
