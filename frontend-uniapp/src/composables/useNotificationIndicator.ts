@@ -11,6 +11,32 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let bubbleTimer: ReturnType<typeof setTimeout> | null = null
 let refreshPromise: Promise<void> | null = null
 
+const normalizeUnreadCount = (value: unknown) => {
+  const count = Number(value || 0)
+  if (!Number.isFinite(count) || count <= 0) return 0
+  return Math.floor(count)
+}
+
+const syncCustomTabBarUnreadCount = (count: number) => {
+  // #ifdef MP-WEIXIN
+  const pages = getCurrentPages()
+  for (let index = pages.length - 1; index >= 0; index -= 1) {
+    const tabBar = (pages[index] as any)?.getTabBar?.()
+    if (tabBar?.setUnreadCount) {
+      tabBar.setUnreadCount(count)
+      return
+    }
+  }
+  // #endif
+}
+
+export const setNotificationUnreadCount = (count: number) => {
+  const nextCount = normalizeUnreadCount(count)
+  unreadCount.value = nextCount
+  initialized.value = true
+  syncCustomTabBarUnreadCount(nextCount)
+}
+
 export const showNotificationBubble = (message = '收到新的消息通知') => {
   bubbleText.value = message
   bubbleVisible.value = true
@@ -34,19 +60,18 @@ export const refreshNotificationIndicator = async (showBubbleOnIncrease = true) 
 const refreshNotificationIndicatorInternal = async (showBubbleOnIncrease: boolean) => {
   const userStore = useUserStore()
   if (!userStore.isAuthenticated) {
-    unreadCount.value = 0
+    setNotificationUnreadCount(0)
     initialized.value = false
     return
   }
 
   try {
     const response = await getUnreadNotificationCount()
-    const nextCount = Number(response.data || 0)
+    const nextCount = normalizeUnreadCount(response.data)
     if (showBubbleOnIncrease && initialized.value && nextCount > unreadCount.value) {
       showNotificationBubble()
     }
-    unreadCount.value = nextCount
-    initialized.value = true
+    setNotificationUnreadCount(nextCount)
   } catch {
     // 通知角标属于辅助信息，失败时保留已有状态并等待下次轮询。
   }
@@ -68,6 +93,7 @@ export const useNotificationIndicator = () => ({
   bubbleText,
   activeHostPath,
   refreshNotificationIndicator,
+  setNotificationUnreadCount,
   showNotificationBubble,
   startNotificationPolling,
   setActiveNotificationHost

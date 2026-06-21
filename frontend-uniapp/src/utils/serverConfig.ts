@@ -35,34 +35,82 @@ const DEV_BASE_URL = DEVELOPMENT_SERVER_CONFIG_ENABLED
   : PRODUCTION_BASE_URL
 
 // 网络模式
-export type NetworkMode = 'internal' | 'external' | 'auto' | 'dev'
+export type NetworkMode = 'internal' | 'external' | 'auto' | 'dev' | 'custom'
 
 export interface ServerConfig {
   ip: string
   port: string
   protocol?: 'http' | 'https'
+  siteUrl?: string
+  apiBaseUrl?: string
 }
 
 // ============ 基础工具函数 ============
 
-const normalizeBaseUrl = (url: string) => url.replace(/\/$/, '')
+const normalizeBaseUrl = (url: string) => url.trim().replace(/\/$/, '')
+
+const isHttpUrl = (url?: string) => /^https?:\/\/[^/]+/i.test(url?.trim() || '')
+
+const withDefaultProtocol = (url: string) => {
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+const formatBaseUrl = (protocol: 'http' | 'https', host: string, port: string) => {
+  const normalizedPort = port.trim()
+  const defaultPort = protocol === 'https' ? '443' : '80'
+  return `${protocol}://${host.trim()}${normalizedPort && normalizedPort !== defaultPort ? `:${normalizedPort}` : ''}`
+}
 
 const parseBaseUrl = (url: string): ServerConfig => {
-  const normalizedUrl = normalizeBaseUrl(url)
+  const normalizedUrl = normalizeBaseUrl(withDefaultProtocol(url))
   const matched = normalizedUrl.match(/^https?:\/\/([^:/]+)(?::(\d+))?/)
 
   return {
     ip: matched?.[1] || '127.0.0.1',
     port: matched?.[2] || (normalizedUrl.startsWith('https://') ? '443' : '32080'),
-    protocol: normalizedUrl.startsWith('https://') ? 'https' : 'http'
+    protocol: normalizedUrl.startsWith('https://') ? 'https' : 'http',
+    apiBaseUrl: normalizedUrl
   }
 }
 
 const buildBaseUrl = (config: ServerConfig) => {
+  if (config.siteUrl) {
+    const parsedSite = parseBaseUrl(config.siteUrl)
+    return formatBaseUrl(parsedSite.protocol || 'https', parsedSite.ip, config.port || parsedSite.port)
+  }
+
+  if (config.apiBaseUrl && isHttpUrl(config.apiBaseUrl)) {
+    return normalizeBaseUrl(config.apiBaseUrl)
+  }
+
   const protocol = config.protocol || (DEVELOPMENT_SERVER_CONFIG_ENABLED ? 'http' : 'https')
   const port = config.port.trim()
-  const defaultPort = protocol === 'https' ? '443' : '80'
-  return `${protocol}://${config.ip.trim()}${port && port !== defaultPort ? `:${port}` : ''}`
+  return formatBaseUrl(protocol, config.ip, port)
+}
+
+const getStoredServerConfig = (): ServerConfig | null => {
+  const storedConfig = uni.getStorageSync(STORAGE_KEY)
+  if (storedConfig?.ip && storedConfig?.port) {
+    return storedConfig as ServerConfig
+  }
+  return null
+}
+
+const normalizeCustomConfig = (config: ServerConfig): ServerConfig => {
+  const sourceUrl = config.siteUrl || config.apiBaseUrl || ''
+  const parsedSource = parseBaseUrl(sourceUrl)
+  const port = config.port?.trim() || parsedSource.port
+  const siteUrl = formatBaseUrl(parsedSource.protocol || 'https', parsedSource.ip, '')
+  const apiBaseUrl = formatBaseUrl(parsedSource.protocol || 'https', parsedSource.ip, port)
+  const parsed = parseBaseUrl(apiBaseUrl)
+  return {
+    ...parsed,
+    siteUrl,
+    port,
+    apiBaseUrl
+  }
 }
 
 // ============ 配置获取函数 ============
@@ -77,6 +125,10 @@ export const getNetworkMode = (): NetworkMode => {
   }
 
   const storedMode = uni.getStorageSync(NETWORK_MODE_KEY) as NetworkMode
+  if (MINI_PROGRAM_ENV_SWITCH_ENABLED) {
+    return storedMode === 'custom' ? 'custom' : 'external'
+  }
+
   return storedMode || (MINI_PROGRAM_ENV_SWITCH_ENABLED ? 'external' : 'auto')
 }
 
@@ -100,6 +152,8 @@ const getBaseUrlByMode = (mode: NetworkMode): string => {
       return EXTERNAL_BASE_URL
     case 'dev':
       return MINI_PROGRAM_ENV_SWITCH_ENABLED ? LOCAL_TEST_BASE_URL : DEV_BASE_URL
+    case 'custom':
+      return buildBaseUrl(getStoredServerConfig() || parseBaseUrl(EXTERNAL_BASE_URL))
     case 'auto':
       // 自动模式默认先尝试内网
       return INTERNAL_BASE_URL
@@ -121,6 +175,9 @@ export const getDefaultServerConfig = (): ServerConfig => {
  */
 export const getServerConfig = (): ServerConfig => {
   if (MINI_PROGRAM_ENV_SWITCH_ENABLED) {
+    if (getNetworkMode() === 'custom') {
+      return getStoredServerConfig() || parseBaseUrl(EXTERNAL_BASE_URL)
+    }
     return parseBaseUrl(getBaseUrlByMode(getNetworkMode()))
   }
 
@@ -128,10 +185,8 @@ export const getServerConfig = (): ServerConfig => {
     return parseBaseUrl(PRODUCTION_BASE_URL)
   }
 
-  const storedConfig = uni.getStorageSync(STORAGE_KEY)
-  if (storedConfig?.ip && storedConfig?.port) {
-    return storedConfig
-  }
+  const storedConfig = getStoredServerConfig()
+  if (storedConfig) return storedConfig
 
   return getDefaultServerConfig()
 }
@@ -148,6 +203,12 @@ export const getApiBaseUrl = (): string => {
  */
 export const saveServerConfig = (config: ServerConfig) => {
   if (MINI_PROGRAM_ENV_SWITCH_ENABLED) {
+    if (getNetworkMode() === 'custom') {
+      const customConfig = normalizeCustomConfig(config)
+      uni.setStorageSync(STORAGE_KEY, customConfig)
+      return customConfig
+    }
+
     const fixedConfig = parseBaseUrl(getBaseUrlByMode(getNetworkMode()))
     uni.setStorageSync(STORAGE_KEY, fixedConfig)
     return fixedConfig
@@ -172,6 +233,16 @@ export const saveServerConfig = (config: ServerConfig) => {
  * 验证服务器配置是否有效
  */
 export const isValidServerConfig = (config: ServerConfig): boolean => {
+  if (config.siteUrl !== undefined || config.apiBaseUrl !== undefined) {
+    const sourceUrl = config.siteUrl || config.apiBaseUrl || ''
+    const portNumber = Number(config.port)
+    return Boolean(sourceUrl.trim())
+      && isHttpUrl(withDefaultProtocol(sourceUrl))
+      && Number.isInteger(portNumber)
+      && portNumber > 0
+      && portNumber <= 65535
+  }
+
   const portNumber = Number(config.port)
   return Boolean(config.ip.trim()) && Number.isInteger(portNumber) && portNumber > 0 && portNumber <= 65535
 }
@@ -300,6 +371,10 @@ export const initNetworkDetection = async (): Promise<string> => {
     return baseUrl
   }
 
+  if (mode === 'custom') {
+    return getBaseUrlByMode(mode)
+  }
+
   // 自动模式：检测并选择最佳网络
   const result = await detectAndSelectBestNetwork()
   return result.baseUrl
@@ -333,7 +408,8 @@ export const getNetworkModeDictKey = (mode: NetworkMode): string => {
     'internal': 'NETWORK_MODE_INTERNAL',
     'external': 'NETWORK_MODE_EXTERNAL',
     'auto': 'NETWORK_MODE_AUTO',
-    'dev': 'NETWORK_MODE_DEV'
+    'dev': 'NETWORK_MODE_DEV',
+    'custom': 'NETWORK_MODE_CUSTOM'
   }
   return dictKeys[mode] || 'NETWORK_MODE_AUTO'
 }
@@ -346,7 +422,8 @@ export const getNetworkModeOptions = (): Array<{ value: NetworkMode; dictKey: st
   return [
     { value: 'auto', dictKey: 'NETWORK_MODE_AUTO' },
     { value: 'internal', dictKey: 'NETWORK_MODE_INTERNAL' },
-    { value: 'external', dictKey: 'NETWORK_MODE_EXTERNAL' }
+    { value: 'external', dictKey: 'NETWORK_MODE_EXTERNAL' },
+    { value: 'custom', dictKey: 'NETWORK_MODE_CUSTOM' }
   ]
 }
 

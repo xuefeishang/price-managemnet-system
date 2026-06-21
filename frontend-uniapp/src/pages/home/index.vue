@@ -160,6 +160,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/useUserStore'
 import { getProducts, getPricesByDateWithStats } from '@/api/products'
 import { getPriceQueryRows, type PriceQueryRow } from '@/api/priceQuery'
@@ -170,11 +171,18 @@ import type { PriceWithStats } from '@/api/products'
 import type { HomeSummary, PriceAlert } from '@/api/home'
 import SummarySection from '@/components/home/SummarySection.vue'
 import RiskAlertsPanel from '@/components/home/RiskAlertsPanel.vue'
+import { useTheme } from '@/composables/useTheme'
 import { getCurrencySymbol, loadAllDicts } from '@/composables/useDict'
 import { getProductCategoryId, sortProductsByHomeOrder } from '@/utils/productOrder'
 import { getProductDisplayName } from '@/utils/productDisplay'
+import {
+  getMiniappEntryShareMessage,
+  getMiniappEntryTimelineShare,
+  showMiniappEntryShareMenu
+} from '@/utils/share'
 
 const userStore = useUserStore()
+const { themeConfig, loadThemeConfig } = useTheme()
 
 // 状态
 const products = ref<Product[]>([])
@@ -406,6 +414,9 @@ function goToDetail(id: number) {
   uni.navigateTo({ url: `/pages/products/detail?id=${id}` })
 }
 
+onShareAppMessage(() => getMiniappEntryShareMessage(themeConfig.value.systemName))
+onShareTimeline(() => getMiniappEntryTimelineShare(themeConfig.value.systemName))
+
 onMounted(() => {
   userStore.restoreSession()
 
@@ -414,7 +425,8 @@ onMounted(() => {
     return
   }
 
-  Promise.all([loadAllDicts(), loadCategories(), loadData()])
+  showMiniappEntryShareMenu()
+  Promise.all([loadThemeConfig(), loadAllDicts(), loadCategories(), loadData()])
 })
 </script>
 

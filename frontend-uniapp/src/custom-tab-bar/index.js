@@ -1,5 +1,6 @@
 const STORAGE_USER_KEY = 'user'
 const STORAGE_TOKEN_KEY = 'token'
+const STORAGE_SERVER_KEY = 'api_server_config'
 const NETWORK_MODE_KEY = 'api_network_mode'
 
 const LOCAL_TEST_BASE_URL = 'http://127.0.0.1:8080'
@@ -48,10 +49,41 @@ const getCurrentPath = () => {
 
 const getApiBaseUrl = () => {
   const mode = wx.getStorageSync(NETWORK_MODE_KEY) || 'external'
+  if (mode === 'custom') {
+    const customConfig = wx.getStorageSync(STORAGE_SERVER_KEY)
+    if (customConfig?.apiBaseUrl) return customConfig.apiBaseUrl.replace(/\/$/, '')
+    if (customConfig?.siteUrl && customConfig?.port) {
+      const siteUrl = /^https?:\/\//.test(customConfig.siteUrl)
+        ? customConfig.siteUrl.replace(/\/$/, '')
+        : `https://${customConfig.siteUrl.replace(/\/$/, '')}`
+      const protocol = siteUrl.startsWith('https://') ? 'https' : 'http'
+      const defaultPort = protocol === 'https' ? '443' : '80'
+      const siteUrlWithoutPort = siteUrl.replace(/:\d+$/, '')
+      return `${siteUrlWithoutPort}${customConfig.port !== defaultPort ? `:${customConfig.port}` : ''}`
+    }
+    if (customConfig?.ip && customConfig?.port) {
+      const protocol = customConfig.protocol || 'https'
+      const defaultPort = protocol === 'https' ? '443' : '80'
+      return `${protocol}://${customConfig.ip}${customConfig.port !== defaultPort ? `:${customConfig.port}` : ''}`
+    }
+  }
   if (mode === 'internal' || mode === 'auto') return INTRANET_BASE_URL
   if (mode === 'dev') return LOCAL_TEST_BASE_URL
   return EXTERNAL_BASE_URL
 }
+
+const normalizeUnreadCount = (value) => {
+  if (typeof value === 'object' && value !== null) {
+    const nestedValue = value.unreadCount ?? value.count ?? value.total ?? 0
+    return normalizeUnreadCount(nestedValue)
+  }
+
+  const count = Number(value || 0)
+  if (!Number.isFinite(count) || count <= 0) return 0
+  return Math.floor(count)
+}
+
+const formatUnreadText = (count) => (count > 99 ? '99+' : String(count))
 
 Component({
   data: {
@@ -142,14 +174,20 @@ Component({
       }, 3600)
     },
 
+    setUnreadCount(count) {
+      const nextCount = normalizeUnreadCount(count)
+      this.setData({
+        unreadCount: nextCount,
+        unreadText: nextCount > 0 ? formatUnreadText(nextCount) : '',
+        initialized: true
+      })
+    },
+
     refreshUnreadCount(showBubbleOnIncrease) {
       const token = wx.getStorageSync(STORAGE_TOKEN_KEY)
       if (!token) {
-        this.setData({
-          unreadCount: 0,
-          unreadText: '',
-          initialized: false
-        })
+        this.setUnreadCount(0)
+        this.setData({ initialized: false })
         return
       }
 
@@ -168,16 +206,12 @@ Component({
           const body = response.data || {}
           if (response.statusCode < 200 || response.statusCode >= 300 || body.code !== 200) return
 
-          const nextCount = Number(body.data || 0)
+          const nextCount = normalizeUnreadCount(body.data)
           if (showBubbleOnIncrease && this.data.initialized && nextCount > this.data.unreadCount) {
             this.showNotificationBubble()
           }
 
-          this.setData({
-            unreadCount: nextCount,
-            unreadText: nextCount > 99 ? '99+' : String(nextCount),
-            initialized: true
-          })
+          this.setUnreadCount(nextCount)
         },
         complete: () => {
           this.refreshingUnread = false

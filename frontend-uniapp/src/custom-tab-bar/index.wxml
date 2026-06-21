@@ -18,12 +18,12 @@
     >
       <view class="tab-icon-wrap">
         <text class="tab-icon">{{item.icon}}</text>
-        <text
-          wx:if="{{item.key === 'profile'}}"
+        <view
+          wx:if="{{item.key === 'profile' && unreadText}}"
           class="tab-badge {{unreadCount > 0 ? 'visible' : ''}}"
         >
-          {{unreadText}}
-        </text>
+          <text class="tab-badge-text">{{unreadText}}</text>
+        </view>
       </view>
       <text class="tab-text">{{item.text}}</text>
     </view>

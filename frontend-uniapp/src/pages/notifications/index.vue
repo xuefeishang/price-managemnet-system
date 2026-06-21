@@ -81,7 +81,7 @@ import {
 import { useUserStore } from '@/store/useUserStore'
 import type { NotificationMessage, PageResponse } from '@/types'
 import { getDictValue, loadAllDicts } from '@/composables/useDict'
-import { refreshNotificationIndicator } from '@/composables/useNotificationIndicator'
+import { refreshNotificationIndicator, setNotificationUnreadCount } from '@/composables/useNotificationIndicator'
 import { useMiniProgramSubscription } from '@/composables/useMiniProgramSubscription'
 
 const userStore = useUserStore()
@@ -125,8 +125,8 @@ const parseLinkParams = (item: NotificationMessage): Record<string, string> => {
 const loadUnread = async () => {
   try {
     const response = await getUnreadNotificationCount()
-    unreadCount.value = response.data || 0
-    await refreshNotificationIndicator(false)
+    unreadCount.value = Number(response.data || 0)
+    setNotificationUnreadCount(unreadCount.value)
   } catch {
     // 列表与未读数独立降级，避免辅助角标失败阻断通知列表。
   }
@@ -188,9 +188,21 @@ const switchFilter = (next: 'ALL' | 'UNREAD') => {
 
 const handleReadAll = async () => {
   if (unreadCount.value <= 0) return
-  await markAllNotificationsRead()
+  const previousUnreadCount = unreadCount.value
+  const previousNotifications = notifications.value
   unreadCount.value = 0
+  setNotificationUnreadCount(0)
   notifications.value = notifications.value.map(item => ({ ...item, readStatus: 'READ' }))
+  try {
+    await markAllNotificationsRead()
+    unreadCount.value = 0
+    setNotificationUnreadCount(0)
+  } catch (error) {
+    unreadCount.value = previousUnreadCount
+    setNotificationUnreadCount(previousUnreadCount)
+    notifications.value = previousNotifications
+    throw error
+  }
   if (filter.value === 'UNREAD') {
     await loadList(true)
   }
@@ -200,6 +212,7 @@ const openNotification = async (item: NotificationMessage) => {
   if (item.readStatus === 'UNREAD') {
     item.readStatus = 'READ'
     unreadCount.value = Math.max(unreadCount.value - 1, 0)
+    setNotificationUnreadCount(unreadCount.value)
     markNotificationRead(item.messageId).catch(loadUnread)
   }
 
@@ -223,7 +236,11 @@ const openNotification = async (item: NotificationMessage) => {
 const handleArchive = async (item: NotificationMessage) => {
   await archiveNotification(item.messageId)
   notifications.value = notifications.value.filter(notification => notification.id !== item.id)
-  await loadUnread()
+  if (item.readStatus === 'UNREAD') {
+    unreadCount.value = Math.max(unreadCount.value - 1, 0)
+    setNotificationUnreadCount(unreadCount.value)
+  }
+  await refreshNotificationIndicator(false)
 }
 
 onMounted(() => {

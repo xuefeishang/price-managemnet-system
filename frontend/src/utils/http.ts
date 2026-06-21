@@ -53,10 +53,29 @@ const createApiError = (message: string, response?: any, toastShown = false): Ap
   return error
 }
 
+const decodeJwtPayload = (token: string): Record<string, any> | null => {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
+
+const isTokenExpiringSoon = (token: string, thresholdSeconds = 60): boolean => {
+  const payload = decodeJwtPayload(token)
+  if (typeof payload?.exp !== 'number') return true
+  return payload.exp * 1000 - Date.now() <= thresholdSeconds * 1000
+}
+
 // ==================== Token 刷新队列 ====================
 
 /** 是否正在刷新 Token */
 let isRefreshing = false
+let proactiveRefreshPromise: Promise<string | null> | null = null
 
 /** 等待刷新完成的请求队列 */
 let failedQueue: Array<{
@@ -80,18 +99,39 @@ const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue = []
 }
 
+const refreshTokenBeforeRequest = async (): Promise<string | null> => {
+  const userStore = useUserStore()
+  if (!userStore.refreshTokenValue) {
+    return userStore.token
+  }
+
+  if (!proactiveRefreshPromise) {
+    proactiveRefreshPromise = userStore.refreshAccessToken()
+      .finally(() => {
+        proactiveRefreshPromise = null
+      })
+  }
+
+  return proactiveRefreshPromise
+}
+
 // ==================== 请求拦截器 ====================
 
 // 请求拦截器
 instance.interceptors.request.use(
-  config => {
+  async config => {
     const userStore = useUserStore()
     // 公开接口不需要Authorization头（仅GET请求）
     const publicUrls = ['/auth/login', '/auth/refresh-token', '/auth/captcha']
     const isPublicUrl = publicUrls.some(u => config.url?.includes(u))
 
     if (userStore.token && !isPublicUrl) {
-      config.headers.Authorization = `Bearer ${userStore.token}`
+      const token = isTokenExpiringSoon(userStore.token)
+        ? await refreshTokenBeforeRequest()
+        : userStore.token
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
     // 设置请求开始时间
     config.metadata = { startTime: Date.now() }
@@ -144,9 +184,6 @@ instance.interceptors.response.use(
     }
   },
   async error => {
-    if (import.meta.env.DEV) {
-      console.error('Response error:', error)
-    }
     const axiosError = error as AxiosError
     const url = error.config?.url || ''
     const status = error.response?.status
@@ -171,6 +208,10 @@ instance.interceptors.response.use(
     const publicUrls = ['/auth/login', '/auth/refresh-token', '/auth/captcha', '/style/config']
     const isLoginUrl = url.includes('/auth/login')
     const isPublicUrl = publicUrls.some(u => url.includes(u))
+
+    if (import.meta.env.DEV && !(status === 401 && !isPublicUrl)) {
+      console.error('Response error:', error)
+    }
 
     // 429 限流错误特殊处理
     if (status === 429) {

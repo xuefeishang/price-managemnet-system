@@ -27,6 +27,13 @@
           <text class="arrow">›</text>
         </view>
       </view>
+      <button class="menu-item share-item" open-type="share">
+        <view>
+          <text class="menu-title">分享小程序</text>
+          <text class="menu-desc">转发给同事或微信群</text>
+        </view>
+        <text class="arrow">›</text>
+      </button>
       <view class="menu-item subscribe-item">
         <view class="subscribe-main">
           <text class="menu-title">小程序消息订阅</text>
@@ -64,11 +71,14 @@
 import { computed, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getDictValue, loadAllDicts } from '@/composables/useDict'
+import { useTheme } from '@/composables/useTheme'
 import { useNotificationIndicator } from '@/composables/useNotificationIndicator'
 import { useMiniProgramSubscription } from '@/composables/useMiniProgramSubscription'
-import { onShow } from '@dcloudio/uni-app'
+import { onShareAppMessage, onShow } from '@dcloudio/uni-app'
+import { getMiniappEntryShareMessage } from '@/utils/share'
 
 const userStore = useUserStore()
+const { themeConfig, loadThemeConfig } = useTheme()
 const { unreadCount, refreshNotificationIndicator } = useNotificationIndicator()
 const {
   miniSubscription,
@@ -106,9 +116,11 @@ const handleLogout = () => {
   })
 }
 
+onShareAppMessage(() => getMiniappEntryShareMessage(themeConfig.value.systemName))
+
 onMounted(async () => {
   userStore.restoreSession()
-  await loadAllDicts()
+  await Promise.all([loadThemeConfig(), loadAllDicts()])
   await loadUnreadCount()
   await loadMiniSubscriptions()
 })
@@ -202,12 +214,28 @@ onShow(async () => {
 }
 
 .menu-item {
+  width: 100%;
   min-height: 104rpx;
   padding: 24rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24rpx;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #FFFFFF;
+  box-sizing: border-box;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.menu-item::after {
+  border: 0;
+}
+
+.share-item {
+  border-top: 1px solid #EEF2F7;
 }
 
 .menu-title,

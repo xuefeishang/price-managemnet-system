@@ -73,7 +73,7 @@
         <text class="network-status" @click="openNetworkSettings">
           当前环境：{{ currentNetworkLabel }}
         </text>
-        <text class="network-hint" @click="openNetworkSettings">点击切换测试/正式环境</text>
+        <text class="network-hint" @click="openNetworkSettings">{{ networkSwitchHint }}</text>
       </view>
     </view>
 
@@ -103,12 +103,37 @@
 
         <!-- 当前服务器地址显示 -->
         <view class="current-address">
-          <text class="address-label">当前服务器地址</text>
+          <text class="address-label">{{ currentAddressLabel }}</text>
           <text class="address-value">{{ currentServerAddress }}</text>
         </view>
 
+        <!-- 小程序自定义地址 -->
+        <view v-if="customServerSelected" class="custom-section">
+          <view class="settings-field">
+            <text class="settings-label">网址</text>
+            <input
+              v-model="manualServerForm.siteUrl"
+              class="settings-input"
+              type="text"
+              placeholder="例如 https://example.com"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="settings-field">
+            <text class="settings-label">端口</text>
+            <input
+              v-model="manualServerForm.port"
+              class="settings-input"
+              type="number"
+              placeholder="例如 32080"
+              placeholder-class="placeholder"
+            />
+          </view>
+        </view>
+
         <!-- 高级设置：手动输入 IP 和端口 -->
-        <view v-if="manualServerEnabled" class="advanced-section">
+        <view v-else-if="manualServerEnabled" class="advanced-section">
           <text class="advanced-toggle" @click="showAdvanced = !showAdvanced">
             {{ showAdvanced ? '收起高级设置' : '展开高级设置（手动输入）' }}
           </text>
@@ -120,7 +145,7 @@
                 v-model="manualServerForm.ip"
                 class="settings-input"
                 type="text"
-                placeholder="例如 price.jlmining.com"
+                placeholder="例如 example.com"
                 placeholder-class="placeholder"
               />
             </view>
@@ -153,6 +178,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { onShareAppMessage } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/useUserStore'
 import { useTheme } from '@/composables/useTheme'
 import {
@@ -165,12 +191,12 @@ import {
   initNetworkDetection,
   getInternalBaseUrl,
   getExternalBaseUrl,
-  getLocalTestBaseUrl,
   getApiBaseUrl,
   isMiniProgramEnvironmentSwitchEnabled,
   type ServerConfig,
   type NetworkMode
 } from '@/utils/serverConfig'
+import { getMiniappEntryShareMessage, showMiniappEntryShareMenu } from '@/utils/share'
 
 const userStore = useUserStore()
 const { themeConfig, loadThemeConfig } = useTheme()
@@ -205,25 +231,22 @@ miniProgramRealDevice = uni.getSystemInfoSync().platform !== 'devtools'
 
 const logoUrl = computed(() => themeConfig.value.logoUrlLogin || themeConfig.value.logoUrl)
 const logoSizeClass = computed(() => `logo-${themeConfig.value.logoSizeLogin || themeConfig.value.logoSize || 'medium'}`)
+const customServerSelected = computed(() => miniProgramEnvironmentSwitchEnabled && selectedNetworkMode.value === 'custom')
+const networkSwitchHint = computed(() => miniProgramEnvironmentSwitchEnabled ? '点击切换正式地址/自定义' : '点击切换测试/正式环境')
 
 // 网络选项配置
 const networkOptions = computed<Array<{ value: NetworkMode; label: string; description: string }>>(() => {
   if (miniProgramEnvironmentSwitchEnabled) {
     return [
       {
-        value: 'dev',
-        label: '本地测试',
-        description: `仅开发者工具模拟器 (${getLocalTestBaseUrl()})`
-      },
-      {
-        value: 'internal',
-        label: '内网正式环境',
-        description: `正式服务器内网地址 (${getInternalBaseUrl()})`
-      },
-      {
         value: 'external',
-        label: '公网正式环境',
-        description: `手机预览与正式使用 (${getExternalBaseUrl()})`
+        label: '正式地址',
+        description: '使用系统默认正式服务'
+      },
+      {
+        value: 'custom',
+        label: '自定义',
+        description: '手动填写网址和端口'
       }
     ]
   }
@@ -253,16 +276,26 @@ const currentNetworkLabel = computed(() => {
   const mode = getNetworkMode()
   const labels: Record<NetworkMode, string> = {
     'auto': '自动检测',
-    'internal': miniProgramEnvironmentSwitchEnabled ? '内网正式环境' : '内网',
-    'external': miniProgramEnvironmentSwitchEnabled ? '公网正式环境' : '外网',
-    'dev': miniProgramEnvironmentSwitchEnabled ? '本地测试' : '开发'
+    'internal': '内网',
+    'external': miniProgramEnvironmentSwitchEnabled ? '正式地址' : '外网',
+    'dev': '开发',
+    'custom': '自定义'
   }
   return labels[mode] || '自动检测'
+})
+
+const currentAddressLabel = computed(() => {
+  networkStateVersion.value
+  if (!miniProgramEnvironmentSwitchEnabled) return '当前服务器地址'
+  return getNetworkMode() === 'custom' ? '当前自定义地址' : '当前连接'
 })
 
 // 当前服务器地址
 const currentServerAddress = computed(() => {
   networkStateVersion.value
+  if (miniProgramEnvironmentSwitchEnabled && getNetworkMode() !== 'custom') {
+    return '正式地址'
+  }
   return getApiBaseUrl()
 })
 
@@ -317,7 +350,9 @@ const toggleRememberCredentials = () => {
 
 const openNetworkSettings = () => {
   selectedNetworkMode.value = getNetworkMode()
-  manualServerForm.value = getServerConfig()
+  manualServerForm.value = miniProgramEnvironmentSwitchEnabled && getNetworkMode() !== 'custom'
+    ? { ip: '', port: '', siteUrl: '' }
+    : getServerConfig()
   showAdvanced.value = false
   showNetworkSettings.value = true
 }
@@ -329,19 +364,30 @@ const closeNetworkSettings = () => {
 const selectNetworkMode = (mode: NetworkMode) => {
   if (miniProgramRealDevice && mode === 'dev') {
     uni.showToast({
-      title: '真机无法访问本地测试环境',
+      title: '真机请选择正式地址或自定义',
       icon: 'none'
     })
     return
+  }
+  if (miniProgramEnvironmentSwitchEnabled && mode === 'custom' && getNetworkMode() !== 'custom') {
+    manualServerForm.value = { ip: '', port: '', siteUrl: '' }
   }
   selectedNetworkMode.value = mode
 }
 
 const handleApplyNetwork = async () => {
   if (miniProgramRealDevice && selectedNetworkMode.value === 'dev') {
-    selectedNetworkMode.value = 'internal'
+    selectedNetworkMode.value = 'external'
     uni.showToast({
-      title: '真机请选择内网正式或公网正式环境',
+      title: '真机请选择正式地址或自定义',
+      icon: 'none'
+    })
+    return
+  }
+
+  if (customServerSelected.value && !isValidServerConfig(manualServerForm.value)) {
+    uni.showToast({
+      title: '请输入正确的网址和端口',
       icon: 'none'
     })
     return
@@ -350,7 +396,12 @@ const handleApplyNetwork = async () => {
   detecting.value = true
 
   try {
-    await switchNetworkMode(selectedNetworkMode.value)
+    if (customServerSelected.value) {
+      setNetworkMode('custom')
+      saveServerConfig(manualServerForm.value)
+    } else {
+      await switchNetworkMode(selectedNetworkMode.value)
+    }
     networkStateVersion.value += 1
     form.value = { username: '', password: '' }
     restoreRememberedCredentials()
@@ -376,7 +427,7 @@ const handleSaveManualServer = () => {
   }
 
   saveServerConfig(manualServerForm.value)
-  setNetworkMode('external') // 手动配置视为外网模式
+  setNetworkMode(miniProgramEnvironmentSwitchEnabled ? 'custom' : 'external')
   networkStateVersion.value += 1
   form.value = { username: '', password: '' }
   restoreRememberedCredentials()
@@ -418,10 +469,12 @@ const handleLogin = async () => {
   }
 }
 
+onShareAppMessage(() => getMiniappEntryShareMessage(themeConfig.value.systemName))
+
 onMounted(async () => {
   // 127.0.0.1 在真机上指向手机自身，不能沿用开发者工具保存的测试环境。
   if (miniProgramRealDevice && getNetworkMode() === 'dev') {
-    await switchNetworkMode('internal')
+    await switchNetworkMode('external')
     networkStateVersion.value += 1
   }
 
@@ -429,6 +482,7 @@ onMounted(async () => {
   await initNetworkDetection()
   networkStateVersion.value += 1
   restoreRememberedCredentials()
+  showMiniappEntryShareMenu(['shareAppMessage'])
 
   // 加载主题配置（获取Logo）
   await loadThemeConfig()
@@ -799,6 +853,14 @@ onMounted(async () => {
 }
 
 /* 高级设置 */
+.custom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  border-top: 1rpx solid #E5EDF0;
+  padding-top: 16rpx;
+}
+
 .advanced-section {
   border-top: 1rpx solid #E5EDF0;
   padding-top: 16rpx;
