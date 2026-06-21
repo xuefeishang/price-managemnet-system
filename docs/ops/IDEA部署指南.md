@@ -192,7 +192,18 @@ spring:
 - 旧库如果没有 `flyway_schema_history`，启动时会自动建立基线记录并补跑 V13 及之后的迁移
 - 如果您使用单独创建的用户，请修改 `username` 和 `password`
 
-### 3.6 外部 API 授权配置（可选）
+### 3.6 时区配置（必选）
+
+生产与本地联调统一使用北京时间：
+
+| 环境变量 | 说明 | 示例 |
+|----------|------|------|
+| `TZ` | 容器/运行环境时区 | `Asia/Shanghai` |
+| `JAVA_OPTS` | JVM 参数，必须包含用户时区 | `-Xms512m -Xmx1024m -XX:+UseG1GC -Duser.timezone=Asia/Shanghai` |
+
+部署后使用 `docker exec price-management-backend date` 验证后端容器时间应为 `CST +0800`。通知中心展示的 `createdTime` 表示通知创建/发布操作时间；价格发布通知正文中的业务日期表示价格生效日期，二者语义不同。
+
+### 3.7 外部 API 授权配置（可选）
 
 外部 API 授权管理默认关闭。创建后台 API Key 时必须配置 `API_KEY_ENCRYPTION_KEY`，因为服务端需要用它加密保存 Secret；`API_KEY_ENABLED=true` 仅表示启用 `/api/external/**` 外部签名鉴权入口。
 
@@ -216,7 +227,7 @@ $bytes = New-Object byte[] 32
 
 开发环境默认会从 `application-dev.yml` 使用开发兜底 key，允许本地直接创建 API Key；如需模拟生产密钥，可在 IDEA 的后端 Run Configuration 中覆盖 Environment variables，例如 `API_KEY_ENCRYPTION_KEY=...;API_KEY_ENCRYPTION_KEY_VERSION=v1`。启用后，外部系统只允许调用 `/api/external/v1/**`，内部后台页面仍使用 JWT。生产环境禁止使用 `application-dev.yml` / `application.yml.example` 中的示例 key。
 
-### 3.7 通知 Outbox 配置（可选）
+### 3.8 通知 Outbox 配置（可选）
 
 通知中心外部渠道通过 Outbox worker 异步投递。未接入外部 Provider 时，worker 会把对应投递日志记录为 `SKIPPED/PROVIDER_NOT_CONFIGURED`，不影响价格发布等业务事务。
 

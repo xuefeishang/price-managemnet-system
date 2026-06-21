@@ -324,6 +324,8 @@ server {
 | `JWT_SECRET` | JWT 密钥 | **无默认值** | **随机 256 位密钥**（必须配置） |
 | `JWT_EXPIRATION` | JWT 过期时间 (毫秒) | `86400000` (24小时) | — |
 | `DEFAULT_USER_PASSWORD` | 默认用户密码 | **无默认值** | **强密码**（必须配置） |
+| `TZ` | 容器运行时区 | `Asia/Shanghai` | 固定为 `Asia/Shanghai`，确保通知、日志、发布时间与业务北京时间一致 |
+| `JAVA_OPTS` | JVM 参数 | `-Xms512m -Xmx1024m -XX:+UseG1GC -Duser.timezone=Asia/Shanghai` | 必须包含 `-Duser.timezone=Asia/Shanghai` |
 
 ### 外部 API 变量
 
@@ -422,6 +424,7 @@ docker push jlmining.com/pricemanage/price-management-frontend:latest
 - [ ] 确认 `price.jlmining.com` DNS 已指向公司 443 网关
 - [ ] 确认域名已加入微信公众平台"request 合法域名"
 - [ ] 确认所有环境变量已在 `.env` 中配置（DB_PASSWORD / REDIS_PASSWORD / JWT_SECRET 等）
+- [ ] 确认 `.env` 中 `TZ=Asia/Shanghai`，后端 `JAVA_OPTS` 包含 `-Duser.timezone=Asia/Shanghai`
 - [ ] 确认 JWT_SECRET 使用随机 256 位密钥（非默认值）
 - [ ] 确认 DEFAULT_USER_PASSWORD 已修改为强密码
 - [ ] 确认 MySQL 数据库已创建（`price_management`）
@@ -449,6 +452,7 @@ docker push jlmining.com/pricemanage/price-management-frontend:latest
 - [ ] 验证 Redis 缓存：`redis-cli ping`
 - [ ] 验证数据库连接：检查后端日志无 DB 异常
 - [ ] 验证操作日志正常写入
+- [ ] 验证后端容器时间为北京时间：`docker exec price-management-backend date`，通知创建时间与发布操作时间一致
 - [ ] 验证告警通道（钉钉/企业微信）已启用
 - [ ] 备份镜像到 Harbor 并打版本标签
 - [ ] 更新 CHANGELOG / 版本号

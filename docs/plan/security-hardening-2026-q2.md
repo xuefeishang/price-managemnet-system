@@ -210,9 +210,12 @@ curl -sS http://127.0.0.1:8080/api/auth/captcha
 
 在 `http` 或 `server` 层使用 `map`，避免在 `location` 中堆叠复杂 `if`。
 
+注意：Nginx `map` 的正则规则按顺序取第一个匹配项，不是后匹配覆盖前匹配。Vite 静态资源文件名可能包含 `rmi` 等子串，因此 `/assets/` 排除规则必须放在攻击特征规则之前。
+
 ```nginx
 map $request_uri $security_blocked {
     default 0;
+    ~^/assets/ 0;
     ~*(jndi|ldap|rmi|log4j) 1;
     ~*(\$\{|%24%7B) 1;
     ~*(\.\./|\.\.%2f|%2e%2e) 1;
@@ -420,7 +423,7 @@ CREATE TABLE IF NOT EXISTS ip_blacklist (
 | Phase 1.3 Redis 6379 收敛 | 已完成 | L2 | 现有 iptables PHASE1-DROP-HOST-PORTS 已覆盖 |
 | Phase 1.4 Harbor 8082 收敛 | 已完成（含紧急修复）| L3 | 2026-06-16 11:27 添加 PHASE1-8082 三条规则 + 11:55 紧急修复 iptables 顺序 + 11:57 添加 docker bridge ACCEPT + 持久化到 rules.v4 |
 | Phase 1.5 SSH 加固 | 未完成 | L3 | 限源 + 禁密码 + PermitRootLogin（多 sessions 验证后实施）|
-| Phase 2 Nginx 攻击特征拒绝 | 已完成 | L1 | 本地 nginx.conf 添加 security_blocked map + 4 个 server if 拦截；分层限流（api_global 30r/s + login 10r/m）已配置；`limit_req_dry_run on` 先观察 48h |
+| Phase 2 Nginx 攻击特征拒绝 | 已完成 | L1 | 本地 nginx.conf 添加 security_blocked map + 4 个 server if 拦截；2026-06-17 修复 map 顺序，避免 `/assets/` 中 `rmi` 子串误杀 Vite chunk；分层限流（api_global 30r/s + login 10r/m）已配置；`limit_req_dry_run on` 先观察 48h |
 | Phase 2.1 nginx 语法修复 | 已完成 | L0 | 修复本地 80/32801 块出现的孤立 3 行 + 重复 /api/auth/login（会导致 nginx 启动失败）；保留 4 个 server 块对称结构 |
 | Phase 3 fail2ban | 未完成 | L1 | 先启用 sshd + nginx-jndi，暂缓 nginx-404 |
 | Phase 4 V47 迁移 + SecurityEventService | **代码完成 + 部署待执行** | L0/L1 | 2026-06-16 V47 SQL/Entity/Repository 已提交到 master（commit 2bc74fe）；后端容器仍是 v2.1.0 部署版本（00:27:48 启动），V47 迁移**未在生产执行**；需重建后端镜像 + 重启触发 Flyway |
@@ -562,6 +565,169 @@ netfilter-persistent save
 - Phase 1.5 SSH 加固：保留为 L3，未执行（需多 sessions 验证）
 - Phase 2/3/4：未启动
 - Phase 5/6：用户决策跳过
+
+---
+
+## 未解决问题清单（2026-06-16 第三轮审查）
+
+经系统审查，本方案仍有以下问题**实质未解决**，按风险等级排序：
+
+### P0 阻塞性（最高优先级）
+
+| 编号 | 项 | 影响 | 状态 | 修复成本 |
+|------|-----|------|------|---------|
+| **P0-1** | V47 迁移**未在生产执行** | 数据层防护 0 可用 | `flyway_max_version=46`（不是 47），`security_event`/`ip_blacklist` 表不存在，`operation_log` 新字段未加 | 5 分钟 |
+| **P0-2** | 前端镜像**未重建** | 网关层防护 0 可用 | 生产 nginx.conf 0 处 `security_blocked`（容器内是旧版）| 5 分钟 |
+
+### P1 高风险（关键防护缺失）
+
+| 编号 | 项 | 影响 | 状态 |
+|------|-----|------|------|
+| **P1-1** | SecurityEventService 异步服务 | 攻击事件**无法入库**，依赖日志检索 | ❌ 未启动 |
+| **P1-2** | GlobalExceptionHandler 4xx/5xx 归类 | 异常日志污染 ERROR，攻击与故障难区分 | ❌ 未启动 |
+| **P1-3** | fail2ban 安装 + sshd + nginx-jndi jail | 攻击 IP **手动封禁**，无自动化 | ❌ 未启动 |
+| **P1-4** | 限流 dry_run 切换 | 限流配置在 `dry_run on`，**只记录不拒绝** | ❌ 未切换（48h 观察未启动）|
+
+### P2 中风险（用户决策调整）
+
+| 编号 | 项 | 用户决策 |
+|------|-----|---------|
+| **P2-1** | SSH 加固（**v1.2 修正**：允许密码但限源内网）| ✅ **本次实施**（v1.1 写的是禁密码，已修正）|
+| **P2-2** | Phase 6 管理员门户 | ⏸️ 仍延后 |
+
+### P3 流程/规范级
+
+| 编号 | 项 | 影响 |
+|------|-----|------|
+| **P3-1** | dry_run 48h 计时器缺失 | 方案说"48h 后切 off"，**没人提醒** |
+| **P3-2** | 安全变更无业务验证 SOP | iptables 顺序错误暴露了流程漏洞 |
+| **P3-3** | 管理员门户 UX 影响分析 | Phase 6 决策依赖此项 |
+
+### 完整盘点表
+
+| 优先级 | 项 | 业务影响 | 实施成本 | 状态 |
+|--------|-----|---------|---------|------|
+| **P0-1** | V47 部署 | L0 | 5 分钟 | ❌ **未执行** |
+| **P0-2** | 前端镜像重建 | L1 | 5 分钟 | ❌ **未执行** |
+| **P1-1** | SecurityEventService | L1 | 4-6 小时 | ❌ 未启动 |
+| **P1-2** | GlobalExceptionHandler 归类 | L1 | 2-3 小时 | ❌ 未启动 |
+| **P1-3** | fail2ban 安装 | L1 | 1-2 小时 | ❌ 未启动 |
+| **P1-4** | 限流 dry_run 切换 | L1/L2 | 1 小时 | ❌ 未切换 |
+| **P2-1** | SSH 加固（密码限源）| L3 | 30 分钟 | ❌ 未启动 |
+| **P2-2** | 管理员门户 | L0/L1 | 8+ 小时 | ⏸️ 延后 |
+| **P3-1** | dry_run 计时器 | L0 | 5 分钟 | ⚠️ 文档级 |
+| **P3-2** | 安全变更 SOP | L0 | 文档级 | ⚠️ 未写 |
+
+---
+
+## v1.2 SSH 加固修正（重要）
+
+**v1.1 描述**：禁密码登录（`PasswordAuthentication no`）
+
+**v1.2 用户决策修正**：**允许密码登录，但必须通过内网访问**
+
+理由：
+- 现场运维需要密码登录（无密钥场景）
+- 完全禁密码可能导致运维被锁在外
+- 通过 iptables 限源 = 公网根本到不了 22 端口，密码登录只在受信任网段才有可能
+
+**修正后的实现**：
+
+| 配置 | v1.1 | v1.2 |
+|------|------|------|
+| PermitRootLogin | `prohibit-password` 或 `no` | **保持 `yes`**（运维需要 root）|
+| PasswordAuthentication | `no` | **保持 `yes`**（内网可用）|
+| iptables SSH 限源 | 未提及 | **必须**：22 端口仅 10.7.5.0/24 + VPN 网段可访问 |
+
+**SSH 限源 iptables 规则**：
+```bash
+# 允许办公内网 + VPN 网段（按需调整）
+iptables -A INPUT -p tcp -s 10.7.5.0/24 --dport 22 -m comment --comment 'SECURITY-HARDENING-PHASE1-SSH-ALLOW-LAN' -j ACCEPT
+# 允许公司 VPN 网段（举例，请按实际调整）
+# iptables -A INPUT -p tcp -s 10.7.6.0/24 --dport 22 -m comment --comment 'SECURITY-HARDENING-PHASE1-SSH-ALLOW-VPN' -j ACCEPT
+# 拒绝其他所有
+iptables -A INPUT -p tcp --dport 22 -m comment --comment 'SECURITY-HARDENING-PHASE1-SSH-DROP' -j DROP
+# 持久化
+netfilter-persistent save
+```
+
+**验证**：
+```bash
+# 内网 SSH 通
+ssh root@10.7.5.175 "echo ok"
+# 公网 SSH 应被拒（通过办公外网测试）
+ssh -o ConnectTimeout=5 root@<公网IP>  # 应超时
+```
+
+**风险**：
+- 如果办公内网本身被攻陷，攻击者仍可密码登录
+- 缓解：保留密钥登录（推荐所有管理员用密钥）+ 定期轮换密码
+
+---
+
+## v1.2 执行计划
+
+按"最高 ROI 优先 + 用户决策已明确项"原则，分 4 个批次：
+
+### 批次 1：P0 部署生效（10 分钟）
+
+1. 生产服务器 `git pull` 拉 master（包含 V47 + 新 nginx.conf）
+2. `docker compose build --no-cache backend`（让 V47 SQL 进镜像）
+3. `docker compose build --no-cache frontend`（让 security_blocked 进镜像）
+4. `docker compose up -d`（重启）
+5. 等待 60s，验证：
+   - `docker logs price-management-backend | grep V47`
+   - `docker exec price-management-frontend grep security_blocked /etc/nginx/conf.d/default.conf | wc -l` ≥ 5
+6. 验证 Flyway：`mysql ... -e "SELECT MAX(version) FROM flyway_schema_history"` = 47
+7. 验证表存在：`SHOW TABLES LIKE 'security_event'` 返回 1 行
+
+### 批次 2：P2-1 SSH 加固（30 分钟，**用户决策修正版**）
+
+1. **保留所有当前 SSH 会话**（不退出）
+2. **准备密钥登录备选**（如果还没有）：`ssh-keygen` + 公钥加入 `~/.ssh/authorized_keys`
+3. **验证 SSH 限源规则**（先加 ACCEPT，再加 DROP）：
+   ```bash
+   iptables -A INPUT -p tcp -s 10.7.5.0/24 --dport 22 -j ACCEPT
+   iptables -A INPUT -p tcp --dport 22 -j DROP
+   netfilter-persistent save
+   ```
+4. **验证**：新开第二个 SSH 会话，确认能登录
+5. **保留 PermitRootLogin=yes + PasswordAuthentication=yes**（按用户决策）
+6. **可选加固**：增加 `MaxAuthTries 3`、`LoginGraceTime 30` 等
+
+### 批次 3：P1-3 fail2ban（1-2 小时）
+
+1. SSH 跳板先 `apt install fail2ban`
+2. 配置 `/etc/fail2ban/jail.local`（启用 sshd jail）
+3. 启动 `systemctl enable fail2ban && systemctl start fail2ban`
+4. 验证：`fail2ban-client status sshd` 应显示当前 banned IP
+
+### 批次 4：P3-1 dry_run 计时器（5 分钟，文档级）
+
+1. 在 `docs/dev/ops-internal/operations-management.md` 中加一节"dry_run 切换计划"
+2. 启动 cron 提醒（48h 后切 `limit_req_dry_run off`）
+3. 在 cron 中写入：`docker exec ... sed -i 's/limit_req_dry_run on/off/' /etc/nginx/conf.d/default.conf && nginx -s reload`
+
+### 不在本批次（用户决策延后）
+
+- P1-1 SecurityEventService（4-6 小时开发）
+- P1-2 GlobalExceptionHandler 归类（2-3 小时开发）
+- P2-2 管理员门户（8+ 小时开发）
+- P5 密钥治理（用户决策延后）
+- P3-2 安全变更 SOP（文档级，可后续）
+
+---
+
+## v1.2 已完成 vs 待办（执行前对照表）
+
+| 批次 | 项 | 状态 | 预计开始 |
+|------|-----|------|---------|
+| 批次 1 P0-1 | V47 部署 | 🔄 **进行中** | 立即 |
+| 批次 1 P0-2 | 前端镜像重建 | 🔄 **进行中** | 立即 |
+| 批次 2 P2-1 | SSH 加固（密码限源）| 🔄 **即将开始** | P0 完成后 |
+| 批次 3 P1-3 | fail2ban | ⏸️ 待办 | SSH 完成后 |
+| 批次 4 P3-1 | dry_run 计时器 | ⏸️ 待办 | fail2ban 完成后 |
+| 不做 | P1-1/P1-2/P2-2/P3-2/P3-3 | ❌ 用户决策延后 | 后续 |
 
 ---
 
