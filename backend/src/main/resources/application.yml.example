@@ -5,6 +5,9 @@ spring:
   application:
     name: price-management-system
 
+  jackson:
+    time-zone: Asia/Shanghai
+
   datasource:
     url: jdbc:mysql://localhost:3306/price_management?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root

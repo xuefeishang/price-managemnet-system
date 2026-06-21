@@ -24,6 +24,9 @@ RUN mvn package -DskipTests -B
 # ===== 阶段2：运行阶段 =====
 FROM eclipse-temurin:25-jre-alpine
 
+# 安装时区数据，确保容器系统时间、日志与 JVM 时区一致
+RUN apk add --no-cache tzdata
+
 # 安全：创建非root用户
 RUN addgroup -g 1001 appgroup && \
     adduser -u 1001 -G appgroup -s /bin/sh -D appuser
@@ -37,7 +40,8 @@ RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
 COPY --from=builder /app/target/*.jar app.jar
 
 # 设置环境变量
-ENV JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
+ENV TZ=Asia/Shanghai
+ENV JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC -Duser.timezone=Asia/Shanghai"
 
 # 暴露端口
 EXPOSE 8080
