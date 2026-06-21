@@ -26,6 +26,7 @@ logs/
 .env.local
 .env.*.local
 .env.example
+.env.production
 
 # Production TLS certificates
 certs/
@@ -44,7 +45,12 @@ target/
 
 # Local backup directory (not in version control)
 backup/
+_backups/
 
 # Internal operations & security management documents
 # (含生产配置位置、密码获取方式、应急联系 — 仅运维/安全负责人通过安全渠道分发)
 docs/dev/ops-internal/
+
+# Local Claude Code runtime state (个人开发环境，不应入仓)
+.claude/settings.local.json
+.codegraph/daemon.pid
