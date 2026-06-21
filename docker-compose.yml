@@ -36,6 +36,8 @@ services:
     environment:
       # 生产容器默认使用 prod profile，避免加载本地开发兜底配置
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+      # 统一运行时区，避免通知、日志、发布时间与业务北京时间不一致
+      - TZ=${TZ:-Asia/Shanghai}
       # 数据库配置（使用服务器上的MySQL）
       - DB_HOST=127.0.0.1
       - DB_PORT=3306
@@ -66,7 +68,7 @@ services:
       - ALERT_THRESHOLD_MEMORY=90.0
       - ALERT_THRESHOLD_CPU=80.0
       # Java配置
-      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:+UseG1GC
+      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:+UseG1GC -Duser.timezone=${TZ:-Asia/Shanghai}
     volumes:
       - ./logs:/app/logs
       - logo-data:/app/data/logos
