@@ -37,6 +37,7 @@ spring:
         format_sql: true
 
 # 安全配置（仅本地开发使用默认值）
+# 这些默认值只允许单机本地开发使用，共享测试、预发和生产必须通过环境变量覆盖。
 security:
   jwt-secret: ${JWT_SECRET:price-management-system-dev-secret-key-2024}
   default-user-password: ${DEFAULT_USER_PASSWORD:admin123}

@@ -78,6 +78,15 @@ security:
     require-letter: ${PASSWORD_REQUIRE_LETTER:true}
     require-digit: ${PASSWORD_REQUIRE_DIGIT:true}
     disallow-whitespace: ${PASSWORD_DISALLOW_WHITESPACE:true}
+  client-ip:
+    forwarded-header-enabled: ${CLIENT_IP_FORWARDED_HEADER_ENABLED:true}
+    trusted-proxies: ${CLIENT_IP_TRUSTED_PROXIES:127.0.0.1,::1,0:0:0:0:0:0:0:1}
+  ip-blacklist:
+    enabled: ${IP_BLACKLIST_ENABLED:true}
+    observation-mode: ${IP_BLACKLIST_OBSERVATION_MODE:false}
+    cache-ttl-seconds: ${IP_BLACKLIST_CACHE_TTL_SECONDS:30}
+    negative-cache-ttl-seconds: ${IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS:0}
+    bypass-sources: ${IP_BLACKLIST_BYPASS_SOURCES:127.0.0.1,::1,0:0:0:0:0:0:0:1}
 
 import:
   user:
@@ -108,7 +117,7 @@ alert:
 
 # 外部 API Key 授权配置。默认关闭，启用后仅影响 /api/external/**
 api-key:
-  enabled: ${API_KEY_ENABLED:true}
+  enabled: ${API_KEY_ENABLED:false}
   encryption-key: ${API_KEY_ENCRYPTION_KEY:}
   encryption-key-version: ${API_KEY_ENCRYPTION_KEY_VERSION:v1}
   timestamp-window-seconds: ${API_KEY_TIMESTAMP_WINDOW_SECONDS:300}
