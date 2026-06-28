@@ -109,6 +109,7 @@
 import { ref, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer } from '@/api/customers'
+import { getDictValue, loadAllDicts } from '@/composables/useDict'
 import type { Customer } from '@/types'
 
 const userStore = useUserStore()
@@ -146,7 +147,7 @@ const handleToggleStatus = async (item: Customer) => {
   try {
     await updateCustomer(item.id, { status: newStatus })
     item.status = newStatus
-    uni.showToast({ title: newStatus === 'ACTIVE' ? '已启用' : '已停用', icon: 'none' })
+    uni.showToast({ title: `已${getDictValue('common_status', newStatus)}`, icon: 'none' })
   } catch (error) {
     console.error('切换状态失败:', error)
   }
@@ -210,8 +211,9 @@ const handleDelete = (item: Customer) => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   userStore.restoreSession()
+  await loadAllDicts()
   loadData()
 })
 </script>

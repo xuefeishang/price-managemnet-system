@@ -3,7 +3,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as loginApi, wechatLogin as wechatLoginApi, refreshToken as refreshTokenApi, getProfile as getProfileApi } from '@/api/auth'
+import { login as loginApi, refreshToken as refreshTokenApi, getProfile as getProfileApi } from '@/api/auth'
 import type { User, LoginRequest, LoginResponse } from '@/types'
 
 export const useUserStore = defineStore('user', () => {
@@ -61,21 +61,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 微信登录
-  const wechatLoginAction = async (code: string): Promise<boolean> => {
-    try {
-      const res = await wechatLoginApi({ code })
-      if (res.code === 200 && res.data) {
-        saveSession(res.data)
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('微信登录失败:', error)
-      return false
-    }
-  }
-
   // 刷新 Token
   const refreshAccessToken = async (): Promise<string | null> => {
     try {
@@ -112,9 +97,9 @@ export const useUserStore = defineStore('user', () => {
   const fetchProfile = async () => {
     try {
       const res = await getProfileApi()
-      if (res.code === 200 && res.data) {
-        user.value = res.data
-        uni.setStorageSync('user', JSON.stringify(res.data))
+      if (res.code === 200 && res.data?.user) {
+        user.value = res.data.user
+        uni.setStorageSync('user', JSON.stringify(res.data.user))
       }
     } catch (error) {
       console.error('获取用户信息失败:', error)
@@ -135,7 +120,6 @@ export const useUserStore = defineStore('user', () => {
     restoreSession,
     saveSession,
     loginAction,
-    wechatLoginAction,
     refreshAccessToken,
     logoutAction,
     fetchProfile

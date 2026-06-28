@@ -93,6 +93,7 @@
 import { ref, onMounted } from 'vue'
 import { useUserStore } from '@/store/useUserStore'
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api/categories'
+import { getDictValue, loadAllDicts } from '@/composables/useDict'
 import type { ProductCategory } from '@/types'
 
 const userStore = useUserStore()
@@ -127,7 +128,7 @@ const handleToggleStatus = async (item: ProductCategory) => {
   try {
     await updateCategory(item.id, { status: newStatus })
     item.status = newStatus
-    uni.showToast({ title: newStatus === 'ACTIVE' ? '已启用' : '已停用', icon: 'none' })
+    uni.showToast({ title: `已${getDictValue('common_status', newStatus)}`, icon: 'none' })
   } catch (error) {
     console.error('切换状态失败:', error)
   }
@@ -188,8 +189,9 @@ const handleDelete = (item: ProductCategory) => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   userStore.restoreSession()
+  await loadAllDicts()
   loadData()
 })
 </script>
