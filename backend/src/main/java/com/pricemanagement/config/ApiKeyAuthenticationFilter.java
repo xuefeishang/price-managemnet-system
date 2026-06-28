@@ -14,6 +14,7 @@ import com.pricemanagement.service.ApiCallLogService;
 import com.pricemanagement.service.ApiKeySecretService;
 import com.pricemanagement.service.ApiNonceService;
 import com.pricemanagement.service.ApiRateLimitService;
+import com.pricemanagement.service.ClientIpResolver;
 import com.pricemanagement.service.ExternalApiServiceStatusService;
 import com.pricemanagement.service.ExternalApiPermissionService;
 import com.pricemanagement.util.ApiSignatureUtil;
@@ -59,6 +60,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
     private final ApiRateLimitService rateLimitService;
     private final ApiCallLogService callLogService;
     private final ExternalApiServiceStatusService serviceStatusService;
+    private final ClientIpResolver clientIpResolver;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -219,7 +221,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
     private void assertIpAllowed(HttpServletRequest request, ApiKey apiKey, String permissionCode) {
         List<String> whitelist = parseIpWhitelist(apiKey.getIpWhitelist());
-        String clientIp = IpAddressUtil.getClientIp(request);
+        String clientIp = clientIpResolver.resolve(request);
         if (!IpAddressUtil.isAllowed(clientIp, whitelist)) {
             throw new ExternalApiAuthException(HttpServletResponse.SC_FORBIDDEN,
                     "IP_DENIED", "IP不在白名单", permissionCode);
@@ -254,7 +256,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         callLog.setEndpoint(request.getRequestURI());
         callLog.setQueryString(request.getQueryString());
         callLog.setMethod(request.getMethod());
-        callLog.setIpAddress(IpAddressUtil.getClientIp(request));
+        callLog.setIpAddress(clientIpResolver.resolve(request));
         callLog.setRequestTime(LocalDateTime.now());
         callLog.setNonce(request.getHeader(HEADER_NONCE));
         callLog.setAuthResult("MISSING_HEADER");

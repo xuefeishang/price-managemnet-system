@@ -1,13 +1,13 @@
 package com.pricemanagement.service;
 
 import com.pricemanagement.config.properties.SecurityProperties;
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.ProfileSessionDTO;
 import com.pricemanagement.entity.RefreshToken;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.exception.TokenRefreshException;
 import com.pricemanagement.repository.RefreshTokenRepository;
 import com.pricemanagement.repository.UserRepository;
-import com.pricemanagement.util.IpAddressUtil;
 import com.pricemanagement.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +34,7 @@ public class RefreshTokenService {
     private final JwtUtil jwtUtil;
     private final SecurityProperties securityProperties;
     private final PermissionService permissionService;
+    private final ClientIpResolver clientIpResolver;
 
     /**
      * 刷新令牌有效期（默认7天）
@@ -58,7 +59,7 @@ public class RefreshTokenService {
         refreshToken.setRevoked(false);
         refreshToken.setLastUsedTime(LocalDateTime.now());
         if (request != null) {
-            refreshToken.setIpAddress(IpAddressUtil.getClientIp(request));
+            refreshToken.setIpAddress(clientIpResolver.resolve(request));
             String userAgent = request.getHeader("User-Agent");
             refreshToken.setUserAgent(truncate(userAgent, 500));
             refreshToken.setDeviceName(resolveDeviceName(userAgent));
@@ -99,23 +100,43 @@ public class RefreshTokenService {
         verifyExpiration(refreshToken);
 
         User user = userRepository.findById(refreshToken.getUserId())
-                .orElseThrow(() -> new TokenRefreshException("用户不存在"));
+                .orElseThrow(() -> revokeAndReject(refreshToken, "用户不存在"));
+
+        List<String> roleCodes = resolveRefreshRoles(refreshToken, user);
 
         refreshToken.setLastUsedTime(LocalDateTime.now());
         if (request != null) {
-            refreshToken.setIpAddress(IpAddressUtil.getClientIp(request));
+            refreshToken.setIpAddress(clientIpResolver.resolve(request));
             String userAgent = request.getHeader("User-Agent");
             refreshToken.setUserAgent(truncate(userAgent, 500));
             refreshToken.setDeviceName(resolveDeviceName(userAgent));
         }
         refreshTokenRepository.save(refreshToken);
 
-        List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
-        if (roleCodes.isEmpty()) {
-            roleCodes = List.of(user.getRole().name());
-        }
         Set<String> permissions = permissionService.getUserPermissions(user.getId());
         return jwtUtil.generateToken(user.getId(), user.getUsername(), roleCodes, roleCodes.get(0), permissions);
+    }
+
+    private List<String> resolveRefreshRoles(RefreshToken refreshToken, User user) {
+        if (user.getStatus() != CommonStatus.ACTIVE) {
+            throw revokeAndReject(refreshToken, "用户状态不可用");
+        }
+        if (Boolean.TRUE.equals(user.getIsLocked())) {
+            throw revokeAndReject(refreshToken, "用户已被锁定");
+        }
+
+        List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
+        if (roleCodes.isEmpty()) {
+            throw revokeAndReject(refreshToken, "用户无有效角色");
+        }
+        return roleCodes;
+    }
+
+    private TokenRefreshException revokeAndReject(RefreshToken refreshToken, String reason) {
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+        log.warn("Refresh token rejected and revoked: userId={}, reason={}", refreshToken.getUserId(), reason);
+        return new TokenRefreshException("刷新令牌无效，请重新登录");
     }
 
     /**

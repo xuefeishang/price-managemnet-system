@@ -3,7 +3,6 @@ package com.pricemanagement.service;
 import com.pricemanagement.entity.LoginHistory;
 import com.pricemanagement.entity.User;
 import com.pricemanagement.repository.LoginHistoryRepository;
-import com.pricemanagement.util.IpAddressUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +16,7 @@ import java.time.LocalDateTime;
 public class LoginHistoryService {
 
     private final LoginHistoryRepository loginHistoryRepository;
+    private final ClientIpResolver clientIpResolver;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSuccess(User user, HttpServletRequest request) {
@@ -39,7 +39,7 @@ public class LoginHistoryService {
         history.setUserId(userId);
         history.setUsername(username);
         history.setLoginTime(LocalDateTime.now());
-        history.setIpAddress(IpAddressUtil.getClientIp(request));
+        history.setIpAddress(clientIpResolver.resolve(request));
         history.setUserAgent(truncate(request.getHeader("User-Agent"), 500));
         return history;
     }
@@ -51,4 +51,3 @@ public class LoginHistoryService {
         return value.substring(0, maxLength);
     }
 }
-

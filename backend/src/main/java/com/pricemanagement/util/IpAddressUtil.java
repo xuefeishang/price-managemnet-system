@@ -12,14 +12,6 @@ public final class IpAddressUtil {
     }
 
     public static String getClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
         return request.getRemoteAddr();
     }
 
@@ -32,7 +24,19 @@ public final class IpAddressUtil {
                 .anyMatch(item -> matches(ip, item.trim()));
     }
 
-    private static boolean matches(String ip, String rule) {
+    public static boolean matchesAny(String ip, List<String> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return false;
+        }
+        return rules.stream()
+                .filter(item -> item != null && !item.isBlank())
+                .anyMatch(item -> matches(ip, item.trim()));
+    }
+
+    public static boolean matches(String ip, String rule) {
+        if (ip == null || ip.isBlank() || rule == null || rule.isBlank()) {
+            return false;
+        }
         if (rule.equals(ip)) {
             return true;
         }

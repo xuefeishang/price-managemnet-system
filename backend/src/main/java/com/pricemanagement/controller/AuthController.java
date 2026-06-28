@@ -124,7 +124,11 @@ public class AuthController {
             // 获取用户角色列表（从 UserRole 表）
             List<String> roleCodes = permissionService.getUserRoleCodes(user.getId());
             if (roleCodes.isEmpty()) {
-                roleCodes = List.of(user.getRole().name());
+                log.debug("User has no active role: {}", loginIdentifier);
+                operationLogHelper.logError("用户认证", OperationLog.OperationType.LOGIN,
+                        "用户登录失败：账号无有效角色", loginIdentifier, "账号无有效角色");
+                loginHistoryService.recordFailure(loginIdentifier, user, httpRequest, "账号无有效角色");
+                return Result.error(403, "账号无有效角色，请联系管理员");
             }
             // 主角色：优先使用 UserRole 表的第一个角色，否则使用 User.role 枚举
             String primaryRole = roleCodes.get(0);

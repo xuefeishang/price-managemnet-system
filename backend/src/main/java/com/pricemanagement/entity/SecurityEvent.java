@@ -88,6 +88,7 @@ public class SecurityEvent {
         AUTH_LOGIN_FAILED,
         RATE_LIMITED,
         PERMISSION_DENIED,
+        IP_BLACKLIST_HIT,
         SUSPICIOUS_REQUEST,
         SERVER_ERROR
     }

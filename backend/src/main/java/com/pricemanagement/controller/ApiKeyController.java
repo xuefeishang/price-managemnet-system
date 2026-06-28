@@ -11,8 +11,8 @@ import com.pricemanagement.dto.ExternalApiEndpointDTO;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.OperationLog.OperationType;
 import com.pricemanagement.service.ApiKeyService;
+import com.pricemanagement.service.ClientIpResolver;
 import com.pricemanagement.service.ExternalApiServiceStatusService;
-import com.pricemanagement.util.IpAddressUtil;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +30,7 @@ public class ApiKeyController {
 
     private final ApiKeyService apiKeyService;
     private final ExternalApiServiceStatusService serviceStatusService;
+    private final ClientIpResolver clientIpResolver;
 
     @GetMapping
     public Result<Page<ApiKeyDTO>> query(@RequestParam(defaultValue = "0") int page,
@@ -44,7 +45,7 @@ public class ApiKeyController {
     @OperationLog(module = "API授权管理", type = OperationType.CREATE, description = "创建API Key", logResponse = false)
     public Result<ApiKeyCreateResponse> create(@Valid @RequestBody ApiKeyCreateRequest request,
                                                HttpServletRequest httpRequest) {
-        return Result.success("创建API Key成功", apiKeyService.create(request, IpAddressUtil.getClientIp(httpRequest)));
+        return Result.success("创建API Key成功", apiKeyService.create(request, clientIpResolver.resolve(httpRequest)));
     }
 
     @GetMapping("/{id}")
@@ -57,25 +58,25 @@ public class ApiKeyController {
     public Result<ApiKeyDTO> update(@PathVariable Long id,
                                     @Valid @RequestBody ApiKeyUpdateRequest request,
                                     HttpServletRequest httpRequest) {
-        return Result.success("更新API Key成功", apiKeyService.update(id, request, IpAddressUtil.getClientIp(httpRequest)));
+        return Result.success("更新API Key成功", apiKeyService.update(id, request, clientIpResolver.resolve(httpRequest)));
     }
 
     @PutMapping("/{id}/enable")
     @OperationLog(module = "API授权管理", type = OperationType.UPDATE, description = "启用API Key")
     public Result<ApiKeyDTO> enable(@PathVariable Long id, HttpServletRequest request) {
-        return Result.success("启用API Key成功", apiKeyService.enable(id, IpAddressUtil.getClientIp(request)));
+        return Result.success("启用API Key成功", apiKeyService.enable(id, clientIpResolver.resolve(request)));
     }
 
     @PutMapping("/{id}/disable")
     @OperationLog(module = "API授权管理", type = OperationType.UPDATE, description = "停用API Key")
     public Result<ApiKeyDTO> disable(@PathVariable Long id, HttpServletRequest request) {
-        return Result.success("停用API Key成功", apiKeyService.disable(id, IpAddressUtil.getClientIp(request)));
+        return Result.success("停用API Key成功", apiKeyService.disable(id, clientIpResolver.resolve(request)));
     }
 
     @PutMapping("/{id}/revoke")
     @OperationLog(module = "API授权管理", type = OperationType.DELETE, description = "吊销API Key")
     public Result<ApiKeyDTO> revoke(@PathVariable Long id, HttpServletRequest request) {
-        return Result.success("吊销API Key成功", apiKeyService.revoke(id, IpAddressUtil.getClientIp(request)));
+        return Result.success("吊销API Key成功", apiKeyService.revoke(id, clientIpResolver.resolve(request)));
     }
 
     @GetMapping("/permissions/tree")

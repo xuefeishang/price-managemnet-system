@@ -1,6 +1,7 @@
 package com.pricemanagement.util;
 
 import com.pricemanagement.entity.OperationLog;
+import com.pricemanagement.service.ClientIpResolver;
 import com.pricemanagement.service.OperationLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 public class OperationLogHelper {
 
     private final OperationLogService operationLogService;
+    private final ClientIpResolver clientIpResolver;
 
     /**
      * 记录操作日志
@@ -154,7 +156,7 @@ public class OperationLogHelper {
                 HttpServletRequest request = attributes.getRequest();
                 operationLog.setRequestMethod(request.getMethod());
                 operationLog.setRequestUrl(request.getRequestURI());
-                operationLog.setIpAddress(getClientIp(request));
+                operationLog.setIpAddress(clientIpResolver.resolve(request));
                 operationLog.setUserAgent(request.getHeader("User-Agent"));
             }
         } catch (Exception e) {
@@ -173,30 +175,4 @@ public class OperationLogHelper {
         }
     }
 
-    /**
-     * 获取客户端IP地址
-     */
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("HTTP_CLIENT_IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        // 多级代理时取第一个IP
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
-    }
 }

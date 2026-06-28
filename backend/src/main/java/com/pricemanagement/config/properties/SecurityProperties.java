@@ -47,6 +47,10 @@ public class SecurityProperties {
 
     private PasswordPolicy passwordPolicy = new PasswordPolicy();
 
+    private ClientIp clientIp = new ClientIp();
+
+    private IpBlacklist ipBlacklist = new IpBlacklist();
+
     @Data
     public static class PasswordPolicy {
         private int minLength = 8;
@@ -54,5 +58,28 @@ public class SecurityProperties {
         private boolean requireLetter = true;
         private boolean requireDigit = true;
         private boolean disallowWhitespace = true;
+    }
+
+    @Data
+    public static class ClientIp {
+        private boolean forwardedHeaderEnabled = true;
+        private List<String> trustedProxies = new ArrayList<>(List.of(
+                "127.0.0.1",
+                "::1",
+                "0:0:0:0:0:0:0:1"
+        ));
+    }
+
+    @Data
+    public static class IpBlacklist {
+        private boolean enabled = true;
+        private boolean observationMode = false;
+        private long cacheTtlSeconds = 30;
+        private long negativeCacheTtlSeconds = 0;
+        private List<String> bypassSources = new ArrayList<>(List.of(
+                "127.0.0.1",
+                "::1",
+                "0:0:0:0:0:0:0:1"
+        ));
     }
 }

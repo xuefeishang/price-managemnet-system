@@ -47,6 +47,7 @@ public class SecurityConfig {
     @Order(1)
     public SecurityFilterChain externalApiSecurityFilterChain(HttpSecurity http,
                                                               ApiKeyAuthenticationFilter apiKeyAuthenticationFilter,
+                                                              IpBlacklistFilter ipBlacklistFilter,
                                                               ObjectMapper objectMapper) throws Exception {
         http
                 .securityMatcher("/api/external/**")
@@ -74,7 +75,8 @@ public class SecurityConfig {
                             ));
                         })
                 )
-                .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(ipBlacklistFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiKeyAuthenticationFilter, IpBlacklistFilter.class);
 
         return http.build();
     }
@@ -83,6 +85,7 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                      JwtAuthenticationFilter jwtAuthenticationFilter,
+                                                     IpBlacklistFilter ipBlacklistFilter,
                                                      ObjectMapper objectMapper) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -112,7 +115,8 @@ public class SecurityConfig {
                             ));
                         })
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(ipBlacklistFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtAuthenticationFilter, IpBlacklistFilter.class);
 
         return http.build();
     }

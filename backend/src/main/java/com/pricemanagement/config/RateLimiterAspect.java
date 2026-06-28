@@ -2,7 +2,9 @@ package com.pricemanagement.config;
 
 import com.pricemanagement.annotation.RateLimiter;
 import com.pricemanagement.exception.RateLimitException;
+import com.pricemanagement.service.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
@@ -29,7 +31,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Aspect
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class RateLimiterAspect {
+
+    private final ClientIpResolver clientIpResolver;
 
     /**
      * Redis 限流模板（可选注入）
@@ -144,17 +149,7 @@ public class RateLimiterAspect {
             return "unknown";
         }
         HttpServletRequest request = attributes.getRequest();
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
+        return clientIpResolver.resolve(request);
     }
 
     /**
