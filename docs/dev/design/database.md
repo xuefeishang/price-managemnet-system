@@ -34,6 +34,9 @@ product (产品表)
 
 sync_log (同步日志表)
 
+security_event (安全事件表)
+ip_blacklist (IP 黑名单表) ── IpBlacklistFilter 运行时拦截
+
 sys_api_key
     │
     ├── 1:N sys_api_key_permission
@@ -206,6 +209,45 @@ system_notice (系统公告)
 接口返回会额外提供派生字段：`operatorName`（操作人姓名，来自 `sys_user.nickname`，查不到用户时回退 `username`）、`status`（中文值 `成功` / `失败`，由 `response_code` 与 `error_message` 计算）和 `errorMsg`（兼容前端展示，等同于 `error_message`）。
 
 操作日志由两种方式写入：常规控制器可手动调用 `OperationLogHelper`；标注 `@OperationLog` 的接口由 `OperationLogAspect` 自动记录，避免同一接口同时使用两种方式造成重复日志。日志查询的时间筛选参数统一为本地时间字符串 `yyyy-MM-dd HH:mm:ss`。
+
+### 7.1 security_event（安全事件表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 安全事件 ID，主键 |
+| event_type | VARCHAR(50) | 事件类型：含 `IP_BLACKLIST_HIT` 等 |
+| severity | VARCHAR(20) | INFO/WARN/ERROR/CRITICAL |
+| source_ip | VARCHAR(45) | 来源 IP |
+| user_agent | VARCHAR(500) | 客户端标识 |
+| request_method | VARCHAR(10) | HTTP 方法 |
+| request_uri | VARCHAR(500) | 请求 URI |
+| request_params | TEXT | 脱敏后的请求参数摘要 |
+| status_code | INT | 响应状态码 |
+| description | VARCHAR(1000) | 事件描述 |
+| action_taken | VARCHAR(200) | 已采取动作，如 `BLOCK_REQUEST` / `OBSERVE_ONLY` |
+| resolved | BOOLEAN | 是否已处理 |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### 7.2 ip_blacklist（IP 黑名单表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 黑名单 ID，主键 |
+| ip_address | VARCHAR(45) | 被限制的 IPv4/IPv6 地址 |
+| reason | VARCHAR(200) | 封禁原因 |
+| banned_by | VARCHAR(30) | AUTO_FAIL2BAN / AUTO_NGINX / MANUAL_ADMIN |
+| banned_at | DATETIME | 封禁时间 |
+| expires_at | DATETIME | 过期时间，NULL 表示永久 |
+| is_active | BOOLEAN | 是否生效 |
+| banned_by_user_id | BIGINT | 人工封禁管理员 ID |
+| unban_at | DATETIME | 解封时间 |
+| unban_by_user_id | BIGINT | 解封管理员 ID |
+| unban_reason | VARCHAR(200) | 解封原因 |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+运行时由 `IpBlacklistFilter` 在 JWT/API Key 认证前读取 active 黑名单；过期记录懒失效并放行，命中记录写入 `security_event`。
 
 ### 8. refresh_token（刷新令牌表）
 

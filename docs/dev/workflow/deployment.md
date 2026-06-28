@@ -141,6 +141,14 @@ services:
       # 外部 API
       API_KEY_ENABLED: ${API_KEY_ENABLED:-false}
       API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY}
+      # IP 黑名单
+      IP_BLACKLIST_ENABLED: ${IP_BLACKLIST_ENABLED:-true}
+      IP_BLACKLIST_OBSERVATION_MODE: ${IP_BLACKLIST_OBSERVATION_MODE:-false}
+      IP_BLACKLIST_CACHE_TTL_SECONDS: ${IP_BLACKLIST_CACHE_TTL_SECONDS:-30}
+      IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS: ${IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS:-0}
+      CLIENT_IP_FORWARDED_HEADER_ENABLED: ${CLIENT_IP_FORWARDED_HEADER_ENABLED:-true}
+      CLIENT_IP_TRUSTED_PROXIES: ${CLIENT_IP_TRUSTED_PROXIES:-127.0.0.1,::1,0:0:0:0:0:0:0:1}
+      IP_BLACKLIST_BYPASS_SOURCES: ${IP_BLACKLIST_BYPASS_SOURCES:-127.0.0.1,::1,0:0:0:0:0:0:0:1}
       # 告警
       ALERT_ENABLED: ${ALERT_ENABLED:-false}
       ALERT_DINGTALK_ENABLED: ${ALERT_DINGTALK_ENABLED:-false}
@@ -332,10 +340,22 @@ server {
 | 环境变量 | 说明 | 默认值 |
 |---------|------|--------|
 | `API_KEY_ENABLED` | 外部 API 开关 | `false` |
-| `API_KEY_ENCRYPTION_KEY` | API Secret 加密主密钥（Base64 32字节） | 必须配置 |
-| `API_KEY_ENCRYPTION_KEY_VERSION` | 主密钥版本 | 必须配置 |
+| `API_KEY_ENCRYPTION_KEY` | API Secret 加密主密钥（Base64 32字节） | 启用外部 API、创建 API Key 或保存密钥配置时必须配置 |
+| `API_KEY_ENCRYPTION_KEY_VERSION` | 主密钥版本 | `v1` |
 | `API_KEY_TIMESTAMP_WINDOW_SECONDS` | 时间戳窗口 | `300` |
 | `API_KEY_NONCE_TTL_SECONDS` | Nonce TTL | `600` |
+
+### IP 黑名单变量
+
+| 环境变量 | 说明 | 默认值 |
+|---------|------|--------|
+| `IP_BLACKLIST_ENABLED` | 是否启用应用层 IP 黑名单过滤器 | `true` |
+| `IP_BLACKLIST_OBSERVATION_MODE` | 观察模式，只记录 `security_event` 不拦截 | `false` |
+| `IP_BLACKLIST_CACHE_TTL_SECONDS` | 命中黑名单结果本地缓存 TTL，不超过记录 `expires_at` | `30` |
+| `IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS` | 未命中结果缓存 TTL，默认不缓存 | `0` |
+| `CLIENT_IP_FORWARDED_HEADER_ENABLED` | 是否允许统一客户端 IP 解析器采信可信代理转发头 | `true` |
+| `CLIENT_IP_TRUSTED_PROXIES` | 允许采信 `X-Forwarded-For` / `X-Real-IP` 的反向代理 IP/CIDR | loopback |
+| `IP_BLACKLIST_BYPASS_SOURCES` | 跳过黑名单拦截的来源 IP/CIDR | loopback |
 | `API_KEY_CACHE_TTL_SECONDS` | 缓存 TTL（预留） | `60` |
 | `API_KEY_LOG_RETENTION_DAYS` | 日志保留天数 | `90` |
 

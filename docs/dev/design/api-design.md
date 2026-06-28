@@ -57,6 +57,7 @@ source: docs/dev/backup/项目设计文档.md
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | /api/auth/login | 用户登录 |
+| POST | /api/auth/refresh-token | 刷新 AccessToken；刷新时重新校验账号启用、未锁定和有效角色 |
 | GET | /api/auth/profile | 兼容获取当前用户信息，委托个人中心服务 |
 | PUT | /api/auth/profile | 兼容更新当前用户昵称、邮箱、手机号 |
 | PUT | /api/auth/password | 兼容修改密码；成功后撤销全部 refresh token 并要求重新登录 |

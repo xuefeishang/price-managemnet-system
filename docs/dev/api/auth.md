@@ -121,8 +121,10 @@ Content-Type: application/json
 
 | 状态码 | 场景 |
 |--------|------|
-| 401 | RefreshToken 不存在、已过期、已撤销（修改密码、退出全部设备） |
+| 401 | RefreshToken 不存在、已过期、已撤销、对应用户不存在、账号禁用/锁定或无有效角色 |
 | 429 | Refresh 触发限流 |
+
+刷新时后端会重新校验 `sys_user.status`、`is_locked` 和有效角色。校验失败会撤销当前 RefreshToken，并统一返回 401，避免禁用或锁定账号继续续签 AccessToken。
 
 ### 撤销
 

@@ -960,8 +960,15 @@ server {
 | `ALERT_WECHAT_ENABLED` | 启用企业微信告警 | `false` | 按需配置 |
 | `ALERT_THRESHOLD_MEMORY` | 内存告警阈值(%) | `90.0` | 按需调整 |
 | `ALERT_THRESHOLD_CPU` | CPU 告警阈值(%) | `80.0` | 按需调整 |
-| `API_KEY_ENABLED` | 外部 API 开关 | `true` | 按需 |
+| `API_KEY_ENABLED` | 外部 API 开关 | `false` | 按需开启 |
 | `API_KEY_ENCRYPTION_KEY` | API Key 加密密钥 | 空 | 32 字节随机 |
+| `IP_BLACKLIST_ENABLED` | IP 黑名单过滤器开关 | `true` | 生产保持开启 |
+| `IP_BLACKLIST_OBSERVATION_MODE` | IP 黑名单观察模式 | `false` | 首次发布可设为 `true` |
+| `IP_BLACKLIST_CACHE_TTL_SECONDS` | IP 黑名单命中结果本地缓存 TTL | `30` | 不超过记录 `expires_at` |
+| `IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS` | IP 黑名单未命中结果缓存 TTL | `0` | 默认不缓存，新增黑名单立即生效 |
+| `CLIENT_IP_FORWARDED_HEADER_ENABLED` | 是否允许统一客户端 IP 解析器采信可信代理转发头 | `true` | 直连部署可设为 `false` |
+| `CLIENT_IP_TRUSTED_PROXIES` | 允许采信代理头的反向代理 IP/CIDR | loopback | 只配置真实反向代理 |
+| `IP_BLACKLIST_BYPASS_SOURCES` | 跳过黑名单拦截的来源 IP/CIDR | loopback | 谨慎配置 |
 | `NOTIFICATION_OUTBOX_ENABLED` | 通知 Outbox 开关 | `true` | 生产保持 |
 | `WECHAT_MINI_NOTIFY_ENABLED` | 小程序通知开关 | `false` | 按需 |
 

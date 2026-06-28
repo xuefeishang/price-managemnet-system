@@ -165,6 +165,8 @@ GET /api/auth/profile
 
 **权限：** 已登录用户
 
+**响应：** `data` 为包装对象，前端必须读取 `data.user` 作为当前用户资料，`data.permissions` 为权限码数组；不要把整个 `data` 对象当作用户对象保存。
+
 ### 更新个人信息
 
 ```

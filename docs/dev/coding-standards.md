@@ -146,6 +146,10 @@ public class MyService {
 - 后端 Entity/Enum 中的常量定义
 - CSS 类名绑定（如 `:class="status?.toLowerCase()"`）
 
+补充约束：
+- 计量单位、状态 toast、角色名称等显示文本不得在模块加载时用中文常量兜底；页面应通过 `computed(() => getDictOptions('unit'))` 或 `getDictValue('common_status', key)` 动态读取。
+- 禁止新增不受控的 `v-html` / `innerHTML`。静态 SVG 图标使用受控 key、组件或模板条件渲染；确需富文本时必须先引入白名单 sanitizer 并限制来源。
+
 ### 1.9 新增字典流程
 
 1. **数据库插入**：在 `sys_dict` 表新增记录
@@ -256,6 +260,8 @@ public class Result<T> {
 | `jwtExpiration` | long | `86400000L` (24h) | Access Token 过期时间 |
 | `corsAllowedOrigins` | List\<String\> | 见 application.yml | CORS 允许的源 |
 | `passwordPolicy` | PasswordPolicy | 嵌套对象 | 密码复杂度策略 |
+| `clientIp` | ClientIp | 嵌套对象 | 统一客户端 IP 解析、可信代理配置 |
+| `ipBlacklist` | IpBlacklist | 嵌套对象 | 应用层 IP 黑名单与缓存配置 |
 
 **PasswordPolicy 嵌套对象：**
 
@@ -279,8 +285,12 @@ public class Result<T> {
 | 默认用户 | `defaultUserPassword`, `resetPasswordOnStartup` |
 | CORS | `corsAllowedOrigins` |
 | 密码策略 | `passwordPolicy` (minLength, maxLength, requireLetter, requireDigit, disallowWhitespace) |
+| 客户端 IP | `clientIp.forwardedHeaderEnabled`, `clientIp.trustedProxies` |
+| IP 黑名单 | `ipBlacklist.enabled`, `ipBlacklist.observationMode`, `ipBlacklist.cacheTtlSeconds`, `ipBlacklist.negativeCacheTtlSeconds`, `ipBlacklist.bypassSources` |
 
 新增配置项必须按业务组归类，禁止散落在多个 Properties 类。
+
+客户端 IP 获取必须通过 `ClientIpResolver.resolve(request)`，业务代码不得直接读取 `X-Forwarded-For` / `X-Real-IP` 或自行拆分代理头。`IpAddressUtil.getClientIp(request)` 仅作为低层安全默认返回 `remoteAddr`；是否采信代理头由 `security.client-ip.*` 统一控制。
 
 ### 3.5 动态配置（sys_dict 样式分类）
 

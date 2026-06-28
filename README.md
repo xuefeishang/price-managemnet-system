@@ -275,6 +275,13 @@ docker pull jlmining.com/pricemanage/price-management-frontend:v1.4.0
 | `API_KEY_NONCE_TTL_SECONDS` | 外部请求 Nonce 防重放 TTL，默认 `600` |
 | `API_KEY_CACHE_TTL_SECONDS` | 外部授权缓存 TTL 预留配置，第一阶段授权元数据实时查库 |
 | `API_KEY_LOG_RETENTION_DAYS` | 外部 API 调用日志保留天数，默认 `180` |
+| `IP_BLACKLIST_ENABLED` | 是否启用应用层 IP 黑名单拦截，默认 `true` |
+| `IP_BLACKLIST_OBSERVATION_MODE` | IP 黑名单观察模式，只记录不拦截，默认 `false` |
+| `IP_BLACKLIST_CACHE_TTL_SECONDS` | IP 黑名单命中结果本地缓存 TTL，默认 `30` |
+| `IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS` | IP 黑名单未命中结果缓存 TTL，默认 `0` 表示不缓存，新增黑名单可立即生效 |
+| `CLIENT_IP_FORWARDED_HEADER_ENABLED` | 是否允许统一客户端 IP 解析器采信可信代理转发头，默认 `true` |
+| `CLIENT_IP_TRUSTED_PROXIES` | 允许采信 `X-Forwarded-For` / `X-Real-IP` 的反向代理 IP 或 CIDR |
+| `IP_BLACKLIST_BYPASS_SOURCES` | 明确跳过黑名单拦截的来源 IP 或 CIDR |
 | `PASSWORD_MIN_LENGTH` | 个人中心修改密码最小长度，默认 `8` |
 | `PASSWORD_MAX_LENGTH` | 个人中心修改密码最大长度，默认 `32` |
 | `PASSWORD_REQUIRE_LETTER` | 修改密码是否必须包含字母，默认 `true` |

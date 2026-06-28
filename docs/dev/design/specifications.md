@@ -160,6 +160,10 @@ onMounted(() => {
 <option value="ADMIN">管理员</option>
 ```
 
+补充要求：
+- `unit`、`common_status`、角色、币种等编码显示必须通过 `useDict` 动态读取，不得用模块级中文常量作为兜底选项。
+- 静态图标不得通过 `v-html` 注入 SVG 字符串；使用受控 key、组件或模板条件渲染。动态富文本必须经过白名单 sanitizer。
+
 ### 1.6 后端使用规范
 
 ```java

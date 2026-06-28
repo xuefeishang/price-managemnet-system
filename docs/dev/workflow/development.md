@@ -754,6 +754,8 @@ WHERE NOT EXISTS (SELECT 1 FROM menu_item WHERE id = 41);
 | **MySQL** | 8.0+ | 生产使用 8.0 |
 | **Redis** | 7+ | 开发可降级使用 6.x |
 
+后端仅保留 Maven 构建入口（`backend/pom.xml`）。旧 Gradle wrapper/build 脚手架已移除，后端测试和打包统一使用 `mvn test`、`mvn package`。
+
 ### 4.2 环境变量（生产环境必填）
 
 ```bash

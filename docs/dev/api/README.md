@@ -67,7 +67,7 @@ source: docs/dev/backup/API调用手册.md
 | 凭据来源 | 用户登录 `/api/auth/login` | 后台 `/api-keys` 创建并发放 |
 | 请求头 | `Authorization: Bearer <accessToken>` | `X-App-Id`、`X-Timestamp`、`X-Nonce`、`X-Signature` |
 | 禁用请求头 | — | `Authorization`、`X-App-Secret` |
-| 启用条件 | 默认启用 | 需 `API_KEY_ENABLED=true` 且管理页面开关启用 |
+| 启用条件 | 默认关闭 | 需 `API_KEY_ENABLED=true` 且管理页面开关启用 |
 | 适用范围 | `/api/**`（不含 `/api/external/v1/**`） | 仅 `/api/external/v1/**` |
 | 详细规范 | 见 [auth.md § JWT](./auth.md#jwt-bearer-token) | 见 [auth.md § 外部 API Key 签名](./auth.md#外部-api-key-签名认证) |
 

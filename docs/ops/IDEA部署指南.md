@@ -214,6 +214,13 @@ spring:
 | `API_KEY_ENCRYPTION_KEY_VERSION` | 主密钥版本 | `v1` |
 | `API_KEY_TIMESTAMP_WINDOW_SECONDS` | 签名时间戳窗口 | `300` |
 | `API_KEY_NONCE_TTL_SECONDS` | Nonce 防重放 TTL | `600` |
+| `IP_BLACKLIST_ENABLED` | 是否启用应用层 IP 黑名单过滤器 | `true` |
+| `IP_BLACKLIST_OBSERVATION_MODE` | 观察模式，只记录命中不拦截 | `false` |
+| `IP_BLACKLIST_CACHE_TTL_SECONDS` | 命中黑名单结果本地缓存 TTL，不超过记录 `expires_at` | `30` |
+| `IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS` | 未命中结果缓存 TTL，默认不缓存 | `0` |
+| `CLIENT_IP_FORWARDED_HEADER_ENABLED` | 是否允许统一客户端 IP 解析器采信可信代理转发头 | `true` |
+| `CLIENT_IP_TRUSTED_PROXIES` | 允许采信代理头的反向代理 IP/CIDR | loopback |
+| `IP_BLACKLIST_BYPASS_SOURCES` | 跳过黑名单拦截的来源 IP/CIDR | loopback |
 | `API_KEY_CACHE_TTL_SECONDS` | 授权缓存 TTL 预留配置，第一阶段授权元数据实时查库 | `300` |
 | `API_KEY_LOG_RETENTION_DAYS` | 调用日志保留天数 | `180` |
 

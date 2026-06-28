@@ -174,6 +174,18 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 - 公开端点**仍需 JWT**（不白名单）
 - 例外：仅 `/api/auth/login`、`/api/auth/refresh-token`、`/api/auth/captcha`、`/actuator/health`（需单独加入 `SystemConstants.PUBLIC_PATHS`）
 
+### 3.4 Refresh Token 状态复核
+
+`POST /api/auth/refresh-token` 会重新读取用户并校验 `status = ACTIVE`、`is_locked != true` 和至少一个启用角色。校验失败时撤销当前 RefreshToken 并统一返回 401，避免禁用、锁定或角色异常账号继续续签 AccessToken。
+
+### 3.5 外部 API 默认关闭
+
+外部 API Key 鉴权入口默认关闭：`api-key.enabled=${API_KEY_ENABLED:false}`。只有显式设置 `API_KEY_ENABLED=true` 且配置合法 `API_KEY_ENCRYPTION_KEY` 时，`/api/external/**` 才进入 HMAC 鉴权链路；缺少或格式错误的主密钥会在启动期失败。
+
+### 3.6 动态 HTML 禁止
+
+PC/uni-app 前端禁止新增不受控的 `v-html`、`innerHTML` 或动态 HTML 渲染点。静态图标应使用受控 key、组件或模板条件渲染；确需富文本时必须先引入白名单 sanitizer 并限制来源。
+
 ---
 
 ## 4. 数据层（审计与异常）
@@ -187,11 +199,11 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 | risk_score | INT | 风险评分（0-100，规划中）|
 | security_event_id | BIGINT | 关联 security_event.id（规划中）|
 
-### 4.2 security_event 表（规划中，V47 迁移）
+### 4.2 security_event 表（V47）
 
 | 字段 | 说明 |
 |------|------|
-| event_type | ATTACK_BLOCKED / SUSPICIOUS_REQUEST / IP_BANNED / LOGIN_FAILED_BRUTE_FORCE / PERMISSION_DENIED |
+| event_type | ATTACK_SIGNATURE_BLOCKED / AUTH_LOGIN_FAILED / RATE_LIMITED / PERMISSION_DENIED / IP_BLACKLIST_HIT / SUSPICIOUS_REQUEST / SERVER_ERROR |
 | severity | INFO / WARN / ERROR / CRITICAL |
 | source_ip | 来源 IP |
 | user_agent | UA |
@@ -206,7 +218,7 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 | resolved_by | 处理人 |
 | resolution_note | 处理说明 |
 
-### 4.3 ip_blacklist 表（规划中，V47 迁移）
+### 4.3 ip_blacklist 表与请求拦截（V47 + 运行时过滤器）
 
 | 字段 | 说明 |
 |------|------|
@@ -217,6 +229,8 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 | expires_at | 过期时间（NULL=永久）|
 | is_active | 是否生效 |
 | banned_by_user_id | 人工封禁的管理员 |
+
+`IpBlacklistFilter` 在 JWT/API Key 认证前执行，使用统一 `ClientIpResolver` 解析真实客户端 IP，命中 active 黑名单时记录 `security_event`。只有 `remoteAddr` 命中 `CLIENT_IP_TRUSTED_PROXIES` 且 `CLIENT_IP_FORWARDED_HEADER_ENABLED=true` 时才采信 `X-Forwarded-For` / `X-Real-IP`，直连请求携带的代理头会被忽略。登录/续签限流、外部 API Key IP 白名单、操作日志、登录历史、Refresh Token 会话 IP 与 API Key 操作审计均使用同一解析结果。`IP_BLACKLIST_BYPASS_SOURCES` 仅用于明确跳过黑名单拦截的来源。过期记录会懒失效并放行；命中结果按 `IP_BLACKLIST_CACHE_TTL_SECONDS` 短 TTL 缓存，但不会超过记录 `expires_at`；未命中结果默认不缓存（`IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS=0`），确保新增黑名单立即生效。
 
 ---
 
