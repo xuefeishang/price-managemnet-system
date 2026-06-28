@@ -45,10 +45,18 @@ echo -e "${GREEN}✓ 应用目录: ${APP_DIR}${NC}"
 if [ ! -f "${APP_DIR}/.env" ]; then
     echo -e "\n${YELLOW}请提供以下配置信息：${NC}"
     read -p "MySQL 密码: " DB_PASSWORD
-    read -p "Redis 密码 [默认: 123abc]: " REDIS_PASSWORD
-    REDIS_PASSWORD=${REDIS_PASSWORD:-123abc}
+    read -p "Redis 密码: " REDIS_PASSWORD
+    if [ -z "${REDIS_PASSWORD}" ]; then
+        echo -e "${RED}错误: Redis 密码不能为空${NC}"
+        exit 1
+    fi
     read -p "JWT 密钥 [默认: 自动生成]: " JWT_SECRET
     JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
+    read -p "默认用户初始密码: " DEFAULT_USER_PASSWORD
+    if [ -z "${DEFAULT_USER_PASSWORD}" ]; then
+        echo -e "${RED}错误: 默认用户初始密码不能为空${NC}"
+        exit 1
+    fi
 
     cat > ${APP_DIR}/.env << EOF
 # 数据库配置
@@ -59,8 +67,15 @@ REDIS_PASSWORD=${REDIS_PASSWORD}
 
 # 安全配置
 JWT_SECRET=${JWT_SECRET}
-DEFAULT_USER_PASSWORD=admin123
+DEFAULT_USER_PASSWORD=${DEFAULT_USER_PASSWORD}
 RESET_PASSWORD_ON_STARTUP=false
+API_KEY_ENABLED=false
+IP_BLACKLIST_ENABLED=true
+IP_BLACKLIST_OBSERVATION_MODE=true
+IP_BLACKLIST_CACHE_TTL_SECONDS=30
+IP_BLACKLIST_NEGATIVE_CACHE_TTL_SECONDS=0
+IP_BLACKLIST_TRUSTED_PROXIES=127.0.0.1,::1,0:0:0:0:0:0:0:1
+IP_BLACKLIST_BYPASS_SOURCES=127.0.0.1,::1,0:0:0:0:0:0:0:1
 EOF
     echo -e "${GREEN}✓ 配置文件已创建${NC}"
 else
