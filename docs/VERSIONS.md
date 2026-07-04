@@ -8,6 +8,7 @@
 
 | 版本 | 发布日期 | 类型 | 主要变更 |
 |------|---------|------|---------|
+| v2.2.1-20260704 | 2026-07-04 | 补丁版本 | 新增 docs/study 学习教材 + 后端业务代码优化 + 5 个单元测试 + 文档同步 |
 | v2.1.1-20260704 | 2026-07-04 | 补丁版本 | 修复客户端主动断开 SSE 时后台 ERROR/WARN 级联日志噪声 |
 | v1.6.7-20260614 | 2026-06-14 | 补丁版本 | 修复修改密码时 SSE 异步超时产生的 ERROR/WARN 日志噪音 |
 | v1.6.8-20260614 | 2026-06-14 | 次版本 | docs/dev 文档一致性全量重写（6 个文档追加 v1.6.8 增量章节）|
@@ -28,6 +29,48 @@
 | v1.2.0-20260509 | 2026-05-09 | 次版本 | Docker 部署、Harbor 集成 |
 | v1.1.0-20260501 | 2026-05-01 | 次版本 | 多端适配（uni-app） |
 | v1.0.0-20260415 | 2026-04-15 | 主版本 | 项目初始化 |
+
+---
+
+## v2.2.1-20260704 (2026-07-04)
+
+### 补丁版本：新增后台+前端学习教材 + 业务代码优化
+
+#### 📚 新增 docs/study 学习教材（21 份 / 10960 行 / 约 35 万字）
+
+针对 Java/Spring Boot 初学者编写的渐进式教材，结合本项目真实代码讲解后台与前端开发。
+
+- **前置篇**：`00-prepare.md` / `00b-mysql-basics.md` / `00c-java-syntax.md` / `00d-maven-git.md`（环境搭建、SQL、Java 语法、Maven+Git）
+- **后台核心篇**：`01`-`09`（架构、Spring Boot、分层、JPA、Security、Redis、AOP、异常）
+- **后台进阶篇**：`10`-`12`（日志、单元测试、Docker 部署）
+- **前端篇**：`13`-`15`（HTML/CSS/JS、Vue3、本项目双前端）
+- **性能篇**：`16-performance-tuning.md`（SQL 优化、缓存、JVM 调优）
+- **学习规划**：`99-learning-path.md` + `README.md` 提供按画像分流的 4 周/8 周路径
+
+#### 🔧 后端业务代码优化
+
+- **Controller**：Approval/Customer/Department/Home/Menu/Notification/Origin/Permission/ProductCategory/SysDict/External 等模块接口优化
+- **Service**：Customer/NotificationRealtime/Origin/ProductCategory 业务逻辑调整
+- **Config**：GlobalExceptionHandler 全局异常处理优化
+- **Constants**：SystemConstants 系统常量更新
+
+#### ✅ 新增 5 个单元测试
+
+- `GlobalExceptionHandlerTests` — 全局异常处理契约测试
+- `NotificationSseExceptionResolverTests` — SSE 异常处理测试
+- `SecurityBoundaryContractTests` — 安全边界契约测试
+- `BasicDataStatusContractTests` — 基础数据状态契约测试
+- `NotificationRealtimeServiceTests` — 通知实时服务测试
+
+#### 🌐 前端页面优化
+
+- `views/Approval.vue` / `Notifications.vue` / `UserManagement.vue` 页面交互优化
+
+#### 📄 文档同步
+
+- `docs/dev/api/{external,internal}.md`：API 端点文档同步
+- `docs/dev/design/{api-design,architecture}.md`：设计文档更新
+- `docs/plan/`：新增 3 份方案文档（PC 端前后台对抗式审查报告 / 第一性原理整改完善方案 / SSE 客户端断连错误修复）
 
 ---
 
