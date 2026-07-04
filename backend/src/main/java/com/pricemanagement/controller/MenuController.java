@@ -27,6 +27,7 @@ public class MenuController {
     }
 
     @GetMapping("/visible")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<List<MenuItemDTO>> getVisibleMenus(@RequestParam(required = false) String role) {
         return Result.success("获取菜单成功", menuItemService.getVisibleMenus(role != null ? role : SystemConstants.DEFAULT_ROLE));
     }
@@ -47,18 +48,21 @@ public class MenuController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @com.pricemanagement.annotation.OperationLog(module = "菜单配置", type = com.pricemanagement.entity.OperationLog.OperationType.CREATE, description = "创建菜单")
     public Result<MenuItemDTO> createMenu(@RequestBody MenuItemDTO dto) {
         return Result.success("创建菜单成功", menuItemService.createMenu(dto));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @com.pricemanagement.annotation.OperationLog(module = "菜单配置", type = com.pricemanagement.entity.OperationLog.OperationType.UPDATE, description = "更新菜单")
     public Result<MenuItemDTO> updateMenu(@PathVariable Long id, @RequestBody MenuItemDTO dto) {
         return Result.success("更新菜单成功", menuItemService.updateMenu(id, dto));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @com.pricemanagement.annotation.OperationLog(module = "菜单配置", type = com.pricemanagement.entity.OperationLog.OperationType.DELETE, description = "删除菜单")
     public Result<Void> deleteMenu(@PathVariable Long id) {
         menuItemService.deleteMenu(id);
         return Result.success("删除菜单成功");
@@ -66,6 +70,7 @@ public class MenuController {
 
     @PostMapping("/batch-sort")
     @PreAuthorize("hasRole('ADMIN')")
+    @com.pricemanagement.annotation.OperationLog(module = "菜单配置", type = com.pricemanagement.entity.OperationLog.OperationType.UPDATE, description = "批量更新菜单排序")
     public Result<Void> batchUpdateSort(@RequestBody List<MenuSortDTO> items) {
         menuItemService.batchUpdateSort(items);
         return Result.success("批量更新排序成功");
@@ -73,6 +78,7 @@ public class MenuController {
 
     @PostMapping("/init")
     @PreAuthorize("hasRole('ADMIN')")
+    @com.pricemanagement.annotation.OperationLog(module = "菜单配置", type = com.pricemanagement.entity.OperationLog.OperationType.UPDATE, description = "初始化默认菜单")
     public Result<Void> initializeDefaultMenus() {
         menuItemService.initializeDefaultMenus();
         return Result.success("菜单初始化成功");

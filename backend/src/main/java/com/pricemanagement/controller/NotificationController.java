@@ -18,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -52,7 +53,7 @@ public class NotificationController {
                 notificationService.getUnreadCount(SecurityUtils.getCurrentUserId()));
     }
 
-    @GetMapping("/events")
+    @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public SseEmitter events() {
         return notificationRealtimeService.subscribe(SecurityUtils.getCurrentUserId());

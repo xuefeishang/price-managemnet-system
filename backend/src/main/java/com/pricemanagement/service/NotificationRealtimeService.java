@@ -25,7 +25,9 @@ public class NotificationRealtimeService {
         emitter.onCompletion(() -> remove(userId, emitter));
         emitter.onTimeout(() -> remove(userId, emitter));
         emitter.onError(error -> remove(userId, emitter));
-        send(userId, new NotificationSseEventDTO("connected", null, null, null));
+        if (!sendToEmitter(userId, emitter, new NotificationSseEventDTO("connected", null, null, null))) {
+            remove(userId, emitter);
+        }
         return emitter;
     }
 
@@ -43,13 +45,22 @@ public class NotificationRealtimeService {
             return;
         }
         for (SseEmitter emitter : userEmitters) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name(event.getEventType())
-                        .data(event));
-            } catch (IOException | IllegalStateException e) {
+            if (!sendToEmitter(userId, emitter, event)) {
                 remove(userId, emitter);
             }
+        }
+    }
+
+    private boolean sendToEmitter(Long userId, SseEmitter emitter, NotificationSseEventDTO event) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name(event.getEventType())
+                    .data(event));
+            return true;
+        } catch (IOException | IllegalStateException e) {
+            log.debug("SSE 连接发送失败，清理连接: userId={}, eventType={}, error={}",
+                    userId, event.getEventType(), e.getClass().getSimpleName());
+            return false;
         }
     }
 

@@ -29,6 +29,10 @@ public class ProductCategoryService {
         return productCategoryRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
+    public List<ProductCategory> getCategoriesByStatus(CommonStatus status) {
+        return productCategoryRepository.findByStatusOrderBySortOrderAsc(status);
+    }
+
     public Optional<ProductCategory> getCategoryById(Long id) {
         return productCategoryRepository.findById(id);
     }

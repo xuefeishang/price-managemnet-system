@@ -548,7 +548,7 @@ CREATE TABLE IF NOT EXISTS document_embedding (
 - **站内底座**：`IN_APP` 是可靠消息底座，业务方只传外部渠道时 `NotificationService` 仍自动补齐站内渠道
 - **小程序**：`NotificationMiniProgramTemplate`（模板）、`NotificationMiniProgramSubscription`（订阅）、`NotificationMiniProgramEligibility`（资格）、`NotificationMiniProgramResolution`（解析日志）
 - **前端**：`Notifications.vue`（PC 5 页签工作台）、uniapp `pages/notifications/index.vue`（消息列表）
-- **SSE 特性**：空闲 60 秒自动超时；前端 EventSource 组件实现自动重连；服务端异常通过 `GlobalExceptionHandler` 静默处理（v1.6.7 修复）
+- **SSE 特性**：空闲 60 秒自动超时；客户端刷新、关闭页面或前端主动 abort 属于正常连接生命周期；PC 端断开后继续轮询兜底；服务端通过 `GlobalExceptionHandler` 静默处理空闲超时与客户端断连，不向 `text/event-stream` 响应写入 JSON 错误体（v1.6.7 / v2.1.1 修复）
 
 ### 模块 3：定时任务
 

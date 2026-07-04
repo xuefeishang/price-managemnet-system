@@ -20,6 +20,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 import java.util.HashMap;
@@ -153,16 +154,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理 SSE 等异步请求的正常生命周期结束：空闲超时、客户端刷新/关闭导致连接断开。
+     */
+    @ExceptionHandler({
+            AsyncRequestTimeoutException.class,
+            AsyncRequestNotUsableException.class
+    })
+    public void handleAsyncRequestLifecycleException(Exception ex, HttpServletRequest request) {
+        log.debug("异步请求已结束或客户端已断开: uri={}, error={}",
+                request.getRequestURI(), ex.getClass().getSimpleName());
+    }
+
+    /**
      * 处理所有未捕获的异常
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleGenericException(Exception ex, HttpServletRequest request) {
-        // 异步请求超时（如 SSE 长连接空闲超时），响应已提交，无需写回
-        if (ex instanceof AsyncRequestTimeoutException) {
-            log.debug("SSE 异步超时: {}", request.getRequestURI());
-            return null;
-        }
         // 响应已提交或 SSE 等流式响应，无法再写入错误
         if (ex instanceof HttpMessageNotWritableException) {
             log.debug("响应已提交，写入失败: {}", ex.getMessage());

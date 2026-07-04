@@ -21,15 +21,16 @@ import {
 } from '@/api/approval'
 import { getDictValue, getDictOptions, loadAllDicts } from '@/composables/useDict'
 import { usePermission, Permission } from '@/composables/usePermission'
+import { useUserStore } from '@/store/useUserStore'
 
 // 加载状态
 const loading = ref(false)
 const workflowLoading = ref(false)
 
 // 当前用户角色
-const userRole = ref<string>('')
 const { hasPermission } = usePermission()
-const isAdmin = computed(() => userRole.value === 'ADMIN')
+const userStore = useUserStore()
+const isAdmin = computed(() => userStore.isAdmin)
 
 // 标签页
 const activeTab = ref('pending')
@@ -371,16 +372,13 @@ const handlePageChange = (type: 'pending' | 'my', page: number) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadAllDicts()
-  // 获取用户角色
-  const storedUser = localStorage.getItem('user')
-  if (storedUser) {
+  if (!userStore.user && userStore.token) {
     try {
-      const user = JSON.parse(storedUser)
-      userRole.value = user.role || ''
-    } catch {
-      userRole.value = ''
+      await userStore.fetchProfile()
+    } catch (error) {
+      console.error('加载用户资料失败:', error)
     }
   }
   loadPendingApprovals()

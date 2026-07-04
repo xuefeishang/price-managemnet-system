@@ -32,9 +32,10 @@ public class ProductCategoryController {
             try {
                 CommonStatus categoryStatus = CommonStatus.valueOf(status);
                 return Result.success("获取分类列表成功",
-                        productCategoryService.getActiveCategories());
+                        productCategoryService.getCategoriesByStatus(categoryStatus));
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid status parameter: {}", status);
+                return Result.error(400, "无效状态: " + status);
             }
         }
         return Result.success("获取分类列表成功", productCategoryService.getAllCategories());
@@ -53,8 +54,12 @@ public class ProductCategoryController {
     public Result<ProductCategory> createCategory(@RequestBody ProductCategory category) {
         try {
             ProductCategory savedCategory = productCategoryService.createCategory(category);
+            operationLogHelper.logSuccess("产品分类管理", OperationLog.OperationType.CREATE,
+                    "创建分类：" + savedCategory.getName(), "分类编码：" + savedCategory.getCode());
             return Result.success("创建分类成功", savedCategory);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("产品分类管理", OperationLog.OperationType.CREATE,
+                    "创建分类失败", category == null ? "" : "分类编码：" + category.getCode(), e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -65,8 +70,12 @@ public class ProductCategoryController {
                                                    @RequestBody ProductCategory category) {
         try {
             ProductCategory updatedCategory = productCategoryService.updateCategory(id, category);
+            operationLogHelper.logSuccess("产品分类管理", OperationLog.OperationType.UPDATE,
+                    "更新分类：" + updatedCategory.getName(), "分类ID：" + id);
             return Result.success("更新分类成功", updatedCategory);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("产品分类管理", OperationLog.OperationType.UPDATE,
+                    "更新分类失败", "分类ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         }
     }
@@ -75,9 +84,16 @@ public class ProductCategoryController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<Void> deleteCategory(@PathVariable Long id) {
         try {
+            String categoryName = productCategoryService.getCategoryById(id)
+                    .map(ProductCategory::getName)
+                    .orElse("ID:" + id);
             productCategoryService.deleteCategory(id);
+            operationLogHelper.logSuccess("产品分类管理", OperationLog.OperationType.DELETE,
+                    "删除分类：" + categoryName, "分类ID：" + id);
             return Result.success("删除分类成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("产品分类管理", OperationLog.OperationType.DELETE,
+                    "删除分类失败", "分类ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         }
     }

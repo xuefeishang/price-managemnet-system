@@ -114,6 +114,8 @@ source: docs/dev/backup/项目设计文档.md
 | DELETE | /api/categories/{id} | 删除分类 |
 | POST | /api/categories/batch-sort | 批量更新分类排序 |
 
+`GET /api/categories` 支持 `status=ACTIVE|INACTIVE`；不传返回全部，非法状态返回 `code=400`。`/api/origins`、`/api/customers` 使用相同状态过滤语义。
+
 ## 产品接口
 
 | 方法 | 路径 | 说明 |
@@ -355,6 +357,8 @@ source: docs/dev/backup/项目设计文档.md
 | customer:read | GET | /api/external/v1/customers/** | 客户读取 |
 | dict:read | GET | /api/external/v1/dict/** | 字典读取，`/dict` 必须指定 category |
 | home:read | GET | /api/external/v1/home/** | 首页数据读取 |
+
+外部基础数据列表支持 `status=ACTIVE|INACTIVE`；为兼容 v1 既有调用，不传或非法 `status` 均按未过滤列表返回。
 
 ### 外部 API 控制器清单（v1.3.0+）
 

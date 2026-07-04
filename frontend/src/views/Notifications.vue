@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { showToast } from 'vant'
+import { showConfirmDialog, showToast } from 'vant'
 import {
   cancelSystemNotice,
   createMiniProgramTemplate,
@@ -380,6 +380,15 @@ let detailRequestSeq = 0
 
 const formatTime = (time?: string) => time ? time.replace('T', ' ').substring(0, 19) : '-'
 
+const confirmAction = async (title: string, message: string) => {
+  try {
+    await showConfirmDialog({ title, message })
+    return true
+  } catch {
+    return false
+  }
+}
+
 const formatDuration = (seconds?: number) => {
   if (!seconds && seconds !== 0) return '-'
   if (seconds < 60) return `${seconds}秒`
@@ -543,7 +552,7 @@ const validateSelectedTemplate = async () => {
 
 const publishSelectedTemplate = async () => {
   if (!selectedTemplate.value) return
-  if (!window.confirm('发布后同通知类型旧模板会停用，新模板需要用户重新授权。是否继续？')) return
+  if (!await confirmAction('确认发布', '发布后同通知类型旧模板会停用，新模板需要用户重新授权。是否继续？')) return
   const response = await publishMiniProgramTemplate(selectedTemplate.value.id)
   selectedTemplateId.value = response.data.id
   showToast('模板已发布')
@@ -560,7 +569,7 @@ const disableSelectedTemplate = async () => {
 
 const rollbackSelectedTemplate = async () => {
   if (!selectedTemplate.value) return
-  if (!window.confirm('将该历史模板复制为新的生效版本，并停用当前生效模板。是否继续？')) return
+  if (!await confirmAction('确认回滚', '将该历史模板复制为新的生效版本，并停用当前生效模板。是否继续？')) return
   const response = await rollbackMiniProgramTemplate(selectedTemplate.value.id)
   selectedTemplateId.value = response.data.id
   showToast('模板已回滚')
@@ -926,7 +935,7 @@ const sendSubscriptionTestDelivery = async () => {
     showToast('当前用户没有可测试的模板')
     return
   }
-  if (!window.confirm('测试投递将真实调用微信接口并消耗该用户一次订阅授权，是否继续？')) return
+  if (!await confirmAction('确认测试投递', '测试投递将真实调用微信接口并消耗该用户一次订阅授权，是否继续？')) return
   const response = await testNotificationChannelDelivery('MINI_PROGRAM', {
     userId: row.userId,
     notificationType

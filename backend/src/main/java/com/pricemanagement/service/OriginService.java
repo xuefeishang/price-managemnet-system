@@ -26,6 +26,10 @@ public class OriginService {
         return originRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
+    public List<Origin> getOriginsByStatus(CommonStatus status) {
+        return originRepository.findByStatusOrderBySortOrderAsc(status);
+    }
+
     public Optional<Origin> getOriginById(Long id) {
         return originRepository.findById(id);
     }

@@ -25,6 +25,7 @@ public class DepartmentController {
      * 获取部门树
      */
     @GetMapping("/tree")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<Department>> getDepartmentTree() {
         List<Department> tree = departmentService.getDepartmentTree();
         return Result.success("获取部门树成功", tree);
@@ -34,6 +35,7 @@ public class DepartmentController {
      * 获取所有部门列表（扁平）
      */
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<Department>> getAllDepartments() {
         List<Department> departments = departmentService.getActiveDepartments();
         return Result.success("获取部门列表成功", departments);
@@ -43,6 +45,7 @@ public class DepartmentController {
      * 获取部门详情
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Department> getDepartment(@PathVariable Long id) {
         return departmentService.getDepartmentById(id)
                 .map(dept -> Result.success("获取部门成功", dept))

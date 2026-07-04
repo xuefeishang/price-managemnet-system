@@ -26,6 +26,10 @@ public class CustomerService {
         return customerRepository.findByStatusOrderBySortOrderAsc(CommonStatus.ACTIVE);
     }
 
+    public List<Customer> getCustomersByStatus(CommonStatus status) {
+        return customerRepository.findByStatusOrderBySortOrderAsc(status);
+    }
+
     public Optional<Customer> getCustomerById(Long id) {
         return customerRepository.findById(id);
     }

@@ -525,10 +525,10 @@ GET /api/price-query/export
 
 | 方法 | 路径 | 权限 | 说明 |
 |------|------|------|------|
-| GET | `/api/home/dashboard` | 已登录用户 | 获取仪表盘数据 |
-| GET | `/api/home/summary` | 已登录用户 | 获取摘要统计 |
-| GET | `/api/home/alerts` | 已登录用户 | 获取价格预警 |
-| GET | `/api/home/trend` | 已登录用户 | 获取趋势分析 |
+| GET | `/api/home/dashboard` | ADMIN / EDITOR / VIEWER | 获取仪表盘数据 |
+| GET | `/api/home/summary` | ADMIN / EDITOR / VIEWER | 获取摘要统计 |
+| GET | `/api/home/alerts` | ADMIN / EDITOR / VIEWER | 获取价格预警 |
+| GET | `/api/home/trend` | ADMIN / EDITOR / VIEWER | 获取趋势分析 |
 | GET | `/api/home/product-order` | ADMIN / EDITOR / VIEWER | 获取首页产品排序 |
 
 **通用请求参数：** `date`（date，默认昨天，格式 `yyyy-MM-dd`），`trend` 接口额外支持 `days`（int，默认 30）。
@@ -546,7 +546,7 @@ GET /api/price-query/export
 | DELETE | `/api/categories/{id}` | ADMIN | 删除分类 |
 | POST | `/api/categories/batch-sort` | ADMIN / EDITOR | 批量更新排序 |
 
-**请求参数：** `status`（string，可选，传 `ACTIVE` 获取启用项）。
+**请求参数：** `status`（string，可选，支持 `ACTIVE` / `INACTIVE`；不传返回全部，非法值返回 `code=400`）。
 
 **创建分类请求体：**
 
@@ -570,7 +570,7 @@ GET /api/price-query/export
 | PUT | `/api/origins/{id}` | ADMIN / EDITOR | 更新产地 |
 | DELETE | `/api/origins/{id}` | ADMIN | 删除产地 |
 
-**请求参数：** `status`（string，可选）。
+**请求参数：** `status`（string，可选，支持 `ACTIVE` / `INACTIVE`；不传返回全部，非法值返回 `code=400`）。
 
 **创建产地请求体：**
 
@@ -593,7 +593,7 @@ GET /api/price-query/export
 | PUT | `/api/customers/{id}` | ADMIN / EDITOR | 更新客户 |
 | DELETE | `/api/customers/{id}` | ADMIN | 删除客户 |
 
-**请求参数：** `status`（string，可选）。
+**请求参数：** `status`（string，可选，支持 `ACTIVE` / `INACTIVE`；不传返回全部，非法值返回 `code=400`）。
 
 **创建客户请求体：**
 

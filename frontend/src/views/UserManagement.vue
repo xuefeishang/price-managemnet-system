@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/useUserStore'
 import { showToast } from 'vant'
 import { getUsers, createUser, updateUser, adminEditUser, deleteUser, lockUser, unlockUser, getUserRolesBatch, assignUserRoles, importUsers, exportUsers, downloadUserTemplate } from '@/api/users'
@@ -13,6 +14,7 @@ import { getStatusLabel, getDictOptions, loadAllDicts } from '@/composables/useD
 import type { User, Department, SysRole } from '@/types'
 
 const userStore = useUserStore()
+const router = useRouter()
 const { hasPermission } = usePermission()
 
 // 用户列表
@@ -514,7 +516,7 @@ const handleExport = async () => {
 onMounted(() => {
   // 检查权限 - 已在路由守卫中检查，但作为额外保障
   if (!userStore.isAdmin) {
-    window.location.href = '/#/home'
+    router.replace('/home')
     return
   }
   loadAllDicts()

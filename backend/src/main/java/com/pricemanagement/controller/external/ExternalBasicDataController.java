@@ -1,6 +1,8 @@
 package com.pricemanagement.controller.external;
 
+import com.pricemanagement.constants.CommonStatus;
 import com.pricemanagement.dto.Result;
+import com.pricemanagement.dto.ExternalApiPrincipal;
 import com.pricemanagement.entity.Customer;
 import com.pricemanagement.entity.Origin;
 import com.pricemanagement.entity.ProductCategory;
@@ -10,11 +12,17 @@ import com.pricemanagement.service.OriginService;
 import com.pricemanagement.service.ProductCategoryService;
 import com.pricemanagement.service.SysDictService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/external/v1")
 @RequiredArgsConstructor
@@ -28,8 +36,9 @@ public class ExternalBasicDataController {
     @GetMapping("/categories")
     @PreAuthorize("hasAuthority('API_category:read')")
     public Result<List<ProductCategory>> getCategories(@RequestParam(required = false) String status) {
-        if ("ACTIVE".equals(status)) {
-            return Result.success("获取分类列表成功", productCategoryService.getActiveCategories());
+        CommonStatus categoryStatus = parseExternalStatus("categories", status);
+        if (categoryStatus != null) {
+            return Result.success("获取分类列表成功", productCategoryService.getCategoriesByStatus(categoryStatus));
         }
         return Result.success("获取分类列表成功", productCategoryService.getAllCategories());
     }
@@ -45,8 +54,9 @@ public class ExternalBasicDataController {
     @GetMapping("/origins")
     @PreAuthorize("hasAuthority('API_origin:read')")
     public Result<List<Origin>> getOrigins(@RequestParam(required = false) String status) {
-        if ("ACTIVE".equals(status)) {
-            return Result.success("获取产地列表成功", originService.getActiveOrigins());
+        CommonStatus originStatus = parseExternalStatus("origins", status);
+        if (originStatus != null) {
+            return Result.success("获取产地列表成功", originService.getOriginsByStatus(originStatus));
         }
         return Result.success("获取产地列表成功", originService.getAllOrigins());
     }
@@ -62,8 +72,9 @@ public class ExternalBasicDataController {
     @GetMapping("/customers")
     @PreAuthorize("hasAuthority('API_customer:read')")
     public Result<List<Customer>> getCustomers(@RequestParam(required = false) String status) {
-        if ("ACTIVE".equals(status)) {
-            return Result.success("获取客户列表成功", customerService.getActiveCustomers());
+        CommonStatus customerStatus = parseExternalStatus("customers", status);
+        if (customerStatus != null) {
+            return Result.success("获取客户列表成功", customerService.getCustomersByStatus(customerStatus));
         }
         return Result.success("获取客户列表成功", customerService.getAllCustomers());
     }
@@ -103,5 +114,37 @@ public class ExternalBasicDataController {
         return sysDictService.getDictById(id)
                 .map(dict -> Result.success("获取字典项成功", dict))
                 .orElse(Result.error(404, "字典项不存在"));
+    }
+
+    private CommonStatus parseExternalStatus(String resource, String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return CommonStatus.valueOf(status);
+        } catch (IllegalArgumentException ignored) {
+            log.warn("External basic data invalid status ignored: resource={}, status={}, appId={}, uri={}",
+                    resource, status, currentAppId(), currentRequestUri());
+            return null;
+        }
+    }
+
+    private String currentAppId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return "unknown";
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof ExternalApiPrincipal externalApiPrincipal) {
+            return externalApiPrincipal.appId();
+        }
+        return authentication.getName();
+    }
+
+    private String currentRequestUri() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            return attributes.getRequest().getRequestURI();
+        }
+        return "unknown";
     }
 }

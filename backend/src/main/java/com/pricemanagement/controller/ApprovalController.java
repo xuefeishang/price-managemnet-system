@@ -3,6 +3,7 @@ package com.pricemanagement.controller;
 import com.pricemanagement.dto.Result;
 import com.pricemanagement.entity.*;
 import com.pricemanagement.service.ApprovalService;
+import com.pricemanagement.util.OperationLogHelper;
 import com.pricemanagement.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,7 @@ import java.util.List;
 public class ApprovalController {
 
     private final ApprovalService approvalService;
+    private final OperationLogHelper operationLogHelper;
 
     // ==================== 工作流管理 ====================
 
@@ -60,8 +62,12 @@ public class ApprovalController {
     public Result<ApprovalWorkflow> createWorkflow(@RequestBody ApprovalWorkflow workflow) {
         try {
             ApprovalWorkflow saved = approvalService.createWorkflow(workflow);
+            operationLogHelper.logSuccess("审批流管理", OperationLog.OperationType.CREATE,
+                    "创建审批工作流：" + saved.getWorkflowName(), "工作流ID：" + saved.getId());
             return Result.success("创建工作流成功", saved);
         } catch (Exception e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.CREATE,
+                    "创建审批工作流失败", workflow == null ? "" : "名称：" + workflow.getWorkflowName(), e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -74,10 +80,16 @@ public class ApprovalController {
     public Result<ApprovalWorkflow> updateWorkflow(@PathVariable Long id, @RequestBody ApprovalWorkflow workflow) {
         try {
             ApprovalWorkflow updated = approvalService.updateWorkflow(id, workflow);
+            operationLogHelper.logSuccess("审批流管理", OperationLog.OperationType.UPDATE,
+                    "更新审批工作流：" + updated.getWorkflowName(), "工作流ID：" + id);
             return Result.success("更新工作流成功", updated);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "更新审批工作流失败", "工作流ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "更新审批工作流失败", "工作流ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -90,10 +102,16 @@ public class ApprovalController {
     public Result<Void> deleteWorkflow(@PathVariable Long id) {
         try {
             approvalService.deleteWorkflow(id);
+            operationLogHelper.logSuccess("审批流管理", OperationLog.OperationType.DELETE,
+                    "删除审批工作流", "工作流ID：" + id);
             return Result.success("删除工作流成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.DELETE,
+                    "删除审批工作流失败", "工作流ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.DELETE,
+                    "删除审批工作流失败", "工作流ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -106,10 +124,16 @@ public class ApprovalController {
     public Result<ApprovalWorkflow> activateWorkflow(@PathVariable Long id) {
         try {
             ApprovalWorkflow workflow = approvalService.activateWorkflow(id);
+            operationLogHelper.logSuccess("审批流管理", OperationLog.OperationType.UPDATE,
+                    "激活审批工作流：" + workflow.getWorkflowName(), "工作流ID：" + id);
             return Result.success("激活工作流成功", workflow);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "激活审批工作流失败", "工作流ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "激活审批工作流失败", "工作流ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -122,10 +146,16 @@ public class ApprovalController {
     public Result<ApprovalWorkflow> deactivateWorkflow(@PathVariable Long id) {
         try {
             ApprovalWorkflow workflow = approvalService.deactivateWorkflow(id);
+            operationLogHelper.logSuccess("审批流管理", OperationLog.OperationType.UPDATE,
+                    "停用审批工作流：" + workflow.getWorkflowName(), "工作流ID：" + id);
             return Result.success("停用工作流成功", workflow);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "停用审批工作流失败", "工作流ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批流管理", OperationLog.OperationType.UPDATE,
+                    "停用审批工作流失败", "工作流ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -151,8 +181,12 @@ public class ApprovalController {
         try {
             node.setWorkflowId(workflowId);
             ApprovalNode saved = approvalService.addWorkflowNode(node);
+            operationLogHelper.logSuccess("审批节点管理", OperationLog.OperationType.CREATE,
+                    "添加审批节点", "工作流ID：" + workflowId + ", 节点ID：" + saved.getId());
             return Result.success("添加节点成功", saved);
         } catch (Exception e) {
+            operationLogHelper.logError("审批节点管理", OperationLog.OperationType.CREATE,
+                    "添加审批节点失败", "工作流ID：" + workflowId, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -165,10 +199,16 @@ public class ApprovalController {
     public Result<ApprovalNode> updateNode(@PathVariable Long id, @RequestBody ApprovalNode node) {
         try {
             ApprovalNode updated = approvalService.updateNode(id, node);
+            operationLogHelper.logSuccess("审批节点管理", OperationLog.OperationType.UPDATE,
+                    "更新审批节点", "节点ID：" + id + ", 工作流ID：" + updated.getWorkflowId());
             return Result.success("更新节点成功", updated);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批节点管理", OperationLog.OperationType.UPDATE,
+                    "更新审批节点失败", "节点ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批节点管理", OperationLog.OperationType.UPDATE,
+                    "更新审批节点失败", "节点ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -181,10 +221,16 @@ public class ApprovalController {
     public Result<Void> deleteNode(@PathVariable Long id) {
         try {
             approvalService.deleteNode(id);
+            operationLogHelper.logSuccess("审批节点管理", OperationLog.OperationType.DELETE,
+                    "删除审批节点", "节点ID：" + id);
             return Result.success("删除节点成功");
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批节点管理", OperationLog.OperationType.DELETE,
+                    "删除审批节点失败", "节点ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (Exception e) {
+            operationLogHelper.logError("审批节点管理", OperationLog.OperationType.DELETE,
+                    "删除审批节点失败", "节点ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         }
     }
@@ -253,11 +299,17 @@ public class ApprovalController {
             Long userId = SecurityUtils.getCurrentUserId();
             request.setApplicantId(userId);
             ApprovalRequest saved = approvalService.createRequest(request, null);
+            operationLogHelper.logSuccess("审批请求", OperationLog.OperationType.CREATE,
+                    "创建审批请求", "审批请求ID：" + saved.getId() + ", 业务类型：" + saved.getBusinessType());
             return Result.success("创建审批请求成功", saved);
         } catch (IllegalStateException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.CREATE,
+                    "创建审批请求失败", request == null ? "" : "业务类型：" + request.getBusinessType(), e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("创建审批请求失败", e);
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.CREATE,
+                    "创建审批请求失败", request == null ? "" : "业务类型：" + request.getBusinessType(), e.getMessage(), "500");
             return Result.error(500, "创建审批请求失败");
         }
     }
@@ -273,13 +325,21 @@ public class ApprovalController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             ApprovalRequest updated = approvalService.approve(id, userId, comment);
+            operationLogHelper.logSuccess("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批通过", "审批请求ID：" + id);
             return Result.success("审批通过成功", updated);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批通过失败", "审批请求ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (IllegalStateException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批通过失败", "审批请求ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("审批失败", e);
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批通过失败", "审批请求ID：" + id, e.getMessage(), "500");
             return Result.error(500, "审批失败");
         }
     }
@@ -295,13 +355,21 @@ public class ApprovalController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             ApprovalRequest updated = approvalService.reject(id, userId, comment);
+            operationLogHelper.logSuccess("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批拒绝", "审批请求ID：" + id);
             return Result.success("审批拒绝成功", updated);
         } catch (IllegalArgumentException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批拒绝失败", "审批请求ID：" + id, e.getMessage(), "404");
             return Result.error(404, e.getMessage());
         } catch (IllegalStateException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批拒绝失败", "审批请求ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("审批失败", e);
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "审批拒绝失败", "审批请求ID：" + id, e.getMessage(), "500");
             return Result.error(500, "审批失败");
         }
     }
@@ -315,11 +383,17 @@ public class ApprovalController {
         try {
             Long userId = SecurityUtils.getCurrentUserId();
             ApprovalRequest updated = approvalService.cancel(id, userId);
+            operationLogHelper.logSuccess("审批请求", OperationLog.OperationType.UPDATE,
+                    "撤回审批请求", "审批请求ID：" + id);
             return Result.success("撤回成功", updated);
         } catch (IllegalArgumentException | IllegalStateException e) {
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "撤回审批请求失败", "审批请求ID：" + id, e.getMessage(), "400");
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("撤回失败", e);
+            operationLogHelper.logError("审批请求", OperationLog.OperationType.UPDATE,
+                    "撤回审批请求失败", "审批请求ID：" + id, e.getMessage(), "500");
             return Result.error(500, "撤回失败");
         }
     }

@@ -176,6 +176,8 @@ Content-Type: application/json
 | GET | `/dict/{id}` | `dict:read` | 字典项详情 |
 
 > `GET /dict` 必须指定 `category`，外部接口不提供一次性读取全部字典能力。
+>
+> `/categories`、`/origins`、`/customers` 支持 `status=ACTIVE|INACTIVE` 过滤；不传或传入非法 `status` 时保持 v1 兼容，返回未过滤列表。
 
 ### 产品
 

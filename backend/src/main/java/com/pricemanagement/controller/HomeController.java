@@ -29,6 +29,7 @@ public class HomeController {
      * 获取仪表盘数据
      */
     @GetMapping("/dashboard")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<HomeDashboardDTO> getDashboard(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -41,6 +42,7 @@ public class HomeController {
      * 获取摘要统计
      */
     @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<HomeSummaryDTO> getSummary(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -53,6 +55,7 @@ public class HomeController {
      * 获取价格预警
      */
     @GetMapping("/alerts")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<List<PriceAlertDTO>> getAlerts(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -65,6 +68,7 @@ public class HomeController {
      * 获取趋势分析
      */
     @GetMapping("/trend")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     public Result<TrendAnalysisDTO> getTrend(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
