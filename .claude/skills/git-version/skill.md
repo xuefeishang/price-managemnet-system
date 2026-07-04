@@ -1,17 +1,21 @@
 ---
 name: git-version
 preamble-tier: 1
-version: 1.0.0
+version: 1.1.0
 description: |
   规范化 Git 版本管理流程，确保每次发布都有对应的 tag 和 release 记录。
-  
+
+  v1.1.0 变更：
+  - ✅ 新增"特殊情况处理"章节，涵盖公司网络封锁 / deploy key 权限不足 / token 安全三大常见坑
+  - ✅ 与 /github-push skill 协作：版本号确定后调用 /github-push 完成推送和 Release 创建
+
   使用场景：
   - "发布新版本"
   - "打 tag"
   - "创建 release"
   - "版本发布"
   - "准备上线"
-  
+
 triggers:
   - 发布版本
   - 打tag
@@ -23,6 +27,7 @@ allowed-tools:
   - Read
   - Write
   - AskUserQuestion
+  - Skill
 ---
 
 # Git 版本管理 Skill
@@ -187,6 +192,10 @@ git tag -a v{版本号} -m "Release v{版本号}
 
 ### 步骤 6：推送到远程
 
+> **重要**：推送遇到网络/权限问题时，**立即转交** `/github-push` skill 处理。
+
+**正常情况**：
+
 ```bash
 # 推送 commit
 git push origin master
@@ -194,6 +203,17 @@ git push origin master
 # 推送 tag
 git push origin v{版本号}
 ```
+
+**异常情况速查**：
+
+| 错误 | 含义 | 解决方案 |
+|------|------|---------|
+| `Recv failure: Connection was reset` | HTTPS 端口被封 | 转 `/github-push` 配代理或 SSH over 443 |
+| `Permission denied to deploy key` | deploy key 无写权限 | 转 `/github-push` 用 PAT |
+| `Connection timed out` (10.7.5.175) | 内网服务器不通 | 检查网络或改天再推 |
+| `Updates were rejected` | 远程有更新 | `git pull --rebase` 后再 push |
+
+完整推送流程（含网络/权限处理）见：**`/github-push` skill**。
 
 ---
 
@@ -340,5 +360,83 @@ NEW_VERSION="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}-${DATE}"
 
 ---
 
-*Skill 版本: 1.0.0*
-*最后更新: 2026-06-04*
+## 特殊情况处理（v1.1.0 新增）
+
+> 详细处理流程见 **`/github-push` skill**。本章节只是速查，遇到问题立即转交。
+
+### 场景 1：HTTPS 推送失败（Connection was reset）
+
+```bash
+# 现象
+fatal: unable to access 'https://github.com/xxx.git/':
+Recv failure: Connection was reset
+
+# 速查
+curl -sS -o /dev/null -w "%{http_code}\n" --connect-timeout 8 https://github.com
+# → 000 表示主域名被封
+```
+
+**3 种解决方案**（详见 `/github-push` 第一部分）：
+
+1. **Windows 系统代理**（推荐）：`git config --global http.proxy http://127.0.0.1:10808`
+2. **SSH over 443**：把 origin 改成 `git@github-ssh-443:owner/repo.git`
+3. **HTTP 代理**：测试 `127.0.0.1:7890 / 1080 / 10808` 哪个通
+
+### 场景 2：Permission denied to deploy key
+
+```bash
+# 现象
+ERROR: Permission to xxx/xxx.git denied to deploy key
+```
+
+**说明**：本机 SSH key 是 GitHub 上的 deploy key（只读）。
+
+**3 种解决方案**（详见 `/github-push` 第二部分）：
+
+1. **Personal Access Token**（推荐，最快）
+2. 升级 SSH key 为可写（GitHub Settings → Deploy keys → 重新添加并勾选 Allow write access）
+3. 用另一个可写 key：`GIT_SSH_COMMAND="ssh -i ~/.ssh/other_key ..." git push`
+
+### 场景 3：token 安全
+
+**铁律**（详见 `/github-push` 第八部分）：
+
+1. **绝不写入明文 token** 到任何文件（包括 skill、commit message）
+2. **推送后立即清除** `git remote -v` 中的 token
+3. **不留在 bash history**（用 `read -s` 或环境变量）
+
+```bash
+# ✅ 安全流程
+read -s GITHUB_TOKEN
+git remote set-url origin https://${GITHUB_TOKEN}@github.com/owner/repo.git
+git push origin master
+git remote set-url origin https://github.com/owner/repo.git
+unset GITHUB_TOKEN
+```
+
+### 与 /github-push skill 协作流程
+
+```bash
+# 1. 本 skill（git-version）：版本号、tag、VERSIONS.md
+/git-version
+
+# 2. /github-push：处理推送（自动处理网络/权限/token）
+/github-push
+
+# 3. /github-push 创建 Release（可选）
+/github-push --create-release
+```
+
+---
+
+## 更新记录
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.1.0 | 2026-07-04 | 新增"特殊情况处理"章节；与 `/github-push` skill 协作 |
+| 1.0.0 | 2026-06-04 | 初版：版本号规范 + 完整发布流程 |
+
+---
+
+*Skill 版本: 1.1.0*
+*最后更新: 2026-07-04*
